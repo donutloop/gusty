@@ -196,7 +196,6 @@ func TestThePairRoadKeepsWhatTheCallResultSubscriptLeavesIt(t *testing.T) {
 		must string
 	}{
 		{"def mk():\n    return [1.5, 2.5]\n\nprint(mk()[0] + mk()[1])", "more than one kind"},
-		{"def mk():\n    return [{}]\n\nprint(mk()[0] + mk()[0])", "more than one kind"},
 		{"def mk():\n    return [{\"k\": 1}]\n\nprint(mk()[0][\"k\"] + 1)", "index must be a constant"},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
@@ -219,6 +218,26 @@ func TestThePairRoadKeepsWhatTheCallResultSubscriptLeavesIt(t *testing.T) {
 			}
 		})
 	}
+	// One row left this table with **ADR 0459**, and it left by answering like the reference rather than by
+	// refusing: the two dict slots of an answer read their pair, the operator asks the OBJECT what it holds, and
+	// two dicts do not add. The raise is the reference's class, sentence and exit code, so it is asserted as a
+	// raise — the road kept the position, and the position turned out to own a raise rather than a refusal.
+	t.Run("two dict slots of an answer raise what the reference raises", func(t *testing.T) {
+		t.Parallel()
+		stdout, stderr, code := cliStreams(t, "--eval", "def mk():\n    return [{}]\n\nprint(mk()[0] + mk()[0])")
+		if code == 2 {
+			t.Fatalf("exit 2 on a legal program — the code the contract reserves for a compiler bug (ADR 0166):\n%s", stderr)
+		}
+		if code != 3 {
+			t.Fatalf("exit %d, want 3 (the reference raises TypeError for this program):\nstdout %q\nstderr %q", code, stdout, stderr)
+		}
+		if strings.TrimSpace(stdout) != "" {
+			t.Fatalf("a raise printed %q on stdout", stdout)
+		}
+		if !strings.Contains(stderr, "TypeError: unsupported operand type(s) for +: 'dict' and 'dict'") {
+			t.Fatalf("the raise is not the reference's TypeError:\n%s", stderr)
+		}
+	})
 }
 
 // The shape of the answer stays the shape ADR 0333 gave it: the subscript road rewrites to the rooted name

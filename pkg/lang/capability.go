@@ -591,9 +591,9 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 		Code:       "lower.unsupported.slice-base-not-described",
 		Shape:      "a slice whose base the container records do not describe",
 		Suggestion: "bind the base to a name and slice the name, or slice a literal / a variable a binding recorded as a list — the copy is built from the base's slots, and this base has no record saying what they hold",
-		Rows:       []string{"Gap R.235", "Gap R.234"},
+		Rows:       []string{"Gap R.540", "Gap R.234"},
 		Markers:    []string{"the base is not a list the records describe"},
-		Sample:     "def m():\n    return {\"k\": [1.5]}\n\nprint(m()[\"k\"][0:1])",
+		Sample:     "def m():\n    return {\"k\": [1.5]}\n\nd = m()[\"k\"]\nprint(d[0:1])",
 	},
 	{
 		Code:       "lower.unsupported.membership-needle-unprovable",

@@ -3033,6 +3033,46 @@ point, because a slice road that tags every copy sends a plain `[1, 2, 3]` to a 
 `len(...)` of a slice answers the count — of a literal's slice, of a variable's, of a call's answer, and of a
 name bound to a copy.
 
+**An object the run time builds is an object the program may leave unnamed** (**ADR 0459**, **Gap R.235**). A
+copy, a comprehension's brace and the container a slot holds are all built and never named, and every read a
+container *variable* answers is now the same read of them — the door names the object, roots it, and writes the
+notebooks the binding writes, so the roads below are not new behaviour but the old behaviour with its door open:
+
+```
+xs = [1.5, "a", [7]]
+print(xs[0:2][0])        # 1.5            — a slot of a copy, read where the copy stands
+print(xs[0:2][1])        # a
+print(len(xs[0:2]))      # 2
+v = xs[0:2][1]
+print(v)                 # a              — bound, or not: the pair door asks the copy either way
+xs = [1, 2, 3]
+print(xs[0:2][1] == 2)   # True           — a copy whose slots are one kind answers the comparison too
+print(xs[0:2][0] + xs[0:2][1])   # 3
+print(xs[0:2][5])        # IndexError: list index out of range — the program's own `except` takes it
+s = "abcdef"
+print(s[0:2][1])         # b              — a text's copy is a text, read by position
+s2 = "abc"
+print(s2[0:2][9])        # IndexError: string index out of range
+
+def table():
+    return {"k": [1.5, "a"]}
+print(table()["k"][0:1])          # [1.5]   — the base is a slot read
+print(table()["k"][1:2][0])       # a       — and the copy of it read back
+print([x for x in [1, 2, 3]][0:2])# [1, 2]  — the base is a brace the loop built
+print([x for x in range(4)][1:3]) # [1, 2]
+d = [[1, 2]]
+print(d[0][0:1])                  # [1]     — the base is a slot of a nested literal
+```
+
+What the door cannot import from an object's builder, it refuses rather than invents, and the refusal keeps the
+sentence of the position that declined: a copy of a comprehension whose loop copies a container that mixes kinds
+(`print([x for x in [1, "a"]][0:2])`, **Gap R.539**), a copy taken from a name whose last binding was a slot read
+(`d = table()["k"]` / `print(d[0:1])`, **Gap R.540**), and a slot of a copy whose slots mix kinds standing where
+the comparison or an operator needs **one word** (`print(xs[0:2][1] == "a")`, `print(xs[0:2][0] + 1)` —
+**Gap R.82**'s position with **Gap R.146**'s missing pair; the same comparison on a copy whose slots are all
+integers answers, and the same slot printed or bound answers). An unlabelled handle printed as a number
+is the answer this toolchain will not print, so the label comes from whoever wrote the object or not at all.
+
 **A bound is a position or an absence, never a value of another kind** (**ADR 0336**). An integer — a `bool`
 included, because `True` is `1` — is a position; `None` means the same thing an omitted bound means; anything else
 the compiler can name the kind of raises the reference's
@@ -3076,13 +3116,13 @@ print(xs[::k])         # [1, 3]   — a stride the compiler cannot read is guard
 A stride the compiler can read as anything but zero asks nothing at all: no compare, no raise block, no interned
 message in the module. What the door still declines, and why, is filed rather than glossed:
 
-- **the copy's own slots, read directly** — `print(xs[0:2][0])` is `1.5` in the reference and
-  `index requires an inline list/dict/set literal` here, while the bound form (`ys = xs[0:2]`, `print(ys[0])`)
-  answers: **Gap R.235**;
-- **a base whose slots are reachable only through another object** — `print(m()["k"][0:1])` where `m()` returns
-  `{"k": [1.5, "a"]}`, and `print([x for x in [1, 2, 3]][0:2])`: the gate in front of the copy refuses with a
-  sentence naming the missing record instead of copying whatever word the base lowered to (**Gap R.235**; the
-  comprehension shape reached `llc` and had the module rejected before ADR 0335 — exit 2);
+- **a copy of a brace whose loop copies a container that mixes kinds** — `print([x for x in [1, "a"]][0:2])` is
+  `[1, 'a']` in the reference and the position's own refusal here, while the bound twin
+  (`zs = [x for x in [1, "a"]]`, `print(zs[0:2])`) answers: **Gap R.539** (no builder claimed the element kind,
+  and the door will not invent one);
+- **a copy taken from a name whose last binding was a slot read** — `print(m()["k"][0:1])` answers `[1.5]` since
+  **ADR 0459**, but `d = m()["k"]` / `print(d[0:1])` refuses with the gate's sentence, because the binding of a
+  pair clears the container records (**Gap R.540**);
 - **a base that is not a list at all** — `print({1, 2}[0:1])` and `print(d[0:1])` over a dict refuse here, where
   the reference raises `TypeError: 'set' object is not subscriptable` for the set and `KeyError: slice(0, 1, None)`
   for the dict (a slice of integers is hashable, so the dict hashes it and names the key it missed):
@@ -3488,9 +3528,10 @@ for i in range(n):
   `IndexError: list index out of range`, because the subscript asks its base one question — *is this a call
   that hands back a container?* — and, when it is, is answered by the door that reads `ys[i]` for
   `ys = build()` — and the **slice** beside the index, so `print(build()[0:2])` prints the copy the same door
-  reads off a variable (**ADR 0335**, roadmap Gap R.230). What those doors still decline is filed where it
-  belongs: a **slot of a copy** read directly (`print(xs[0:2][0])`, while the bound copy answers — Gap R.235), a
-  slice whose base is a slot or a comprehension's answer (Gap R.235), a slice of a set or dict, which the
+  reads off a variable (**ADR 0335**, roadmap Gap R.230), and so does a slot of that copy read where the copy
+  stands, a slot read used as a base, and a brace the loop built (**ADR 0459**, roadmap Gap R.235). What those doors still decline is filed where it
+  belongs: a copy of a brace whose loop copies a container that mixes kinds (**Gap R.539**), a copy taken from a
+  name whose last binding was a slot read (**Gap R.540**), a slice of a set or dict, which the
   reference raises rather than declines (Gap R.234), text bounds, which this backend answers instead of raising
   (Gap R.233), an answer as an item-assignment target or as a method receiver (Gap R.229), and a membership test
   whose needle is a slot (Gap R.232). The missing

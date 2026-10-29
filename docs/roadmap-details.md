@@ -11514,7 +11514,7 @@ refusals today and move to the raise tables when this row lands; none of them ma
 
 <a id="gap-r-235"></a>
 
-### Gap R.235 — what the copy door builds it cannot read, and what it declines it declines for want of a record (OPEN, found by ADR 0335)
+### Gap R.235 — what the copy door builds it cannot read, and what it declines it declines for want of a record (✅ CLOSED by **ADR 0459**, found by ADR 0335)
 
 ```python
 xs = [1.5, "a", [7]]
@@ -11551,6 +11551,29 @@ the fold's literal gate; and a base whose slots the records describe through ano
 a binding records a call's answer. Five rows are pinned as refusals today:
 `pkg/lang/slice_answer_test.go::TestWhatTheSliceDoorStillCannotReachIsFiledNotFixed` and
 `integration/slice_answer_test.go::TestAPositionThatCannotSliceRefusesThroughTheCLI` move them when they land.
+
+**Closed by ADR 0459 on 2026-10-30, one altitude further in than either half above.** The four gates that were
+arguing (the fold's literal gate, the copy's `sliceBaseIsDescribed`, the pair door's arms, the comparison road)
+all ask the same question of the base's *spelling*, and the object has a spelling that no arm describes. The fix
+therefore does not add an arm to any of them: it asks the object's builder for the handle, roots it, **writes the
+notebooks the binding writes**, and hands the caller a `Name` — after which the roads that have always answered a
+container variable answer it, and the row's five refusals become answers with no new reader anywhere. The claims
+are imported from the builder (`recordContainerSlice`, the extracted `recordCompBindingClaims`, the literal road's
+`literalNeedsHeap || literalNeedsTags || literalHasPairElement`) and declined by name where no builder ever made
+one — that decline is **Gap R.539** and **Gap R.540**, and the pair door's remaining one-word position is
+**Gap R.146**'s shape.
+
+Two measurements made the row bigger than the rewrite, and both are in the commit rather than in a comment:
+
+- the copy's gate widened *without* a road to render its slots, and `xs = ["x","y"]` /
+  `print(xs[0:2][0] + xs[0:2][1])` answered **`1`** (two `@str_tab` indices summed) at **exit 0**; the door now
+  takes an untagged copy into a one-word position only on `containerSlotsAnswerOneWord`'s proof;
+- the copy is live in a bare register while the statement goes on to call, and
+  `print(m()["k"][0:1], m()["k"][1:2])` answered **`['k'] ['a']`** where the reference answers `[1.5] ['a']` —
+  ADR 0181's forbidden shape, third member of the family behind ADR 0443's build root and `gcRootIterable`, and
+  the reason the commit carries **Gap R.541**'s `gcRootSliceCopy` and the IR assertion that the copy is parked and
+  pushed rather than only the run that no longer reproduces.
+
 
 <a id="gap-r-236"></a>
 
@@ -23035,3 +23058,98 @@ change to the door at all.
 Two refusals for one program is the honest state, and it is what the row's pins assert — with the exception the
 pop door taught the door about itself: `pop` reads a slot back, so it is taken only on that door's own shape
 proof, which is the difference between printing `b` and printing the index of `b`.
+
+<a id="gap-r-539"></a>
+
+### Gap R.539 — a copy of a brace whose loop copies a container that mixes kinds has no element claim to inherit (⏳ OPEN, filed by **ADR 0459**)
+
+```python
+print([x for x in [1, 2, 3]][0:2])   # [1, 2]   — answered, since ADR 0459
+print([x for x in [4, 5]][0:1])      # [4]      — answered
+ys = [3, 1, 2]
+print([x for x in ys][0:2])          # [3, 1]   — answered: the loop's own kind claim is readable
+print([x for x in [1, "a"]][0:2])    # [1, 'a'] — this backend: exit 1, the position's own refusal
+```
+
+The door **ADR 0459** grew names the object a comprehension's loop built and labels it with what its **builder**
+said. A brace whose single element is the loop variable takes its element kind out of the iterable's slots; when
+those slots mix kinds, no static claim exists to import, and the door declines rather than write one — the
+alternative is the wrong-number class the same commit was written to keep out (`print` answering a float box's
+handle, an interned index, a heap index). `compWritesOneKind` is the question, and it answers `known=false` for
+the iterable the door cannot read (`for x in f()`, a container the door has no claim on) as well as for the mixed
+literal.
+
+The bound spelling is the control and it says the row is real rather than cosmetic:
+
+```python
+zs = [x for x in [1, "a"]]   # the binding road records the object the loop built
+print(zs[0:2])               # [1, 'a'] — answered
+```
+
+so one program is an answer and a refusal depending on whether the program named the object — **ADR 0232**'s
+sentence, one construct out. The fix is not a new reader: it is the claim the loop's build site already knows how
+to make (`rt_tag_elem` per slot, the attribute word beside it) recorded where the copy door looks, per element
+kind, the way `recordContainerAnswer` does for a call's answer.
+
+<a id="gap-r-540"></a>
+
+### Gap R.540 — a name whose last binding was a slot read carries no container record, so the copy of what it holds is refused (⏳ OPEN, filed by **ADR 0459**)
+
+```python
+def m():
+    return {"k": [1.5, "a"]}
+
+print(m()["k"][0:1])   # [1.5] — answered, since ADR 0459: the door names the slot's object
+d = m()["k"]           # the binding road stores the pair; no container notebook is written
+print(d[0:1])          # [1.5] in the reference;  this backend: exit 1, the copy gate's sentence
+                       #   "cannot slice d: … the base is not a list the records describe"
+```
+
+**ADR 0459**'s door can describe a slot's object because it is standing at the read: it can ask the expression
+that wrote the slot (`staticElemExpr` over the callee's arms, the literal's build-site predicates). Once the pair
+has been **bound**, the notebooks belong to `bindTaggedVar`, which records a *pair* and deliberately clears the
+container facts (ADR 0412: a name that was a container and became an element may not keep asking container
+records). The consequence is that the direct shape answers and the named one does not, and the row owns exactly
+that gap: the binding of a slot whose tag says *container* should record the object's identity the way the door
+now does, and the pair door's own shape proof is the place that knows it.
+
+Until then the refusal is the honest state and the capability code says so: `lower.unsupported.slice-base-not-described`
+appears for `print(d[0:1])` with the sentence naming this row, and
+`pkg/lang/slice_copy_root_test.go::TestWhatTheCopyDoorStillCannotReachIsFiledNotFixed` pins it as a refusal so the
+shape cannot silently become an answer nobody measured.
+
+<a id="gap-r-541"></a>
+
+### Gap R.541 — the copy `rt_slice` builds is live in a bare register while the statement goes on to call, and the collector does not see registers (✅ DONE, filed and paid by **ADR 0459**)
+
+```python
+def m():
+    return {"k": [1.5, "a"]}
+
+print(m()["k"][0:1], m()["k"][1:2])
+#   CPython:      [1.5] ['a']
+#   this toolchain, root removed for the measurement: ['k'] ['a']   — exit 0
+```
+
+The first copy is built, its handle sits in a register, the *second* argument's `m()` call is lowered and runs, a
+call's body is a collection point (**ADR 0347**, **ADR 0317**), the collector cannot reach the register, the arena
+hands the copy's slot to the next allocation, and the print answers whatever that allocation wrote — here the
+interned index of the dict's own **key**, printed as the list's single element. Nothing is raised, nothing refuses,
+the exit code is the one that means "the program ran": **ADR 0166**'s worst class, and the reason the row is told
+by an IR assertion rather than by the run that no longer reproduces it.
+
+This is the third member of one family and the last one the roads mint: **ADR 0347** rooted the container a
+*loop* walks (`gcRootIterable`), **ADR 0443** (`Gap R.500`) rooted a *comprehension's* half-built object
+(`gcRootDuringBuild`), and the copy built by the one road that emits `rt_slice` was unrooted. The fix is
+`gcRootSliceCopy` beside that call: park the handle in a frame slot and push it.
+
+Two judgements are part of the row, not footnotes:
+
+- **The root is not released at the end of the statement that built it.** The consumer — the print, the pair
+  door, the loop's walk — lowers after the copy exists and reads it later, so a statement-boundary release
+  reopens the window with a tidier-looking dealloc. `pkg/lang/slice_copy_root_test.go::TestTheCopyRootOutlivesTheStatementThatBuiltIt`
+  fails if the clear comes back.
+- **The retention is bounded instead.** The alloca is per *slice site*, not per execution; the slot holds only
+  the newest handle, so a loop that copies a thousand times keeps one container alive rather than a thousand,
+  and `rt_root_put` dedups by address inside a frame (`gcRegKey`'s rule). That is what
+  `TestACopyInsideALoopRootsOneSlotPerSite` asks of the module.

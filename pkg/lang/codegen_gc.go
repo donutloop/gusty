@@ -278,6 +278,37 @@ func (g *irGen) gcEndBuildRoot(b *strings.Builder, name string) {
 	}
 	g.gcClearRoot(b, name)
 }
+
+// gcRootSliceCopy roots the copy `rt_slice` just built, for as long as the frame lives. The rule it serves:
+// a container the compiler holds in a register is invisible to the collector, and the register outlives the
+// call that made it whenever the statement goes on to CALL something.
+//
+// `print(table()["k"][0:1], table()["k"][1:2])` is the shape that showed it: the first copy is built, the
+// second argument's `table()` call runs, that call's body is a collection point (ADR 0347, ADR 0317), the
+// collector cannot see the copy's register, the arena hands its slot to the next allocation, and the print
+// answers `['k'] ['a']` where CPython answers `[1.5] ['a']` — the copy of a list printing the dict's own KEY
+// as its one slot, at the exit code of success (roadmap Gap R.541). ADR 0443's `gcRootDuringBuild` closed
+// this window for a comprehension's half-built object (Gap R.500) and `gcRootIterable` for a loop's
+// iterable (ADR 0181); the copy was the remaining bare-register container the roads minted.
+//
+// The root is deliberately NOT released at the end of the statement that made it. The consumer — the print,
+// the pair door, the subscript read — lowers AFTER the copy is built and reads it later still, so a release
+// placed at a statement boundary would reopen the window this one closes (a `for` over a copy is the case
+// that decides it: the iterable is live across every statement of its body). The retention is bounded
+// instead: the alloca is one per SLICE SITE, not per execution, the slot holds only the newest handle, and
+// `rt_root_put` dedups by address within the frame (gcRegKey's rule) — a loop that runs the same `xs[0:2]`
+// a hundred times roots one slot and keeps one container alive, and the frame's close drops it with the
+// rest (ADR 0181's frame discipline).
+func (g *irGen) gcRootSliceCopy(b *strings.Builder, h string) {
+	if h == "" || !g.heapUsed {
+		return
+	}
+	name := fmt.Sprintf("sroot%d", g.gcRootIdx)
+	b.WriteString(fmt.Sprintf("  %%%s = alloca i32\n", "_"+name))
+	b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%%s\n", h, "_"+name))
+	g.gcReg(b, name)
+}
+
 func (g *irGen) gcCall(b *strings.Builder) {
 	if !g.heapUsed {
 		return

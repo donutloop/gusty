@@ -962,6 +962,46 @@ func (g *irGen) recordContainerSlice(name string, base Expr) bool {
 	return true
 }
 
+// recordCompBindingClaims writes what the roads look up for a name bound to a COMPREHENSION — the twelve
+// claims of the object the loop just built, asked of the comprehension node the program spelled. It is the
+// road `sa = [x for x in xs]` walks; the door that gives a name to an object the program did NOT name
+// (`print([x for x in xs][0:2])`, roadmap Gap R.235, ADR 0459) asks the same function, because one object
+// cannot be a list at one door and an unlabelled handle at another (Gap Q.1's one door, ADR 0232).
+func (g *irGen) recordCompBindingClaims(name string, comp *Comp) {
+	compKind := containerKindList
+	switch comp.Kind {
+	case CompDict:
+		compKind = containerKindDict
+	case CompSet:
+		compKind = containerKindSet
+	}
+	g.settleContainerKind(name, compKind)
+	if len(comp.Elems) == 1 {
+		if g.compElemIsTaggedLoopVar(comp) {
+			// The element's kind is only in the object: the loop variable came out of a
+			// container whose slots mix kinds, so nothing static says what landed in this
+			// list. It has to let its slots speak (ADR 0232) and be able to print a float it
+			// cannot see coming (roadmap Gap R.76, ADR 0244).
+			g.mixedLists[name] = true
+			g.listElemStr[name] = false
+			g.floatFmtUsed = true
+		} else if t, okTag := g.elemKindTag(comp.Elems[0]); okTag && slotTagSelfDescribing(t) {
+			// The builder wrote a tag with every slot and told the object to let its slots
+			// speak; the read has to ask them too, or `print(xs[0])` shows the float box's
+			// handle where CPython shows 1.5, and a container element prints its handle
+			// instead of the list inside (roadmap Gap R.46, Gap R.75, ADR 0244).
+			g.mixedLists[name] = true
+			g.floatFmtUsed = g.floatFmtUsed || t == int32(TagFloat)
+		} else if g.compElemPrintsAsText(comp) {
+			g.listElemStr[name] = true
+		} else {
+			g.listElemStr[name] = g.exprIsString(comp.Elems[0])
+		}
+	}
+	delete(g.noneVars, name)
+	g.forgetTaggedBinding(name) // the container is the binding now (Gap R.142)
+}
+
 // containerSlotsCarryTags asks the sliced base the question its own builder asked when it wrote the
 // object: does every slot say what it holds? The answers are the build sites' predicates, imported
 // rather than restated — the literal road's `literalNeedsHeap || literalNeedsTags ||
@@ -972,6 +1012,15 @@ func (g *irGen) containerSlotsCarryTags(base Expr) bool {
 	switch n := base.(type) {
 	case *ListLit:
 		return g.literalNeedsHeap(n) || g.literalNeedsTags(n) || g.literalHasPairElement(n)
+	case *Comp:
+		// The brace is an object its own loop built, and the builder said on the object whether the slots
+		// describe themselves — the same question `compCopyClaims` asks before it lets a copy be taken
+		// (roadmap Gap R.235, ADR 0232: the claim is imported from the writer, never invented here).
+		if lit, folded := g.foldedContainerCompLiteral(n); folded {
+			l, isList := lit.(*ListLit)
+			return isList && (g.literalNeedsHeap(l) || g.literalNeedsTags(l) || g.literalHasPairElement(l))
+		}
+		return g.compObjectLetsSlotsSpeak(n)
 	case *Name:
 		return g.mixedLists[n.Value]
 	case *Slice:

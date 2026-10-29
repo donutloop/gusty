@@ -620,6 +620,14 @@ func (g *irGen) valueIndex(b *strings.Builder, e Expr, n *Index) (string, error)
 	if redo, okAns := g.containerAnswerSubscript(b, n); okAns {
 		return g.value(b, redo)
 	}
+	// A subscript whose base is an OBJECT with no name — the copy a slice just built, the brace a
+	// comprehension's loop built, the list a slot holds — asks the door that names such an object the way
+	// the binding road names it. `print(xs[0:2][0])` and `ys = xs[0:2]` / `print(ys[0])` are one read of one
+	// object; the fold's gate had been asking for a literal, which is the base's spelling rather than what
+	// the compiler holds (roadmap Gap R.235, ADR 0459; the shape of fix ADR 0334 and ADR 0458 record).
+	if redo, okCopy := g.containerCopySubscript(b, n); okCopy {
+		return g.value(b, redo)
+	}
 	// A subscript of a string the compiler cannot read asks the table (ADR 0229): the
 	// base only has to *be* a string, not be a constant. The fold below still answers
 	// everything the compiler can name, so this path is reached exactly when the fold
@@ -1084,6 +1092,13 @@ func (g *irGen) valueSlice(b *strings.Builder, e Expr, n *Slice) (string, error)
 	// printed `3`, exit 0). The refusal names the missing record (ADR 0249's rule; roadmap Gap R.235,
 	// ADR 0335).
 	if !g.sliceBaseIsDescribed(n.Obj) {
+		// The base may still BE a container the run time built — the object a comprehension's loop wrote, or
+		// the list a slot holds — with no name standing in front of it. Ask the door that gives such an object
+		// the name the binding road would have given it, and slice that; `print(m()["k"][0:1])` and
+		// `ys = m()["k"]` / `print(ys[0:1])` become one program written two ways (roadmap Gap R.235, ADR 0459).
+		if redo, okCopy := g.containerCopySliceBase(b, n); okCopy {
+			return g.value(b, redo)
+		}
 		return "", fmt.Errorf("cannot slice %s: the copy is a list whose slots are the base's payloads with their tags, and the base is not a list the records describe — a literal, a variable a binding recorded as a list, a call that hands back a list, or a slice of one (roadmap Gap R.235, ADR 0335)", exprSnippet(n.Obj))
 	}
 	// The base is a container the records describe; now the three bounds are asked the same question the
@@ -1184,5 +1199,14 @@ func (g *irGen) valueSlice(b *strings.Builder, e Expr, n *Slice) (string, error)
 	// object's attribute word along with its slots and tags (ADR 0361) — the door that decides what a
 	// value prints is the object, not the road that copied it.
 	g.emitHeapCall(b, fmt.Sprintf("%%sl%d", r), fmt.Sprintf("call i32 @rt_slice(i32 %s, i32 %s, i32 %s, i32 %s, i32 %s, i32 %s, i32 %s)", objReg, lowReg, highReg, stepReg, hasLow, hasHigh, hasStep), n.Span())
+	// The copy is live in a bare register while the rest of the STATEMENT is lowered, and the rest of the
+	// statement is free to CALL — `print(xs[0:2], m())` lowers the second argument after the first copy is
+	// built, and a call's body collects (ADR 0347, ADR 0317). An unrooted live object is ADR 0181's forbidden
+	// shape: the collector does not see the register, the arena recycles the slot to the next `rt_alloc`, and
+	// the print answers whatever that allocation wrote there. Measured while landing ADR 0459 —
+	// `print(table()["k"][0:1], table()["k"][1:2])` printed `['k'] ['a']` for CPython's `[1.5] ['a']` at exit 0,
+	// the copy of a list come back holding the interned index of the dict's own KEY (roadmap Gap R.541, the
+	// slice half of the register-liveness class ADR 0443 closed for a comprehension's build).
+	g.gcRootSliceCopy(b, fmt.Sprintf("%%sl%d", r))
 	return fmt.Sprintf("%%sl%d", r), nil
 }

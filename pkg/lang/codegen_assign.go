@@ -638,37 +638,11 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 				g.emitFreeOld(b, nm.Value)
 			}
 			// One door, twelve claims: the comprehension binds whatever kind its brackets wrote, and
-			// the claims of the other two kinds go with it (roadmap Gap Q.1).
-			compKind := containerKindList
-			switch comp.Kind {
-			case CompDict:
-				compKind = containerKindDict
-			case CompSet:
-				compKind = containerKindSet
-			}
-			g.settleContainerKind(nm.Value, compKind)
-			if len(comp.Elems) == 1 {
-				if g.compElemIsTaggedLoopVar(comp) {
-					// The element's kind is only in the object: the loop variable came out of a
-					// container whose slots mix kinds, so nothing static says what landed in this
-					// list. It has to let its slots speak (ADR 0232) and be able to print a float it
-					// cannot see coming (roadmap Gap R.76, ADR 0244).
-					g.mixedLists[nm.Value] = true
-					g.listElemStr[nm.Value] = false
-					g.floatFmtUsed = true
-				} else if t, okTag := g.elemKindTag(comp.Elems[0]); okTag && slotTagSelfDescribing(t) {
-					// The builder wrote a tag with every slot and told the object to let its slots
-					// speak; the read has to ask them too, or `print(xs[0])` shows the float box's
-					// handle where CPython shows 1.5, and a container element prints its handle
-					// instead of the list inside (roadmap Gap R.46, Gap R.75, ADR 0244).
-					g.mixedLists[nm.Value] = true
-					g.floatFmtUsed = g.floatFmtUsed || t == int32(TagFloat)
-				} else if g.compElemPrintsAsText(comp) {
-					g.listElemStr[nm.Value] = true
-				} else {
-					g.listElemStr[nm.Value] = g.exprIsString(comp.Elems[0])
-				}
-			}
+			// the claims of the other two kinds go with it (roadmap Gap Q.1). The door is a function
+			// because the copy of a comprehension — `[x for x in xs][0:2]` — binds the SAME object to a
+			// name the program never wrote and has to be read back the same way (roadmap Gap R.235,
+			// ADR 0232: one question, both roads).
+			g.recordCompBindingClaims(nm.Value, comp)
 			if !g.allocd[nm.Value] {
 				b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", nm.Value))
 				g.gcReg(b, nm.Value)

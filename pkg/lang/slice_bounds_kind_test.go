@@ -454,18 +454,9 @@ func TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 			"", "KeyError: slice(0, 1, None)",
 			"roadmap Gap R.234 (the dict hashes the slice and reports the miss by naming the key)",
 		},
-		{
-			"a slot of a copy read directly",
-			"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][0])",
-			"", "1.5",
-			"roadmap Gap R.235 (the copy has slots and no road reads them direct)",
-		},
-		{
-			"a copy of a slot that is itself a list",
-			"def m():\n    return {\"k\": [1.5, \"a\"]}\nprint(m()[\"k\"][0:1])",
-			"", "[1.5]",
-			"roadmap Gap R.235 (the base is a slot read: the records describe the container, not what its slot holds)",
-		},
+		// The two shapes this table used to file — a slot of a copy read directly, and a copy of a slot that
+		// is itself a list — left with **ADR 0459**: the door that names what the run time built answers them,
+		// and they are witnessed as answered rows in `pkg/lang/slice_answer_test.go` rather than here.
 		// The return road, beside the bounds door: a function whose `return` is a slice hands back the copy's
 		// word, so the caller's print door has nothing to read — the same answer ADR 0333 gave a returned
 		// *literal*, withheld from a returned copy. A name bound to the call prints the list correctly, which is

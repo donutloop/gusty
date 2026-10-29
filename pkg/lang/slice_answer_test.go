@@ -87,6 +87,24 @@ var slicePrograms = []struct {
 	{"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][0:1])", "[1.5]"},
 	{"xs = [1, 2, 3]\nprint(xs[0:2][0:1])", "[1]"},
 	{"xs = [1.5, \"a\", [7]]\nys = xs[0:2]\nprint(ys[0:1])", "[1.5]"},
+	// An OBJECT WITH NO NAME is read by the roads that read a named one (roadmap Gap R.235, ADR 0459).
+	// The copy is an object `rt_slice` built and no statement named; the brace below is the object a
+	// comprehension's loop built; the slot holds the object another container wrote. Each had one spelling
+	// that answered — the one that bound a name — and one that stopped the build.
+	{"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][0])", "1.5"},
+	{"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][1])", "a"},
+	{"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][0], xs[0:2][1])", "1.5 a"},
+	{"xs = [1, 2, 3]\nprint(xs[0:2][1])", "2"},
+	{"xs = [1.5, \"a\", [7]]\nprint(len(xs[0:2]))", "2"},
+	{"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][2:2])", "[]"},
+	{"xs = [1.5, \"a\", [7]]\nprint(xs[::-1][0])", "[7]"},
+	{"def m():\n    return {\"k\": [1.5, \"a\"]}\nprint(m()[\"k\"][0:1])", "[1.5]"},
+	{"def m():\n    return {\"k\": [1.5, \"a\"]}\nprint(m()[\"k\"][1:2])", "['a']"},
+	{"d = [[1, 2]]\nprint(d[0][0:1])", "[1]"},
+	{"d = {\"k\": [1, 2, 3]}\nprint(d[\"k\"][1:3])", "[2, 3]"},
+	{"print([x for x in [1, 2, 3]][0:2])", "[1, 2]"},
+	{"ys = [3, 1, 2]\nprint([x for x in ys][0:2])", "[3, 1]"},
+	{"print([x for x in range(4)][1:3])", "[1, 2]"},
 	// Strings keep their own road (the fold reads the interned text), and the row must not disturb it.
 	{"s = \"abcdef\"\nprint(s[1:3])", "bc"},
 	{"print(\"abcdef\"[::-1])", "fedcba"},
@@ -151,6 +169,20 @@ func TestASlicePastTheEndRaisesWhatTheReferenceRaises(t *testing.T) {
 			"TypeError", "'float' object is not subscriptable",
 		},
 		{
+			// The copy is an object with a length, so reading past its end is the OBJECT's complaint, not the
+			// compiler's decline (roadmap Gap R.235, ADR 0459 — the row filed this shape as a refusal).
+			"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][9])",
+			"IndexError", "list index out of range",
+		},
+		{
+			"xs = [1, 2]\nprint(xs[0:2][2])",
+			"IndexError", "list index out of range",
+		},
+		{
+			"def b():\n    return [1.5, \"a\", [7]]\nprint(b()[0:2][0][9])",
+			"TypeError", "'float' object is not subscriptable",
+		},
+		{
 			// Gap R.231, PAID by ADR 0419: a number subscripting a TEXT-keyed dict read the position and
 			// answered `1 2` at exit 0. A subscript is a key whatever it is spelled with, and the miss is
 			// the reference's.
@@ -178,6 +210,17 @@ func TestATrapInsideASliceReadIsCatchable(t *testing.T) {
 	}{
 		{
 			"xs = [1.5, \"a\", [7]]\ntry:\n    print(xs[0:2][0][9])\nexcept TypeError:\n    print(\"caught\")",
+			"caught",
+		},
+		{
+			// A slot of a copy read past its end, taken by the program's own handler (roadmap Gap R.235,
+			// ADR 0459): the bounds check is the one every other slot read gets, not a decline dressed up as
+			// a build failure.
+			"xs = [1.5, \"a\", [7]]\ntry:\n    print(xs[0:2][9])\nexcept IndexError:\n    print(\"caught\")",
+			"caught",
+		},
+		{
+			"def b():\n    return [1.5, \"a\", [7]]\ntry:\n    print(b()[0:2][9])\nexcept IndexError:\n    print(\"caught\")",
 			"caught",
 		},
 		{
@@ -224,6 +267,31 @@ func TestTheBoundFormAndTheDirectFormAnswerTheSameThing(t *testing.T) {
 		{
 			"def n():\n    return [10, 20, 30]\nprint(n()[1:])",
 			"def n():\n    return [10, 20, 30]\nys = n()[1:]\nprint(ys)",
+		},
+		// The shapes Gap R.235 filed, each beside the spelling that has always answered (ADR 0459).
+		{
+			"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][0])",
+			"xs = [1.5, \"a\", [7]]\nys = xs[0:2]\nprint(ys[0])",
+		},
+		{
+			"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][1])",
+			"xs = [1.5, \"a\", [7]]\nys = xs[0:2]\nprint(ys[1])",
+		},
+		{
+			"xs = [1, 2, 3]\nprint(xs[0:2][1])",
+			"xs = [1, 2, 3]\nys = xs[0:2]\nprint(ys[1])",
+		},
+		{
+			"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][9])",
+			"xs = [1.5, \"a\", [7]]\nys = xs[0:2]\nprint(ys[9])",
+		},
+		{
+			"print([x for x in [1, 2, 3]][0:2])",
+			"ys = [x for x in [1, 2, 3]]\nprint(ys[0:2])",
+		},
+		{
+			"def b():\n    return [1.5, \"a\", [7]]\nprint(b()[0:2][1])",
+			"def b():\n    return [1.5, \"a\", [7]]\nys = b()[0:2]\nprint(ys[1])",
 		},
 	} {
 		t.Run(strings.ReplaceAll(tc.direct, "\n", "; "), func(t *testing.T) {
@@ -293,36 +361,10 @@ func TestWhatTheSliceDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 		oracle   string // what the reference answers
 		gap      string
 	}{
-		{
-			"a slot of a copy that describes itself",
-			"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][0])",
-			"", "1.5",
-			"roadmap Gap R.235 (the copy has slots and no road reads them direct: the subscript road's fold gate asks for a literal, and the bound copy answers while the direct one declines)",
-		},
-		{
-			"a copy of a copy, read past its end",
-			"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][9])",
-			"", "IndexError: list index out of range",
-			"roadmap Gap R.235 (the same read one position further out, where the reference raises rather than the compiler declining)",
-		},
-		{
-			"a copy of a slot that is itself a list",
-			"def m():\n    return {\"k\": [1.5, \"a\"]}\nprint(m()[\"k\"][0:1])",
-			"", "[1.5]",
-			"roadmap Gap R.235 (the base is a slot read: the records describe the container, not what its slot holds, and the copy's printer has to be told)",
-		},
-		{
-			"a copy of a slot that is itself a list, of a nested literal",
-			"d = [[1, 2]]\nprint(d[0][0:1])",
-			"", "[1]",
-			"roadmap Gap R.235 (the same shape written as a literal: the pair the slot carries stops the copy being describable)",
-		},
-		{
-			"a copy of a comprehension's answer",
-			"print([x for x in [1, 2, 3]][0:2])",
-			"", "[1, 2, 3]",
-			"roadmap Gap R.235 (a comprehension builds its object at the loop's end and leaves no record under a name to slice; at the commit before this one the shape reached `rt_slice` with a global address in its place and `llc` rejected the module — exit 2, which this row turned into a refusal)",
-		},
+		// The five shapes Gap R.235 filed are NOT here any more: a slot of a copy, a copy read past its end,
+		// the copy of a slot that holds a list (both writings) and the copy of a comprehension's brace all
+		// answer the reference now, and they sit in `slicePrograms` and the raise tables above with the rest
+		// (roadmap Gap R.235, closed by ADR 0459).
 		{
 			"a slice of a set literal",
 			"print({1, 2}[0:1])",

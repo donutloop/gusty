@@ -3293,6 +3293,13 @@ func (g *irGen) isContainerExpr(e Expr) bool {
 		// repeated by a number answers no — its answer is an @str_tab index, which every text road takes.
 		_, applies := g.seqBuildsContainer(n)
 		return applies
+	case *Comp:
+		// A brace IS the object its loop builds — the same answer `staticContainerKind` gives, asked through
+		// `compIsContainer` so the door that decides and the door that builds cannot part company (ADR 0333's
+		// decide-and-build pair, roadmap Gap R.235). Without this arm the print door had a comprehension's
+		// handle in hand and no printer for it, which is how `print([x for x in [1,2,3]][0:2])` came to put a
+		// copy's heap handle into `printf`'s `%d`.
+		return compIsContainer(n)
 	}
 	_, ok := emptyContainerLiteral(e)
 	return ok
@@ -3346,6 +3353,26 @@ func (g *irGen) staticContainerKind(e Expr) (string, bool) {
 			if a, ok := g.containerAnswerOf(nm.Value); ok && g.containerAnswerCallIsCarriable(n) {
 				return a.kind.String(), true
 			}
+		}
+		return "", false
+	case *Comp:
+		// A brace the program wrote IS the container its loop builds: `[..]`, `{..}` and `{k: v ..}` answer a
+		// list, a set and a dict, and the kind is spelled by the syntax rather than inferred — the same
+		// evidence the binding road reads for `ys = [x for x in xs]` (roadmap Gap J.2, ADR 0234). The
+		// generator is left out: its answer is an eager buffer, not the object the reference would slice,
+		// subscript or compare (ADR 0432). Without this arm the kind question was answered for a literal, a
+		// name, a call and a copy, but not for a brace — which is why `print([x for x in [1,2,3]][0:2])` had
+		// the print door hand the number printer a heap handle (roadmap Gap R.235, ADR 0459).
+		if !compIsContainer(n) {
+			return "", false
+		}
+		switch n.Kind {
+		case CompList:
+			return "list", true
+		case CompSet:
+			return "set", true
+		case CompDict:
+			return "dict", true
 		}
 		return "", false
 	case *Slice:
@@ -3699,6 +3726,17 @@ func (g *irGen) isTaggedSlotRead(e Expr) bool {
 		// A read of a read — `xs[0][0]`, `d["a"][1]`, `xs[0][1][2]`. The object below describes its own
 		// slots, so the pair the run-time door answers with is the only value this side has; where the
 		// literal still licenses the static read, that door keeps it (ADR 0251, roadmap L11.1).
+		return g.runtimeSlotReadOf(ix) && !g.staticSideIsReadable(ix.Obj)
+	}
+	if _, isCopy := ix.Obj.(*Slice); isCopy {
+		// A read out of a COPY is the same shape one construct further out: `rt_slice` writes every payload
+		// with its tag (ADR 0187, applied to the copy by ADR 0294) and carries the base's attribute word over
+		// with them, so a slot of a copy says what it holds exactly as a slot of a mixed variable does. The pair
+		// road asked this question of a name and of a read and never of a copy, which is why
+		// `print(xs[0:2][1])` and `v = xs[0:2][1]` fell to the one-word fold while `ys = xs[0:2]` / `print(ys[1])`
+		// printed the text (roadmap Gap R.235, ADR 0459). A position that needs ONE word — the comparison, an
+		// operator — is not opened by this arm and keeps **Gap R.82**'s refusal, pinned as a refusal in
+		// `pkg/lang/slice_copy_root_test.go`.
 		return g.runtimeSlotReadOf(ix) && !g.staticSideIsReadable(ix.Obj)
 	}
 	nm, isName := ix.Obj.(*Name)
@@ -4164,6 +4202,24 @@ func (g *irGen) runtimeSlotPairDeep(b *strings.Builder, e Expr) (val, tag string
 	ix, isIx := e.(*Index)
 	if !isIx || !g.runtimeSlotReadOf(ix) {
 		return "", "", false
+	}
+	if _, isSlice := ix.Obj.(*Slice); isSlice {
+		// The bottom of the chain is a COPY: an object with no name, which `rt_slice` built out of the base's
+		// slots and their tags (ADR 0187 as ADR 0294 applies it to the copy), so the slot is read exactly as it
+		// is read off a variable that happens to hold the same list — one load, one tag, one bounds check whose
+		// raise the program can catch. `ys = xs[0:2]` / `print(ys[0])` has always reached an arm here; the
+		// direct spelling had none and fell past it to the untagged fold, which refused naming **Gap R.82** while
+		// the bound spelling printed the text, the float and the nested list (roadmap Gap R.235, ADR 0459 —
+		// ADR 0331's list-literal arm and ADR 0327's dict arm, one container over).
+		kind, okKind := g.staticContainerKind(ix.Obj)
+		if !okKind || kind != "list" {
+			return "", "", false
+		}
+		h, _, okHandle := g.containerHandleOf(b, ix.Obj)
+		if !okHandle {
+			return "", "", false
+		}
+		return g.containerSlotRead(b, h, kind, ix.Idx, ix.Span())
 	}
 	if dl, isLit := ix.Obj.(*DictLit); isLit {
 		// The bottom of the chain is a literal the fold could not read: build the dict the way the binding
@@ -5093,6 +5149,43 @@ func (g *irGen) staticElemExpr(container Expr, key Expr) (Expr, bool) {
 				return nil, false
 			}
 			c = inner
+		case *Call:
+			// A call that hands back a container hands back the object its `return` arms spelled, and the
+			// scan already read the kind off those same arms (ADR 0333). Asking the slot question of EVERY
+			// arm, and demanding they agree, is ADR 0172's latest-binding rule asked of a return: the arm that
+			// runs is a run-time fact, so a claim this door makes about a slot must be true of all of them
+			// (roadmap Gap R.235, beside Gap R.67's record and Gap R.261's read permission).
+			nm, isName := n.Fn.(*Name)
+			if !isName {
+				return nil, false
+			}
+			ans, okAns := g.containerAnswerOf(nm.Value)
+			if !okAns || !ans.takesRead(containerReadSlots) || len(ans.arms) == 0 {
+				return nil, false
+			}
+			var first Expr
+			var firstTag int32
+			for _, arm := range ans.arms {
+				e, okE := g.staticElemExpr(arm, key)
+				if !okE {
+					return nil, false
+				}
+				t, okT := g.elemKindTag(e)
+				if !okT {
+					return nil, false
+				}
+				if first == nil {
+					first, firstTag = e, t
+					continue
+				}
+				if t != firstTag {
+					return nil, false // two arms, two kinds: only the object knows, and it is not asked here
+				}
+			}
+			if first == nil {
+				return nil, false
+			}
+			return first, true
 		case *ListLit:
 			k, ok := g.foldConstInt(key)
 			if !ok {

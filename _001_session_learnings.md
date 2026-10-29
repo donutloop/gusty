@@ -1,5 +1,63 @@
 # Session Learnings
 
+## Round 19 — the object the run time builds and no statement named is given a name, and the copy is rooted before the statement calls (roadmap Gap R.235 and Gap R.541 closed; ADR 0459; Gaps R.539, R.540 filed)
+
+**One program, two doors, and the road chosen by whether the program spelled a name.** `ys = xs[0:2]` / `print(ys[0])`
+answered `1.5` from ADR 0335 on; `print(xs[0:2][0])` stopped the build with `index requires an inline list/dict/set
+literal`. Four gates were arguing about the same handle — the fold's literal gate, the copy's `sliceBaseIsDescribed`,
+the pair door's arms, the comparison road — and each asked a question of the base's **spelling**. The fix is not a
+fifth gate: `pkg/lang/container_copy_read.go` asks the object's own builder for the handle, roots it, writes the
+notebooks the binding writes, and hands the caller a `Name`, after which the roads that have always read a container
+**variable** answer the direct shape with nothing new in them. It is **ADR 0232** applied where it had never been
+applied — one question, one door, at the altitude that decides — and the same shape **ADR 0334** and **ADR 0458** had
+already ruled on one construct earlier. Lesson kept: when several predicates disagree about one object, do not widen
+any of them; find the altitude where the object exists and give it the identity the roads already know how to read.
+
+**A claim the compiler did not import is a claim it may not make.** The first version of the door labelled a copy of
+`[x for x in [1, "a"]]` as a list of integers and printed a float box's handle as a number. Every kind and tag fact now
+comes from the road that wrote the object — `recordContainerSlice`, the extracted `recordCompBindingClaims` (the
+binding and the copy door cannot keep two copies of twelve claims), the literal road's
+`literalNeedsHeap || literalNeedsTags || literalHasPairElement` — and where no builder ever claimed an element kind the
+door **declines by name**, which is what makes **Gap R.539** and **Gap R.540** rows with sentences instead of silent
+wrong numbers. Two more refusals stayed refusals on purpose (`print(xs[0:2][1] == "a")`, `print(xs[0:2][0] + 1)` over a
+mixed copy): an untagged copy entering a one-word position printed the SUM of two `@str_tab` indices at exit 0, so that
+shape is taken only on `containerSlotsAnswerOneWord`'s proof. The rule I would restate to myself at 3am: **a door that
+opens a position must know a road exists that renders it**, and "the fold answered something" is not that knowledge.
+
+**The loudest wrong answer in the commit was not my feature being wrong; it was a GC window my feature stepped into.**
+`print(m()["k"][0:1], m()["k"][1:2])` printed `['k'] ['a']` where CPython prints `[1.5] ['a']` — the copy of a list
+answering the dict's own KEY, at the exit code that means the program ran. I bisected it through three programs and an
+IR diff before the mechanism showed: the copy is built, parked in a **bare register**, and the statement goes on to
+CALL; a call's body is a collection point, the collector cannot see registers, the arena hands the slot to the next
+allocation. Attribution was measurement, not reading: with `gcRootSliceCopy` removed and nothing else changed the row
+reproduces, and the same source with one copy per statement does not. It is the third member of a family with two
+prior members (**ADR 0347**'s `gcRootIterable`, **ADR 0443**'s `gcRootDuringBuild`) and the last container the roads
+mint unrooted. Two things I want to remember about the choice: releasing the root at the end of the statement is the
+tempting tidy fix and it reopens the window, because the consumer lowers *after* the copy exists — so the retention is
+bounded by being **per slice site** rather than per execution; and a bug whose trigger is where the GC happens to land
+cannot be pinned by a run, so the case asserts `store i32 %slN, i32* %_sroot` beside its `rt_root_put` in the module.
+
+**The record leg is the reason "it works now" is cheap to say and expensive to prove.** Fourteen rows moved from
+refusal to answer and `TestTheSliceRowsAreRecorded` failed them all: a row that used to be refused has no answer on
+record, and the suite will not accept an answer the reference never gave. `tools/recmerge` wrote 24 sources (record
+**10569 → 10594**) with the compiled leg cross-checked, and its `-check` mode is the mirror image — the mode for rows
+that MUST stay refused. Lesson kept: when a door opens, the record is the first thing to visit, not the last; and
+`recmerge -check` before you add a filed row catches a refusal that quietly became an answer.
+
+**The docs are code, and the suite reads them.** Flipping statuses and adding an ADR tripped four guards in one run:
+the snapshot's record count, ADR count and owed-row count (`TestTheRoadmapSnapshotIsMeasuredNotRemembered`), the
+record-count claims in `AGENTS.md`/`docs/operations.md`, the capability table (`go run ./tools/captable` regenerates
+it — hand-typing it is the drift the guard exists for), and `TestTheCapabilityRegistryCoversWhatItClaimsToKnow`, which
+failed because my sample program had started ANSWERING: a capability code is a claim about a refusal the toolchain
+still makes, so the sample moved to a still-refused shape. A table split by a blank line also hid three queue rows from
+the tally — the tracker has a guard for that too, which is how I found out I had inserted them wrong.
+
+**Filed-not-fixed tables are ratchets, and they are supposed to fail when you succeed.** Three cases went red because
+shapes they pinned as refusals now answer: two in `pkg/lang/slice_bounds_kind_test.go`, one in
+`pkg/lang/none_key_label_roads_test.go` (`print(d[None][1:])` answers `[2, 3]`). None of the three failed a feature
+test; all three failed the promise that owed work stays visible. They moved to the answered tables with their records,
+and the void-key row joined the operator family it now belongs to. The inverse also held: `TestWhatTheSliceDoorStillCannotReachIsFiledNotFixed` is where the two shapes I did NOT fix went, so the row cannot be closed by forgetting them.
+
 ## Round 18 — an unpacking that spells a container asks the one binding road that already refused to store the global (roadmap Gap R.524 closed; ADR 0454; Gaps R.526, R.527, R.528 filed)
 
 **The invalid-IR bug was in my own control table, one row over from the feature I was testing.** `x = [1]` printed

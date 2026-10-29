@@ -537,9 +537,12 @@ In front of the copy stands `sliceBaseIsDescribed`, and it is the load-bearing p
 cannot describe, the road used to emit `rt_slice` over whatever word the base lowered to and let the caller print
 it — `print(m()["k"][0:1])` answered `3` — and three shapes handed a compile-time global's address to a helper
 whose parameter is an i32 register, which `llc` rejected: **exit 2**, the code ADR 0166 reserves for a compiler
-bug. Those five are refusals that name the missing record today, and they are filed as **Gap R.234** (the base
-is a set or a dict, which the reference *raises*) and **Gap R.235** (the copy's own slots, and the bases reachable
-only through another object); the copy's bounds are a third question, still unanswered, filed as **Gap R.233**
+bug. The gate now answers the bases it can describe — a literal, a recorded variable, a scan-proved call, a copy,
+a **brace** the program wrote and a **slot** whose object the door can pin to the expression that wrote it
+(**ADR 0459**, **Gap R.235**) — and refuses the rest with a sentence naming the missing record: a base that is a
+set or a dict, which the reference *raises*, is **Gap R.234**, a copy taken from a name whose last binding was a
+slot read is **Gap R.540**, a copy of a brace whose loop copies a mixed container is **Gap R.539**; the copy's
+bounds are a third question, still unanswered, filed as **Gap R.233**
 (`print(xs["a":"b"])` answers `[1]` where the reference raises `TypeError: slice indices must be integers or None
 or have an __index__ method`). `programs/slice_answer.gy` is `match` on both legs.
 
@@ -3834,6 +3837,7 @@ falls back to dynamic dispatch.
   being deleted, and **23 record entries (10482 → 10505)** went in from the reference with the compiled leg
   cross-checked, through the row's own recorder (`GUSTY_RECORD_CONTAINER_ELEMENT=<path>`).
 
+- **A container the run time BUILDS and no statement named is given a NAME, so the roads that read a container variable read it too (**Gap R.235**, **ADR 0459**)** — `xs = [1.5, "a", [7]]` / `print(xs[0:2][0])` stopped the build with `index requires an inline list/dict/set literal` while `ys = xs[0:2]` / `print(ys[0])` answered `1.5`: one object, two doors, and the road chosen by whether the program happened to spell a name. `print(m()["k"][0:1])`, `print(d[0][0:1])` and `print([x for x in [1, 2, 3]][0:2])` were refused for want of a record. `pkg/lang/container_copy_read.go` asks the object's own builder for the handle, roots it and writes the notebooks the binding writes, and the caller lowers the rewritten node — the bounds raise, the tagged read, the pop pair and the container printer answer the direct shape **without being told anything exists**. Claims are imported from whoever wrote the object and **declined by name** where no builder made one (**Gap R.539**: a copy of a brace whose loop copies a mixed container; **Gap R.540**: a copy taken from a name whose last binding was a slot read). Two measurements the row carries rather than asserts: an untagged copy entering a one-word position printed the SUM of two `@str_tab` indices (`print(xs[0:2][0] + xs[0:2][1])` answered `1` at **exit 0**), so that shape is taken only on a proof that every slot's one word is the value; and the copy is live in a **bare register** while the statement goes on to CALL, so `print(m()["k"][0:1], m()["k"][1:2])` printed `['k'] ['a']` where the reference prints `[1.5] ['a']` — **Gap R.541**, paid by `gcRootSliceCopy` and asserted of the emitted module, because a GC window is not a fact a run can witness. **24** sources came in from the reference with the compiled leg cross-checked (record **10569 → 10594**), `programs/slice_answer.gy` carries the direct shapes line-for-line, and the capability table's `lower.unsupported.slice-base-not-described` sample moved onto a program the toolchain still refuses.
 - **A method run on the container a CALL hands back is dispatched on the name the answer was recorded under
   (**Gap R.229**, **ADR 0458**)** — the last of the three doors **ADR 0333**'s answer owed: `print(b())`,
   `str(b())`, `if b():`, `for v in b():` and `ys = b()` had all read the object for eight rows, and

@@ -66,6 +66,9 @@ func noneKeyOperatorFamily() []struct{ name, src, want string } {
 		{"a fractional entry still repeats as a float", "d = {None: 2.5}\nprint(d[None] * 2)\n", "5.0\n"},
 		{"a container entry still concatenates", "d = {None: [1, 2]}\nprint(d[None] + [3])\n", "[1, 2, 3]\n"},
 		{"a container entry reaches its own slot", "d = {None: [1, 2]}\nprint(d[None][0] + 1)\n", "2\n"},
+		// The copy of the list a void key names: the base is a slot read, which is the base **ADR 0459**'s
+		// door learned to describe (roadmap **Gap R.235** — this row was a filed refusal until then).
+		{"a slice of the list a void key names", "d = {None: [1, 2, 3]}\nprint(d[None][1:])\n", "[2, 3]\n"},
 	}
 }
 
@@ -525,13 +528,9 @@ func TestWhatTheVoidKeyLabelRoadStillCannotReachIsFiledNotFixed(t *testing.T) {
 		wantStderr string
 		dossier    string
 	}{
-		{
-			name:     "a slice of a void-keyed list entry",
-			src:      "d = {None: [1, 2, 3]}\nprint(d[None][1:])\n",
-			wantExit: 1, wantStderr: "cannot slice",
-			dossier: "**Gap R.235** / **ADR 0335** — the slice gate will not copy a base the records do not " +
-				"describe as a list; the entry IS a list and the gate cannot see it",
-		},
+		// “a slice of a void-keyed list entry” left this table with **ADR 0459**: the copy door names the
+		// object a slot read hands back, and the row is witnessed as answered in
+		// `noneKeyOperatorFamily` above rather than filed here.
 		{
 			name:     "sorting a dict whose keys are of more than one kind",
 			src:      "d = {None: 1, 0: 2}\nprint(sorted(d))\n",

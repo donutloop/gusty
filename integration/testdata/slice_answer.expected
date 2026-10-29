@@ -18,3 +18,13 @@ True False
 [1, 2] 1 2
 [1.5, 'a']
 bc fedcba
+1.5
+[1.5] ['a'] a
+1 2 2
+[3] 3 [[1, 2]]
+[1, 2]
+[2, 4]
+ho
+1.5 a
+raised: past the copy
+raised: past the text copy

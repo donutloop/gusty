@@ -85,6 +85,26 @@ func (g *irGen) subscriptPairOf(b *strings.Builder, ix *Index) (val, tag string,
 		g.floatFmtUsed = true
 		return v, t, true, nil
 	}
+	// `xs[0:2][i]` — the haystack is a COPY: the object `rt_slice` built out of the base's slots and their
+	// tags, with no name standing in front of it. It is read by the same door a variable's list is read by,
+	// because the copy IS such a list — `ys = xs[0:2]` / `print(ys[i])` has always reached this dispatch and
+	// the shorter spelling, which had no arm, fell past it to the one-word road and refused naming Gap R.82
+	// (roadmap Gap R.235, ADR 0459; ADR 0331's list-literal arm and ADR 0230's copy, one construct over).
+	if sl, isCopy := ix.Obj.(*Slice); isCopy {
+		if kind, okKind := g.staticContainerKind(sl); okKind && kind == "list" {
+			h, _, okHandle := g.containerHandleOf(b, ix.Obj)
+			if !okHandle {
+				return "", "", false, nil
+			}
+			v, t, okRead := g.containerSlotRead(b, h, kind, ix.Idx, ix.Span())
+			if !okRead {
+				return "", "", false, nil
+			}
+			g.heapUsed = true
+			g.floatFmtUsed = true
+			return v, t, true, nil
+		}
+	}
 	// `d[k]` out of a dict whose values mix kinds — the entry's own slot carries its tag, and that is the
 	// only thing that can tell `"x"` from the number 2 (ADR 0232). Which keys the door is asked with is
 	// `mixedDictIndexRead`'s own question (Gap R.221, ADR 0353).

@@ -1,5 +1,126 @@
 {
  "entries": {
+"d = {None: [1, 2, 3]}\nprint(d[None][1:])\n": {
+    "stdout": "[2, 3]\n",
+    "hasStdout": true
+   },
+"d = {\"k\": [1, 2, 3]}\nprint(d[\"k\"][0:2], d[\"k\"][1:3])": {
+    "stdout": "[1, 2] [2, 3]\n",
+    "hasStdout": true
+   },
+
+"def m():\n    return {\"k\": [1.5, \"a\"]}\nprint(m()[\"k\"][0:1], m())": {
+    "stdout": "[1.5] {'k': [1.5, 'a']}\n",
+    "hasStdout": true
+   },
+
+"def m():\n    return {\"k\": [1.5, \"a\"]}\nprint(m()[\"k\"][0:1], m()[\"k\"][1:2])": {
+    "stdout": "[1.5] ['a']\n",
+    "hasStdout": true
+   },
+
+"def m():\n    return {\"k\": [1.5, \"a\"]}\nprint(m()[\"k\"][1:2][0], m()[\"k\"][0:1])": {
+    "stdout": "a [1.5]\n",
+    "hasStdout": true
+   },
+
+"def n():\n    return [10, 20, 30]\nprint(n()[0:2][0], n()[1:3][1])": {
+    "stdout": "10 30\n",
+    "hasStdout": true
+   },
+
+"print([x for x in [1, 2, 3]][0:2], [x for x in [4, 5]][0:1])": {
+    "stdout": "[1, 2] [4]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nfor v in xs[0:2]:\n    print(v, xs[0:1])": {
+    "stdout": "1 [1]\n2 [1]\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[0:2], xs[1:3], len(xs))": {
+    "stdout": "[1.5, 'a'] ['a', [7]] 3\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nys = xs[0:2]\nprint(ys[0:1], xs[0:2][1], ys)": {
+    "stdout": "[1.5] a [1.5, 'a']\n",
+    "hasStdout": true
+   },
+"def mixed():\n    return [1.5, \"a\", [7]]\n\ndef words():\n    return [\"hi\", \"ho\"]\n\ndef nums():\n    return [10, 20, 30]\n\ndef table():\n    return {\"k\": [1.5, \"a\"]}\n\nxs = [1.5, \"a\", [7]]\nprint(xs[0:2])\nprint(xs[0:1], xs[2:3], xs[0:0])\nprint(xs[1:], xs[:2], xs[::-1])\nys = xs[0:2]\nprint(ys)\nprint(len(ys))\nfor v in ys:\n    print(v)\nprint(ys[0], ys[1])\nprint(not xs[0:0], not xs[0:2])\nprint(2 in xs[0:2], \"a\" in xs[0:2])\nprint(xs[0:2] == [1.5, \"a\"], xs[0:2] == [1.5])\nzs = xs[0:2]\nprint(zs[0:1])\nprint(mixed()[0:2])\nprint(len(mixed()[0:2]))\nws = mixed()[0:2]\nprint(ws)\nprint(words()[0:1])\nplain = [1, 2, 3]\nprint(plain[0:2], plain[1:], plain[::-1])\nqs = plain[0:2]\nprint(qs, qs[0], qs[1])\nprint(table()[\"k\"])\ns = \"abcdef\"\nprint(s[1:3], s[::-1])\n\n# The copy's own slots, read where the copy stands (roadmap Gap R.235, ADR 0459). Each of these was the\n# answer of the bound spelling and the refusal of the direct one.\nprint(mixed()[0:2][0])\nprint(table()[\"k\"][0:1], table()[\"k\"][1:2], table()[\"k\"][1:2][0])\nprint(plain[0:2][0], plain[0:2][1], len(plain[0:2]))\nmatrix = [[1, 2], [3, 4]]\nprint(matrix[1][0:1], matrix[1][0:1][0], matrix[0:1])\nprint([x for x in [1, 2, 3]][0:2])\nprint([x * 2 for x in range(3)][1:])\nprint(words()[0:2][1])\nsliced = mixed()[0:2]\nprint(sliced[0], sliced[1])\ntry:\n    print(plain[0:2][5])\nexcept IndexError:\n    print(\"raised: past the copy\")\ntry:\n    print(s[0:2][9])\nexcept IndexError:\n    print(\"raised: past the text copy\")\n": {
+    "stdout": "[1.5, 'a']\n[1.5] [[7]] []\n['a', [7]] [1.5, 'a'] [[7], 'a', 1.5]\n[1.5, 'a']\n2\n1.5\na\n1.5 a\nTrue False\nFalse True\nTrue False\n[1.5]\n[1.5, 'a']\n2\n[1.5, 'a']\n['hi']\n[1, 2] [2, 3] [3, 2, 1]\n[1, 2] 1 2\n[1.5, 'a']\nbc fedcba\n1.5\n[1.5] ['a'] a\n1 2 2\n[3] 3 [[1, 2]]\n[1, 2]\n[2, 4]\nho\n1.5 a\nraised: past the copy\nraised: past the text copy\n",
+    "hasStdout": true
+   },
+"d = [[1, 2]]\nprint(d[0][0:1])": {
+    "stdout": "[1]\n",
+    "hasStdout": true
+   },
+
+"d = {\"k\": [1, 2, 3]}\nprint(d[\"k\"][1:3])": {
+    "stdout": "[2, 3]\n",
+    "hasStdout": true
+   },
+
+"def m():\n    return {\"k\": [1.5, \"a\"]}\nprint(m()[\"k\"][0:1])": {
+    "stdout": "[1.5]\n",
+    "hasStdout": true
+   },
+
+"def m():\n    return {\"k\": [1.5, \"a\"]}\nprint(m()[\"k\"][1:2])": {
+    "stdout": "['a']\n",
+    "hasStdout": true
+   },
+
+"print([x for x in [1, 2, 3]][0:2])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"print([x for x in range(4)][1:3])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint(xs[0:2][1])": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(len(xs[0:2]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][0])": {
+    "stdout": "1.5\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][0], xs[0:2][1])": {
+    "stdout": "1.5 a\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][1])": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][2:2])": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"xs = [1.5, \"a\", [7]]\nprint(xs[::-1][0])": {
+    "stdout": "[7]\n",
+    "hasStdout": true
+   },
+
+"ys = [3, 1, 2]\nprint([x for x in ys][0:2])": {
+    "stdout": "[3, 1]\n",
+    "hasStdout": true
+   },
 "\n": {
     "hasStdout": true
    },

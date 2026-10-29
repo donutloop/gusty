@@ -71,6 +71,21 @@ var sliceAnswerAnswered = []struct {
 	// A copy of a copy: the second door reads the object the first one built.
 	{"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][0:1])", "[1.5]"},
 	{"xs = [1, 2, 3]\nprint(xs[0:2][0:1])", "[1]"},
+	// A slot of a copy, and a copy of a copy read by position: the copy the binding door could always read
+	// is read by the same doors unbound (roadmap Gap R.235, ADR 0459).
+	{"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][0])", "1.5"},
+	{"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][1])", "a"},
+	{"xs = [1, 2, 3]\nprint(xs[0:2][1])", "2"},
+	{"xs = [1.5, \"a\", [7]]\nprint(len(xs[0:2]))", "2"},
+	// The base is an object the records reach only through another object: a slot that holds a list, and a
+	// comprehension's answer. Both were refusals that named the missing record (Gap R.235).
+	{"def m():\n    return {\"k\": [1.5, \"a\"]}\nprint(m()[\"k\"][0:1])", "[1.5]"},
+	{"def m():\n    return {\"k\": [1.5, \"a\"]}\nprint(m()[\"k\"][1:2])", "['a']"},
+	{"d = [[1, 2]]\nprint(d[0][0:1])", "[1]"},
+	{"d = {\"k\": [1, 2, 3]}\nprint(d[\"k\"][1:3])", "[2, 3]"},
+	{"print([x for x in [1, 2, 3]][0:2])", "[1, 2]"},
+	{"ys = [3, 1, 2]\nprint([x for x in ys][0:2])", "[3, 1]"},
+	{"print([x for x in range(4)][1:3])", "[1, 2]"},
 	// A text slice is a text: the fold reads the interned characters, and this row leaves that road alone.
 	{"s = \"abcdef\"\nprint(s[1:3])", "bc"},
 	{"print(\"abcdef\"[::-1])", "fedcba"},
@@ -138,6 +153,13 @@ func TestASliceTrapStillRaisesThroughTheCLI(t *testing.T) {
 	}{
 		{"xs = [1.5, \"a\", [7]]\nprint(xs[0:2][0][9])", "TypeError: 'float' object is not subscriptable"},
 		{"xs = [1.5, \"a\", [7]]\ntry:\n    print(xs[0:2][0][9])\nexcept TypeError:\n    print(\"caught\")", "caught"},
+		// A copy read past its end raises the reference's raise through the copy door, and the raise is a
+		// program-level one a handler catches (Gap R.235's DoD).
+		{"xs = [1, 2, 3]\nprint(xs[0:2][5])", "IndexError: list index out of range"},
+		{"xs = [1, 2, 3]\ntry:\n    print(xs[0:2][5])\nexcept IndexError:\n    print(\"caught\")", "caught"},
+		{"xs = [1, 2, 3]\nprint(xs[0:2][-4])", "IndexError: list index out of range"},
+		{"s = \"abc\"\nprint(s[0:2][5])", "IndexError: string index out of range"},
+		{"s = \"abc\"\ntry:\n    print(s[0:2][5])\nexcept IndexError:\n    print(\"caught\")", "caught"},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
 			t.Parallel()
@@ -171,17 +193,12 @@ func TestAPositionThatCannotSliceRefusesThroughTheCLI(t *testing.T) {
 		src     string
 		mustSay string
 	}{
+		// Two rows this table used to file left with **ADR 0459** — a copy of a slot that is itself a list,
+		// and a copy of a comprehension's answer. Both answer now, and they are witnessed as answered rows
+		// in `sliceAnswerAnswered` above, each against a live `python3`.
 		{
-			name:    "a copy of a slot that is itself a list",
-			src:     "def m():\n    return {\"k\": [1.5, \"a\"]}\nprint(m()[\"k\"][0:1])",
-			mustSay: "cannot slice",
-		},
-		{
-			name:    "a copy of a comprehension's answer",
-			src:     "print([x for x in [1, 2, 3]][0:2])",
-			mustSay: "cannot slice",
-		},
-		{
+			// A set literal has no copy road at all: the slice of one is neither a list nor a text, and the
+			// door that would answer it owns no set arm (roadmap Gap R.540).
 			name:    "a slice of a set literal",
 			src:     "print({1, 2}[0:1])",
 			mustSay: "cannot slice",
@@ -190,13 +207,6 @@ func TestAPositionThatCannotSliceRefusesThroughTheCLI(t *testing.T) {
 			name:    "a slice of a dict kept in a name",
 			src:     "d = {1: 2}\nprint(d[0:1])",
 			mustSay: "cannot slice",
-		},
-		{
-			// The copy's own slots are the subscript door's, unfed: the read the reference answers, this
-			// backend declines with the fold's sentence (roadmap Gap R.232).
-			name:    "a slot of a copy",
-			src:     "xs = [1.5, \"a\", [7]]\nprint(xs[0:2][0])",
-			mustSay: "index requires an inline list/dict/set literal",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
