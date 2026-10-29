@@ -17265,3 +17265,21 @@ the rule is documentation, not a test.
 after the feature, whose message said `docs(...)`: a follow-up commit that touches an artifact is not a docs commit.
 So this cycle moves each artifact and the counts that describe it in the same commit, and the snapshot guard
 (`pkg/lang/roadmap_snapshot_test.go`) is what makes that checkable rather than aspirational.
+
+**A timer that fires mid-chain does not stop the chain.** The tool timeout killed the client while
+`go test … && git stash && … && git add -A && git commit && git push` kept running in the background, so the
+commit landed on its own some minutes later — after a `git stash` had been taken, and by a chain I could no
+longer see. Nothing was lost (the stash popped clean, `git diff HEAD` is empty, and `make testparallel` was
+re-run green against the pushed commit), but a commit you did not watch being made is a commit you did not
+verify. Long runs now go detached (`nohup make testparallel > /tmp/par.log &`, polled) and the commit is a
+separate, deliberate step after the log prints `ok` for every package.
+
+**`git stash` in a tree that may hold someone else's parked work is a hazard.** Two `git stash`/`pop` pairs ran
+here while an unfinished feature — the name census (`pkg/lang/name_census_test.go`,
+`integration/name_census_test.go`, `integration/programs/name_census.gy` and its ADR) — sat parked in
+`stash@{0}` from an earlier session today. That park is not part of this cycle, and its ADR still carries the
+number **0456**, which this cycle has now taken for the membership door: whoever resumes the census must
+renumber its ADR (to **0457**) before committing, and must record `integration/programs/name_census.gy` on the
+eval artifact before this cycle's Gap R.532 guard (`TestEveryAssertedCorpusProgramIsOnTheRecord`) is asked to
+bless a corpus that grew. Stashes are how this repo already parks other unfinished work (`stash@{2}` is
+labelled "PARKED UNVERIFIED") — read `git stash list` before ever typing `git stash drop`.
