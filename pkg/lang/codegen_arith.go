@@ -59,11 +59,25 @@ func (g *irGen) emitDunderBinOp(b *strings.Builder, n *BinOp) (string, bool) {
 // chainValue lowers Python's comparison chain (`a < b < c`, `1 <= x < 10`) into the compiled module.
 // Each operand is STORED ONCE into a fresh local slot and every link reads the slots, which is what
 // makes "the middle operand is evaluated once" a property of the emitted IR rather than a hope about
-// road order (roadmap L12.1 / Gap R.53, ADR 0288). The links are then combined with `and`, and that is
-// safe here for a reason the rejected parser-level desugaring did not have: by the time the `and` runs,
-// every operand has already been evaluated into its slot, so there is no side effect left for
-// short-circuiting to skip. Rewriting the source expressions instead — `a < b and b < c` over the
-// ORIGINAL nodes — is what would have evaluated a call in the middle of a chain twice.
+// road order (roadmap L12.1 / Gap R.53, ADR 0288). Each link is then lowered through the ORDINARY
+// comparison road — the int, text, float, container and tagged-slot answers an ordinary comparison gets,
+// never a second set that can disagree with the first — and the links are joined by the short-circuit
+// skeleton **ADR 0275** built for `and`/`or` (Gap R.520, ADR 0451).
+//
+// The conjunction used to be a flat `and i32` over links that had ALL been lowered eagerly, on the reasoning
+// that "by the time the `and` runs, every operand has already been evaluated into its slot, so there is no
+// side effect left for short-circuiting to skip". That was true of the OPERANDS and false of the LINKS: a
+// link is not a pure expression, because an ordering can raise (`None < 3` is the reference's
+// `TypeError: '<' not supported between instances of 'NoneType' and 'int'`) and an operand can have an
+// effect (a call that prints, a call that divides by zero). The reference stops at the first link whose
+// verdict is false and never asks the ones after it, so `x = None` / `print(1 == x < 3)` prints `False` and
+// this backend raised at exit 3; `x = 5` / `print(x > 9 < 1 // 0)` prints `False` and this backend raised
+// `ZeroDivisionError`; and `print(3 < 2 < boom())` printed `called` for a call the reference never made — a
+// correct verdict delivered beside an effect the program never asked for, which is the dangerous shape of the
+// three (**Gap R.520**). Storing an operand inside a block the run never enters is a store that never
+// happened, and a store that never happened on a path the reference also skipped is not a divergence — it is
+// the answer. What L12.1 still owes — the middle operand of a chain that DOES continue running exactly once —
+// survives, because the slot an operand is written into is written once, in the one block its link lives in.
 //
 // Before this the grammar's left-associativity made the chain `(a < b) < c`, an int compared against a
 // boolean, which this backend answers rather than refusing: `print(1 > 2 < 3)` printed True where
@@ -74,7 +88,16 @@ func (g *irGen) chainValue(b *strings.Builder, n *ChainCompare) (string, error) 
 	}
 	words := make([]string, len(n.Operands))
 	operandName := make([]string, len(n.Operands))
-	for i, o := range n.Operands {
+	bound := make([]bool, len(n.Operands))
+	// bindOperand evaluates one operand INTO THE BLOCK ITS LINK LIVES IN, and remembers that it did: the
+	// memo is what keeps "the middle operand runs exactly once" true while the blocks move around. The
+	// builder is a parameter rather than the captured `b` because the operand of a link the run may never
+	// reach is emitted inside the block the branch enters (Gap R.520).
+	bindOperand := func(bb *strings.Builder, i int) error {
+		if bound[i] {
+			return nil
+		}
+		o := n.Operands[i]
 		// Asked BEFORE any operand is lowered: does this value travel as more than one word? A slot whose
 		// kind the object carries and a double do not fit the `store i32` below, and lowering them through
 		// the ordinary road is what refused the first and silently truncated the second (chain_operand.go;
@@ -82,27 +105,29 @@ func (g *irGen) chainValue(b *strings.Builder, n *ChainCompare) (string, error) 
 		if g.chainOperandCarriesMoreThanAWord(o) {
 			g.ldN++
 			pairSlot := fmt.Sprintf("chain%d", g.ldN)
-			bound, berr := g.bindChainOperand(b, o, pairSlot)
+			boundPair, berr := g.bindChainOperand(bb, o, pairSlot)
 			if berr != nil {
-				return "", berr
+				return berr
 			}
-			if bound {
+			if boundPair {
 				// Every link reads the slot's NAME, which is what lets the comparison roads ask it the
 				// tag question they already answer for any other pair-bound local.
 				operandName[i] = pairSlot
-				continue
+				bound[i] = true
+				return nil
 			}
 		}
 		if chainOperandIsCheap(o) {
 			// A literal or a plain name reads a value and does nothing else, so it may be lowered
 			// at each use; giving it a slot would add a store, and a store is a chance to be
 			// reordered relative to the statement the chain sits in.
-			w, err := g.value(b, o)
+			w, err := g.value(bb, o)
 			if err != nil {
-				return "", err
+				return err
 			}
 			words[i] = w
-			continue
+			bound[i] = true
+			return nil
 		}
 		// A non-cheap operand is bound to an ordinary LOCAL NAME and read back as one, rather than to a
 		// bare alloca handed to the comparison roads. The roads ask a name about the container records
@@ -115,25 +140,25 @@ func (g *irGen) chainValue(b *strings.Builder, n *ChainCompare) (string, error) 
 		// to the address of a compile-time global (`@.lst1`) and an alloca'd local is an `i32` slot, so
 		// the store becomes `store i32 @.lst1, i32* %_chain1` — the shape llc rejects with "global
 		// variable reference must have pointer type", which ADR 0234 already named a compiler bug for an
-		// ordinary program. Refusing in words is the honest answer; the interpreter chains over
+		// ordinary program. Refusing in words is the honest answer; the record chains over
 		// containers fine, and L11.1's tagged value word is what lets the compiled leg do the same
 		// (roadmap L12.1 / Gap R.53, ADR 0288).
 		if g.chainOperandIsContainer(o) {
-			return "", fmt.Errorf("codegen: a container operand of a comparison chain would store a container global into an i32 slot; the reference chains over containers and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.53, ADR 0166)")
+			return fmt.Errorf("codegen: a container operand of a comparison chain would store a container global into an i32 slot; the reference chains over containers and the compiled leg waits for the tagged value word (roadmap L11.1, Gap R.53, ADR 0166)")
 		}
 		slot := fmt.Sprintf("chain%d", g.ldN)
 		if !g.allocd[slot] {
-			b.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", slot))
-			g.gcReg(b, slot)
+			bb.WriteString(fmt.Sprintf("  %%_%s = alloca i32\n", slot))
+			g.gcReg(bb, slot)
 			g.allocd[slot] = true
 		}
-		w, err := g.value(b, o)
+		w, err := g.value(bb, o)
 		if err != nil {
-			return "", err
+			return err
 		}
-		b.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", w, slot))
+		bb.WriteString(fmt.Sprintf("  store i32 %s, i32* %%_%s\n", w, slot))
 		ld := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ld, slot))
+		bb.WriteString(fmt.Sprintf("  %s = load i32, i32* %%_%s\n", ld, slot))
 		words[i] = ld
 		// The name this slot answers for, so a link's operand is a plain name read — and the records
 		// the comparison roads consult for a NAME are copied across, because `0 < xs[1] < 3` asks the
@@ -142,43 +167,67 @@ func (g *irGen) chainValue(b *strings.Builder, n *ChainCompare) (string, error) 
 		// first version shipped; roadmap L12.1 / Gap R.53, ADR 0288).
 		g.carryOperandRecords(o, slot)
 		operandName[i] = slot
+		bound[i] = true
+		return nil
 	}
-	// Each link is lowered through the ordinary comparison road, so a chain gets the int, text,
-	// float, container and tagged-slot answers of an ordinary comparison rather than a second set
-	// that can disagree with the first.
-	// Each link is lowered through the ordinary comparison road, so a chain gets the int, text,
-	// float, container and tagged-slot answers of an ordinary comparison rather than a second set
-	// that can disagree with the first.
+	// linkAt lowers one link through the ordinary comparison road, into the block bb.
 	//
-	// The links are built over PLACEHOLDER nodes carrying the already-computed word, NOT over the
-	// original operand expressions. Lowering `n.Operands[i]` again would re-run it: my first version
-	// did exactly that and `print(1 < g() < 10)` printed the call's output THREE times at exit 0 —
-	// the precise bug L12.1 exists to prevent, re-imported by the code that was written to fix it
-	// (roadmap L12.1 / Gap R.53, ADR 0288). The comparison roads only ever ask a placeholder for its
-	// word, which the slot above has already produced.
-	linkExprs := make([]Expr, len(n.Ops))
-	for i, op := range n.Ops {
-		// A middle operand that was slotted is read as the NAME of its slot, so the comparison road
-		// asks it the same questions it asks any local; a cheap operand keeps its original node.
-		lh, rh := linkOperand(n.Operands[i], words[i], operandName[i], n.Src), linkOperand(n.Operands[i+1], words[i+1], operandName[i+1], n.Src)
-
-		linkExprs[i] = &BinOp{Op: op, L: lh, R: rh, Src: n.Src}
-	}
-	var acc string
-	for i := range linkExprs {
-		lw, err := g.value(b, linkExprs[i])
+	// The link is built over PLACEHOLDER nodes carrying the already-computed word, NOT over the original
+	// operand expressions. Lowering `n.Operands[i]` again would re-run it: my first version did exactly that
+	// and `print(1 < g() < 10)` printed the call's output THREE times at exit 0 — the precise bug L12.1
+	// exists to prevent, re-imported by the code that was written to fix it (roadmap L12.1 / Gap R.53,
+	// ADR 0288). The comparison roads only ever ask a placeholder for its word, which the slot above has
+	// already produced.
+	linkAt := func(bb *strings.Builder, i int) (string, error) {
+		if err := bindOperand(bb, i); err != nil {
+			return "", err
+		}
+		if err := bindOperand(bb, i+1); err != nil {
+			return "", err
+		}
+		lh := linkOperand(n.Operands[i], words[i], operandName[i], n.Src)
+		rh := linkOperand(n.Operands[i+1], words[i+1], operandName[i+1], n.Src)
+		w, err := g.value(bb, &BinOp{Op: n.Ops[i], L: lh, R: rh, Src: n.Src})
 		if err != nil {
 			return "", err
 		}
-		if acc == "" {
-			acc = lw
-			continue
+		// Every link's verdict travels the merge as an i32 0/1 — the settled arm below is the constant 0, so
+		// a phi would otherwise be asked to merge an i1 with an i32 (ADR 0259's numeric word, ADR 0166's rule
+		// that a door does not convert a value into a shape it was never given).
+		if w == "true" || w == "false" || g.i1Reg(w) {
+			w = g.asBoolI32(bb, w)
 		}
-		// `and` of two verdicts, both of whose operands are already computed: the conjunction
-		// cannot skip work the reference would have done.
-		t := g.newTmp()
-		b.WriteString(fmt.Sprintf("  %s = and i32 %s, %s\n", t, acc, lw))
-		acc = t
+		return w, nil
+	}
+	// The FIRST link is lowered where the chain stands: the reference evaluates the first two operands and
+	// asks the first question before it decides anything.
+	acc, err := linkAt(b, 0)
+	if err != nil {
+		return "", err
+	}
+	// Each later link goes through the short-circuit skeleton: its operands AND its comparison are emitted
+	// only in the block the previous verdict admits, and the block the verdict rejects answers the chain's
+	// False without lowering anything (Gap R.520, ADR 0275's shape).
+	for i := 1; i < len(n.Ops); i++ {
+		link := i
+		cond := g.asI1(b, acc)
+		out, ok, serr := g.logicSkeleton(b, "and", cond, []string{"0"}, []string{"i32"}, func(bb *strings.Builder) ([]string, bool, error) {
+			w, lerr := linkAt(bb, link)
+			if lerr != nil {
+				return nil, false, lerr
+			}
+			if w == "" {
+				return nil, false, nil
+			}
+			return []string{w}, true, nil
+		})
+		if serr != nil {
+			return "", serr
+		}
+		if !ok {
+			return "", fmt.Errorf("codegen: the comparison chain could not lower the link `%s` past the verdict the run may have already settled", n.Ops[link])
+		}
+		acc = out[0]
 	}
 	return acc, nil
 }

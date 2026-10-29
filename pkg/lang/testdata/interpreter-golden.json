@@ -1,5 +1,67 @@
 {
  "entries": {
+"a = 1.5\nb = 2.5\nprint(0 \u003c a + b \u003c 5)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def boom():\n    print(\"called\")\n\n    return 5\n\nprint(1 \u003c 2 \u003c boom())\n": {
+    "stdout": "called\nTrue\n",
+    "hasStdout": true
+   },
+
+"def f(x):\n    return 0 \u003c x \u003c 10\n\nprint(f(5), f(50))\n": {
+    "stdout": "True False\n",
+    "hasStdout": true
+   },
+
+"def h():\n    return 3\n\nprint(1 \u003c 2 \u003c h() \u003c 9)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"x = 0\nwhile 0 \u003c= x \u003c 3:\n    print(x)\n\n    x = x + 1\n": {
+    "stdout": "0\n1\n2\n",
+    "hasStdout": true
+   },
+
+"x = None\ntry:\n    print(x == x \u003c 3)\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+"# A comparison chain stops at the first link its verdict rejected — roadmap Gap R.520 (ADR 0451).\n#\n# `a \u003c b \u003c c` is `a \u003c b` AND `b \u003c c` with the middle operand read once (ADR 0288), and the AND\n# short-circuits: once a link is false the chain is over, so the operands after it are never evaluated and\n# the links after it are never asked. The backend used to lower EVERY link eagerly and conjoin the verdicts,\n# which is right about the verdicts and wrong about everything with an effect: a link can raise (`None \u003c 3`\n# is CPython's `TypeError: '\u003c' not supported between instances of 'NoneType' and 'int'`), and an operand can\n# print, call, or divide by zero. The counter below is the measurement — an unreached operand must not run,\n# a reached one must run exactly once — and the `try` shows the trap the chain DOES reach is still a trap.\n\ncalls = 0\n\ndef probe(v):\n    global calls\n    calls = calls + 1\n    print(\"probe ran\")\n\n    return v\n\nprint(3 \u003c 2 \u003c probe(9))\nprint(1 \u003c 2 \u003c probe(9))\nprint(calls)\n\nprint(1 \u003c 2 \u003c 3 \u003c 0 \u003c probe(9))\nprint(calls)\n\nx = None\nprint(1 == x \u003c 3)\ny = 5\nprint(y \u003e 9 \u003c 1 // 0)\ns = \"a\"\nprint(2 \u003c 1 \u003c s)\n\ntry:\n    print(x == x \u003c 3)\n    print(\"unreachable\")\nexcept TypeError:\n    print(\"caught the reached link\")\n\ndef in_range(v):\n    return 0 \u003c v \u003c 10\n\nprint(in_range(5), in_range(50), in_range(-1))\nprint(1 \u003c 2 \u003c 3 \u003c 4)\nprint(1 \u003c 2 \u003c 3 \u003c 1)\nprint(1 \u003c 2 \u003e 1)\nprint(1 \u003e 2 \u003c 3)\nxs = [1, 2, 3]\nprint(0 \u003c xs[1] \u003c 3)\nd = {\"a\": 5}\nprint(1 \u003c d[\"a\"] \u003c 10)\nprint(\"a\" \u003c \"b\" \u003c \"c\")\n": {
+    "stdout": "False\nprobe ran\nTrue\n1\nFalse\n1\nFalse\nFalse\nFalse\ncaught the reached link\nTrue False False\nTrue\nFalse\nTrue\nFalse\nTrue\nTrue\nTrue\n",
+    "hasStdout": true
+   },
+"def boom():\n    print(\"called\")\n\n    return 5\n\nprint(1 \u003c 2 \u003c 3 \u003c 0 \u003c boom())\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def boom():\n    print(\"called\")\n\n    return 5\n\nprint(3 \u003c 2 \u003c boom())\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"s = \"a\"\nprint(2 \u003c 1 \u003c s)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"x = 5\nprint(x \u003e 9 \u003c 1 // 0)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"x = None\nprint(1 == x \u003c 3)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"x = None\ntry:\n    print(1 == x \u003c 3)\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
 "# Comparison chains — roadmap L12.1 / Gap R.53 (ADR 0288, ADR 0450).\n#\n# `a \u003c b \u003c c` is ONE program: `a \u003c b` AND `b \u003c c`, with the middle operand read once. This grammar used\n# to cut it as `(a \u003c b) \u003c c`, which asks a question about a boolean the reference never asks, and this\n# front end ANSWERS that question rather than refusing it — four of the verdicts below printed the\n# opposite one at the exit code of success. The last lines are the same chains read by the rules that\n# read a type: a name bound from a chain is a verdict, and a link no pair of values can answer is named\n# by `--check` while the program still runs and still raises.\n\nx = 5\nif 1 \u003c x \u003c 3:\n    print(\"in\")\nelse:\n    print(\"out\")\nprint(1 \u003c 2 \u003c 3)\nprint(10 \u003c x \u003c 20)\nprint(1 \u003e 2 \u003c 3)\nprint(1 \u003c 2 \u003e 1)\nprint(1 \u003c 2 == 2 \u003c 4)\nprint(\"a\" \u003c \"b\" \u003c \"c\")\nprint(\"c\" \u003c \"b\" \u003c \"a\")\n\ndef middle():\n    print(\"evaluated\")\n    return 5\n\nprint(1 \u003c middle() \u003c 10)\n\ndef in_range(v: int) -\u003e bool:\n    return 0 \u003c v \u003c 10\n\nprint(in_range(5))\nprint(in_range(50))\n\nhits = [v for v in range(10) if 2 \u003c v \u003c 6]\nprint(hits)\n\nverdict = 1 \u003c 2 \u003c 3\nprint(verdict)\nprint(str(verdict))\nif verdict:\n    print(\"the chain answered a verdict\")\n\nxs = [1, 2, 3]\nprint(0 \u003c xs[1] \u003c 3)\nd = {\"a\": 5}\nprint(1 \u003c d[\"a\"] \u003c 10)\n\ntry:\n    print(1 \u003c \"a\" \u003c 3)\n    print(\"unreachable\")\nexcept TypeError as e:\n    print(\"TypeError\")\n    print(str(e))\n": {
     "stdout": "out\nTrue\nFalse\nFalse\nTrue\nTrue\nTrue\nFalse\nevaluated\nTrue\nTrue\nFalse\n[3, 4, 5]\nTrue\nTrue\nthe chain answered a verdict\nTrue\nTrue\nTypeError\n'\u003c' not supported between instances of 'int' and 'str'\n",
     "hasStdout": true

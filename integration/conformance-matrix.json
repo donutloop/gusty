@@ -982,6 +982,27 @@
     },
     {
       "case": {
+        "id": "programs/chain_short_circuit",
+        "name": "chain_short_circuit.gy",
+        "source": "# A comparison chain stops at the first link its verdict rejected — roadmap Gap R.520 (ADR 0451).\n#\n# `a \u003c b \u003c c` is `a \u003c b` AND `b \u003c c` with the middle operand read once (ADR 0288), and the AND\n# short-circuits: once a link is false the chain is over, so the operands after it are never evaluated and\n# the links after it are never asked. The backend used to lower EVERY link eagerly and conjoin the verdicts,\n# which is right about the verdicts and wrong about everything with an effect: a link can raise (`None \u003c 3`\n# is CPython's `TypeError: '\u003c' not supported between instances of 'NoneType' and 'int'`), and an operand can\n# print, call, or divide by zero. The counter below is the measurement — an unreached operand must not run,\n# a reached one must run exactly once — and the `try` shows the trap the chain DOES reach is still a trap.\n\ncalls = 0\n\ndef probe(v):\n    global calls\n    calls = calls + 1\n    print(\"probe ran\")\n\n    return v\n\nprint(3 \u003c 2 \u003c probe(9))\nprint(1 \u003c 2 \u003c probe(9))\nprint(calls)\n\nprint(1 \u003c 2 \u003c 3 \u003c 0 \u003c probe(9))\nprint(calls)\n\nx = None\nprint(1 == x \u003c 3)\ny = 5\nprint(y \u003e 9 \u003c 1 // 0)\ns = \"a\"\nprint(2 \u003c 1 \u003c s)\n\ntry:\n    print(x == x \u003c 3)\n    print(\"unreachable\")\nexcept TypeError:\n    print(\"caught the reached link\")\n\ndef in_range(v):\n    return 0 \u003c v \u003c 10\n\nprint(in_range(5), in_range(50), in_range(-1))\nprint(1 \u003c 2 \u003c 3 \u003c 4)\nprint(1 \u003c 2 \u003c 3 \u003c 1)\nprint(1 \u003c 2 \u003e 1)\nprint(1 \u003e 2 \u003c 3)\nxs = [1, 2, 3]\nprint(0 \u003c xs[1] \u003c 3)\nd = {\"a\": 5}\nprint(1 \u003c d[\"a\"] \u003c 10)\nprint(\"a\" \u003c \"b\" \u003c \"c\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "False\nprobe ran\nTrue\n1\nFalse\n1\nFalse\nFalse\nFalse\ncaught the reached link\nTrue False False\nTrue\nFalse\nTrue\nFalse\nTrue\nTrue\nTrue\n",
+      "python_ok": true,
+      "python_stdout": "False\nprobe ran\nTrue\n1\nFalse\n1\nFalse\nFalse\nFalse\ncaught the reached link\nTrue False False\nTrue\nFalse\nTrue\nFalse\nTrue\nTrue\nTrue\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_ternary_text_arms",
         "name": "probe_ternary_text_arms.gy",
         "source": "# What CPython prints for these two lines (python3, 3.12):\n#\n#   a       x\n#\n# A ternary whose arms are text hands back the text, and both engines agree with the reference on the\n# interpreter leg. The compiled leg prints `0`: the arms are interned indices into `@str_tab`, the\n# `select` picks one, and nothing beside the chosen index says it is text — so the print renders the\n# index instead of asking for the string. This is the same wall as the number half of the ternary\n# (roadmap Gap R.102, closed by ADR 0262 for the double) seen from the other side of the value: the\n# answer needs a tag, not a second guess at what the arms were (roadmap Gap R.127, owner L11.1 with\n# Gaps R.107–R.110; measured 2026-10-03 while landing ADR 0262).\n#\n# Pinned per leg rather than skipped: the compiled leg's answer is a number, printed happily, and a row\n# that only recorded the interpreter would let that answer look like parity.\nc = 1\nprint(\"a\" if c \u003e 0 else \"b\")\nprint(\"x\" if 1 else \"y\")\n",
@@ -6259,11 +6280,11 @@
       ]
     }
   ],
-  "rows": 263,
+  "rows": 264,
   "skipped": 36,
-  "pass": 227,
+  "pass": 228,
   "fail": 0,
-  "oracle_match": 213,
+  "oracle_match": 214,
   "oracle_debt": 24,
   "oracle_not_applicable": 26,
   "oracle_drift": 0

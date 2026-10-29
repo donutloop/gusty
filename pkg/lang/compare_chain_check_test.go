@@ -93,39 +93,39 @@ func TestAChainReportsWhatTheSameLinkReportsWithOneOperator(t *testing.T) {
 		},
 		{
 			name:  "the chain sits in a condition",
-			plain:   "if 1 < zzz:\n    print(1)\n",
-			chain:   "if 1 < zzz < 3:\n    print(1)\n",
-			want:    `undefined name "zzz"`,
+			plain: "if 1 < zzz:\n    print(1)\n",
+			chain: "if 1 < zzz < 3:\n    print(1)\n",
+			want:  `undefined name "zzz"`,
 		},
 		{
 			name:  "the chain sits in a while head",
-			plain:   "while 1 < zzz:\n    break\n",
-			chain:   "while 1 < zzz < 3:\n    break\n",
-			want:    `undefined name "zzz"`,
+			plain: "while 1 < zzz:\n    break\n",
+			chain: "while 1 < zzz < 3:\n    break\n",
+			want:  `undefined name "zzz"`,
 		},
 		{
 			name:  "the chain sits in a function body",
-			plain:   "def f():\n    return 1 < zzz\n\nf()\n",
-			chain:   "def f():\n    return 1 < zzz < 3\n\nf()\n",
-			want:    `undefined name "zzz"`,
+			plain: "def f():\n    return 1 < zzz\n\nf()\n",
+			chain: "def f():\n    return 1 < zzz < 3\n\nf()\n",
+			want:  `undefined name "zzz"`,
 		},
 		{
 			name:  "the chain is a comprehension clause",
-			plain:   "print([v for v in [1, 2] if v < zzz])\n",
-			chain:   "print([v for v in [1, 2] if 1 < v < zzz])\n",
-			want:    `undefined name "zzz"`,
+			plain: "print([v for v in [1, 2] if v < zzz])\n",
+			chain: "print([v for v in [1, 2] if 1 < v < zzz])\n",
+			want:  `undefined name "zzz"`,
 		},
 		{
 			name:  "the chain is a call argument",
-			plain:   "print(len(1 < zzz))\n",
-			chain:   "print(len(1 < zzz < 3))\n",
-			want:    `undefined name "zzz"`,
+			plain: "print(len(1 < zzz))\n",
+			chain: "print(len(1 < zzz < 3))\n",
+			want:  `undefined name "zzz"`,
 		},
 		{
 			name:  "a name bound after the chain is not an excuse for the chain",
-			plain:   "y = 1 < zz\nzz = 5\nprint(y)\n",
-			chain:   "y = 1 < zz < 3\nzz = 5\nprint(y)\n",
-			want:    "", // both legs must agree; the sentence is the checker's to choose
+			plain: "y = 1 < zz\nzz = 5\nprint(y)\n",
+			chain: "y = 1 < zz < 3\nzz = 5\nprint(y)\n",
+			want:  "", // both legs must agree; the sentence is the checker's to choose
 		},
 	}
 	for _, p := range pairs {

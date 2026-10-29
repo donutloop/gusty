@@ -3019,6 +3019,26 @@ is then what prints, exactly as with an overloaded comparison.
 middle operand **once**. So does `1 <= x < 10`, `a == b != c`, `1 < 2 < 3 < 4`, and a chain may mix the
 operators (`2 == 2 <= 3`, `1 is 1 < 2`). The answer is a verdict, so `print(1 < 2 < 3)` prints `True`.
 
+**The chain stops at the first link whose verdict is false**, exactly as `and` does — that is not an
+optimisation here, it is which effects the program has. A link can raise, and an operand can print, call or
+divide, and none of that happens after the chain is settled:
+
+```
+x = None
+print(1 == x < 3)        # False  — `None < 3` is never asked, so nothing raises
+x = 5
+print(x > 9 < 1 // 0)    # False  — the division is never evaluated
+def boom():
+    print("called")
+    return 5
+print(3 < 2 < boom())    # False alone: `boom` is never called
+```
+
+The other direction is the same rule: a chain that keeps going pays for every link it reaches, and pays for
+each of them **once** — `print(1 < g() < 10)` calls `g` once, and `print(x == x < 3)` with `x = None` really
+does reach `None < 3` and really does raise, catchably by `except TypeError:` (**ADR 0451**, paying
+`Gap R.520`; the links are joined by the same short-circuit skeleton `and`/`or` use, **ADR 0275**).
+
 A chain's operands may be anything a comparison accepts, including something computed: with
 `print(1 < g() < 10)` the reference calls `g` exactly once, and both legs match it. A chain whose middle
 operand is a **container** answers on the record and refuses on the compiled leg, where a container is a
@@ -3078,9 +3098,8 @@ ok
 The ordering rule is the one `pkg/lang/order_kind.go` already states for the compiled leg (one question, one
 table), and the checker says nothing at all where it cannot name both kinds — a dynamic value, a union, a
 class instance whose `__lt__` may answer anything, a container against a container. What this construct still
-owes is on the compiled side: a chain evaluates **every** link, so a link the reference never reaches still
-raises (`Gap R.520`), and membership in a value with no members answers `False` where the reference raises
-(`Gap R.521`).
+owes is on the compiled side: membership in a value with no members answers `False` where the reference raises
+(`Gap R.521`), and the **loop item** is still a one-word chain operand (`Gap R.443`).
 
 ### Control flow
 

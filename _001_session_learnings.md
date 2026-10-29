@@ -16875,3 +16875,62 @@ performed; **ADR 0275**'s short-circuit skeleton is the fix, and the operand sto
 a block never entered is a store that never happened) and **Gap R.521** (`print(1 in 5)` answers `False` at exit 0
 while `print(1 in xs[0])` over the same int raises the reference's sentence — the fold substitutes a verdict where
 the runtime door asks the object, **ADR 0266**/**ADR 0329**'s rule with the roles reversed).
+
+## ADR 0451 — a comparison chain STOPS at the first link its verdict rejects (roadmap Gap R.520 closed; the links are joined by ADR 0275's skeleton, not by a flat `and`; 2026-10-30)
+
+**A comment can be true about one thing and false about the construct.** `chainValue` carried a sentence arguing
+that the flat `%t = and i32 %acc, %link` was safe because "by the time the `and` runs, every operand has already
+been evaluated into its slot, so there is no side effect left for short-circuiting to skip". Every operand really
+had been evaluated once — that is **ADR 0288**'s win, and it is still true today. The sentence was about the
+OPERANDS, and a chain is a run of LINKS: a link can raise (`None < 3`, `1 // 0`), and an operand can print or call.
+Three programs, all measured against the parent rebuilt in a `git worktree`, all wrong: `x = None` /
+`print(1 == x < 3)` died at **exit 3** with the ordering's `TypeError` where CPython prints `False`;
+`x = 5` / `print(x > 9 < 1 // 0)` raised `ZeroDivisionError` where CPython prints `False`; and
+`print(3 < 2 < boom())` printed `called` before printing the correct verdict. When a comment argues that a
+short-circuit is unnecessary, go and put an effect behind the operator — that is the only test that settles it.
+
+**The verdict-only test is the blind one, and this row proves it.** The third program answered the right verdict
+at the right exit code while running a call the reference never makes: every assertion available to a
+value-checking suite passed on it, before and after. What catches it is a **counter in the program**
+(`calls = calls + 1` inside `probe`, printed at the end — the reference leaves it at `1`, the parent left it at
+`2`) and a **count of a call instruction in `@main`**. Both are rows now. A feature whose effects are invisible
+to its tests is a feature whose effects will be invisible to users.
+
+**Reuse the one door that already knows how to skip.** The house paid for short-circuiting once, in **ADR 0275**'s
+four doors, and paid for it twice over — the double-evaluation of a rejected operand (**Gap R.149**) and the
+print-each-branch-once rule. Writing a second branch chain for chains would have put that knowledge in two
+places where it could disagree about when to skip. `logicSkeleton(b, "and", cond, []string{"0"},
+[]string{"i32"}, right)` is now the chain's conjunction too, labels included. One more piece of evidence for
+**ADR 0232** (one question, asked once), and the cheapest kind: an existing door, rather than a new one.
+
+**A rule about VALUES does not survive a move into BLOCKS unless it is restated as a rule about the CFG.**
+"Each operand is stored once" was a property of a straight-line emitter; the moment operands moved into the block
+their link lives in, the same code could have lowered a shared middle operand twice — which is exactly the bug
+**ADR 0288** exists to prevent, and exactly what an earlier draft of this code shipped (`print(1 < g() < 10)`
+printed the call's output three times). The fix is a `bound[]` memo over closures that take their
+`*strings.Builder` as a parameter, plus a shape claim the module has to sign: the operand's slot carries one
+value store, the operand's call sits after the `br i1` that decides it, and the merge's settled arm is the literal
+`0`. A register defined in a block that dominates its readers is the mechanism; the memo is the discipline; the
+IR rows are the evidence.
+
+**Skipping a raise the reference also skips is not a lost trap.** The obvious fear about short-circuiting a
+construct whose links can raise is that the raise goes missing, so both directions are separate rows: a chain that
+reaches `None < 3` still raises the reference's sentence at exit 3 and still lands in the program's own
+`except TypeError:` (`print(x == x < 3)` with `x = None` prints `caught`), while a chain that never reaches it
+prints `False` at exit 0. `TestTheChainsBlocksAreWhereTheVerdictPutsThem` says it at IR level too — for an
+answering chain the module carries **no** `@exn_flag` check at all, which is the same fact from the emitter's side.
+
+**A shape guard has to pin the instruction, not the idea.** My first version rejected any `and` in `@main` and
+immediately failed on `x = 1.5` / `print(1 < x < 3)`: an `and i1` there belongs to a float comparison's OWN
+lowering, not to the chain's conjunction. The artifact this row filed is `%t = and i32` over two zext'd link
+verdicts, and that is what the guard now names. A guard that is stricter than the defect it defends against
+becomes the thing people switch off.
+
+**The corpus pays for a new program in record entries, and the count is a test.** 13 entries
+(**10283 → 10296**) came from `tools/recmerge` — the counting conformance program, the six stop shapes, the
+reached-call twin, the catchable raise, the once-only middle operand and four answering chains — each written from
+the reference with the compiled leg cross-checked, and each then *required* by the rows that name it
+(`onRecordIs` fails on a missing entry, so a record cannot be deleted to make a case pass). `docs/operations.md`,
+`AGENTS.md` and `roadmap.md` all quote the corpus size and all get recomputed by
+`golden_artifact_counts_test.go`, and the snapshot row caught me quoting 263 matrix rows after the artifact said
+264 — the counters are the artifact's, and the suite reads them out of the files.

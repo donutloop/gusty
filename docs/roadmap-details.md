@@ -22018,7 +22018,7 @@ re-asked of the compiled trap, the `--emit-ast` row, the program row), and `inte
 compare_chains.gy`, 21 lines byte-identical to CPython, registered as an asserted `match` row.
 
 <a id="gap-r-520"></a>
-### Gap R.520 — a chain runs EVERY link, the ones the reference never reaches included (⏳ OPEN, filed by **ADR 0450**)
+### Gap R.520 — a chain runs EVERY link, the ones the reference never reaches included (✅ DONE, filed by **ADR 0450**, closed by **ADR 0451**)
 
 ```
 $ gustyc --eval 'x = None
@@ -22069,6 +22069,61 @@ This is not ADR 0288's rule being wrong; it is the rule stated only about the op
 links, and the links have the short-circuit behaviour the boolean words have. **Gap R.521**'s `in` link is
 the same row's problem from the other side: the membership raise is an effect of a link the reference may
 not reach, and this backend evaluates it eagerly and cannot even fold it correctly.
+
+**Closed 2026-10-30 by ADR 0451**, one cycle after the sweep that filed it, on exactly the plan the paragraph
+above named — the links are joined by **ADR 0275**'s skeleton, and the row's own constraint survives the move.
+
+The change is one function. `chainValue`'s operand binding and its per-link lowering became closures taking
+the builder as a parameter (`bindOperand(bb, i)`, `linkAt(bb, i)`) with a `bound[]` memo, and the flat
+`and i32` became a loop over `logicSkeleton(b, "and", cond, []string{"0"}, []string{"i32"}, right)` — the
+same door `and`/`or` use, with the settled arm answering the chain's `0` without lowering anything. The first
+link is still lowered where the chain stands, because the reference evaluates the first two operands and asks
+the first question before it decides. An operand of a later link is lowered inside the block its link lives
+in, and the link after it reads the register that block left behind: a register defined in a block that
+dominates every reader, because a later link's block is reachable only through the earlier link's true edge.
+That is what keeps **ADR 0288**'s rule standing — the store is one instruction, in one block, and a store in a
+block the run never enters is a store that never happened.
+
+The three programs above, asked of the parent (`821a0d5`, rebuilt in a `git worktree`) and of this commit:
+
+| program | parent | this commit | CPython |
+|---|---|---|---|
+| `x = None` / `print(1 == x < 3)` | `TypeError: … 'NoneType' and 'int'`, exit 3 | `False`, exit 0 | `False` |
+| `x = 5` / `print(x > 9 < 1 // 0)` | `ZeroDivisionError`, exit 3 | `False`, exit 0 | `False` |
+| `print(3 < 2 < boom())` | `called` then `False` | `False` | `False` |
+| the counter (`print(3 < 2 < probe(9))` ×2, `print(calls)`) | `calls` reaches `2` | `calls` reaches `1` | `1` |
+
+and the two directions the fix could have gone wrong are pinned separately: a chain whose first link is TRUE
+still runs every later operand exactly once (`print(1 < 2 < boom())` prints `called` then `True`, and
+`x = 5` / `print(x > 9 < boom())` carries exactly one `call i32 @gy_boom(` in `@main`), and a link the chain
+DOES reach still raises into the program's own `except TypeError:` (`print(x == x < 3)` with `x = None` prints
+`caught`).
+
+The evidence is `pkg/lang/compare_chain_shortcircuit_test.go`, five test functions and 21 rows:
+
+- **6 stop rows**, each asked of the compiled leg AND the record leg — an unreached ordering that cannot
+  answer, an unreached division by zero, an unreached call, a four-operand chain stopping at its FIRST false
+  link, an unreached raise inside a handler that never gets asked, an unreached text against a number;
+- **5 rows for what a chain that CONTINUES still pays** — a reached call still calls and prints, a reached link
+  still raises the reference's sentence, that raise is still catchable by `except TypeError:`, the middle
+  operand of a continuing chain runs exactly once across three occurrences of one call, and 9 answering
+  chains (ints, a float sum, an `abs`, texts, a list element, a dict entry, a `def`'s verdict, a `while` head)
+  keep the verdict they answered before, each on both legs;
+- **3 IR rows** that say where the blocks are — `the unreached link's raise is behind a branch`,
+  `an effectful operand is emitted once, not once per link`, `a chain that answers needs no raise at all`;
+- **7 rows** that fail if a flat `and i32` grows back over an int, text, double or container chain, each also
+  requiring a `br i1` on a verdict and a `phi` merge;
+- **1 block-by-block row** that reads the merge line and requires the settled arm to be the literal `0`,
+  requires the operand's call to sit after the `br i1` that decides it, and requires the operand's slot to
+  carry exactly one value store.
+
+The sibling `integration/compare_chain_shortcircuit_test.go` asks the same program shapes at the CLI, where
+each of its 9 rows reads its expectation out of a live `python3` inside the case (a row CPython would not sign
+is stale, not green), plus the counting conformance program `integration/programs/chain_short_circuit.gy` as a
+`match` matrix row and a `--emit-llvm` row that fails on the old conjunction shape. **13 record entries
+(10283 → 10296)** were written from the reference by `tools/recmerge`, with the compiled leg cross-checked; the
+`ADR 0450` rows of `compare_chain_check_test.go` and `integration/compare_chain_check_test.go` passed
+unchanged, which is this row's "the verdicts did not move" claim stated as a test rather than as a sentence.
 
 <a id="gap-r-521"></a>
 ### Gap R.521 — membership in a value with no members answers `False` instead of raising (⏳ OPEN, filed by **ADR 0450**)

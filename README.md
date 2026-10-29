@@ -3768,6 +3768,27 @@ falls back to dynamic dispatch.
   **Gap R.491** container-of-containers row: `print([[x for x in [[1]]][0], 2])` now prints `[[1], 2]` instead of raising
   the reference’s class against a position the fold invented.
 
+- **A comparison chain STOPS at the first link its verdict rejects (**Gap R.520**, **ADR 0451**)** — the chain had
+  been evaluated as if a link were a pure expression, and a link is not: `x = None` / `print(1 == x < 3)` printed
+  nothing and died with `TypeError: '<' not supported between instances of 'NoneType' and 'int'` at **exit 3** where
+  CPython prints `False`; `x = 5` / `print(x > 9 < 1 // 0)` raised `ZeroDivisionError` where CPython prints `False`; and
+  the third is the one with no failing assertion for a test that only reads a verdict — `print(3 < 2 < boom())`
+  printed **`called`** and then the right answer, for a call the reference never makes, at the exit code that means
+  the program ran. `chainValue` did the two things **ADR 0288** taught it (store each operand once, lower each link
+  through the ORDINARY comparison road) and one thing it invented: a flat `%tN = and i32 %acc, %link` over links that
+  had ALL been lowered, under a comment arguing that nothing was left for short-circuiting to skip — true of the
+  OPERANDS, false of the LINKS. The fix reuses the one door that already knows how to skip an operand a test rejected:
+  **ADR 0275**'s skeleton, `br i1` on the previous verdict, the later operand AND the later link emitted in the block
+  the verdict admits, one `phi` whose settled arm answers `0` without lowering anything. ADR 0288's rule survives the
+  move rather than being traded back — operand binding became a closure taking its builder, with a `bound[]` memo, so a
+  slot is written by exactly one store, in the one block its link lives in, which is asserted at IR level beside the
+  stdout level where `calls` reaches `1` instead of `2`. A raise that a skipped link would have spent is now a raise in
+  a block the run never enters, which is why the first two programs print `False`, and a link the chain DOES reach
+  still raises into the program's own `except TypeError:` — both directions are rows, not adjectives. **13 record
+  entries (10283 → 10296)** came from the reference through `tools/recmerge` with the compiled leg cross-checked, the
+  conformance corpus grows to 278 programs with `chain_short_circuit.gy` as a `match` row, and **ADR 0450**'s checker
+  rows passed unchanged: the verdicts did not move, only the effects did.
+
 - **A comparison chain is CHECKED like the comparisons it holds, and typed the verdict it answers (**L12.1**,
   **ADR 0450**)** — `a < b < c` has been one node since **ADR 0288**, with its own lowering, its own operand-carriage
   door and its own conformance probe. What it never had was an arm in the analyzer's expression switch, and a node the
@@ -3790,7 +3811,8 @@ falls back to dynamic dispatch.
   `match` row — 21 lines byte-identical to CPython, its first two lines the `out` then `True` the row names as its own
   definition of done, its source **1 record entry (10282 → 10283)** through `tools/recmerge`. What the sweep found in
   the LOWERING is filed rather than papered over: a chain evaluates every
-  link, so an unreachable link still raises (**Gap R.520**, the **ADR 0275** skeleton is the fix), and `print(1 in 5)`
+  link, so an unreachable link still raises (**Gap R.520**, the **ADR 0275** skeleton is the fix — the next cycle paid
+  it, **ADR 0451**), and `print(1 in 5)`
   answers `False` at exit 0 where the runtime door one step away raises (**Gap R.521**).
 
 - **A `for` asks the OBJECT for its iterator (**L12.2**, **Gap R.54**, **ADR 0449**)** — the loop had one question for

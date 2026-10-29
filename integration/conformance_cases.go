@@ -242,6 +242,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// checker in the reference's own words — named, not refused, because the program under it is a
 		// program the reference runs by raising (roadmap L12.1, ADR 0450).
 		"compare_chains",
+		// The same node's conjunction, from the side ADR 0288 did not state: the links are joined by an `and`
+		// that SHORT-CIRCUITS, so an operand after a false link is never evaluated and a link after it is
+		// never asked. The counter is the measurement — `print(3 < 2 < probe(9))` runs nothing and
+		// `print(1 < 2 < probe(9))` runs its operand exactly once — and the `try` pins that the raise the chain
+		// DOES reach is still a raise the program can catch
+		// (roadmap Gap R.520, ADR 0451; the eager conjunction answered all three at the wrong exit code).
+		"chain_short_circuit",
 		// A ternary with text arms used to print the @str_tab POSITION on the compiled leg:
 		// `print("a" if c > 0 else "b")` said `0` where the reference prints `a`. Gap R.127's
 		// recorded debt, promoted to parity by ADR 0290 (ADR 0261's rule: a promoted probe's
