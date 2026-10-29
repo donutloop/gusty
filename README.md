@@ -3834,6 +3834,28 @@ falls back to dynamic dispatch.
   being deleted, and **23 record entries (10482 → 10505)** went in from the reference with the compiled leg
   cross-checked, through the row's own recorder (`GUSTY_RECORD_CONTAINER_ELEMENT=<path>`).
 
+- **A method run on the container a CALL hands back is dispatched on the name the answer was recorded under
+  (**Gap R.229**, **ADR 0458**)** — the last of the three doors **ADR 0333**'s answer owed: `print(b())`,
+  `str(b())`, `if b():`, `for v in b():` and `ys = b()` had all read the object for eight rows, and
+  `print(b().append(3))` still stopped the build with **Gap I.2**'s sentence
+  `string-method append on a receiver that is not a text the compiler can read: b(...)`, while the bound
+  spelling `ys = b()` / `ys.append(3)` printed `None`. The road was being chosen from the *spelling* of a
+  receiver that has no shape the method roads recognise. The fix is **ADR 0334**'s judgement, not a second
+  reader: materialise the answer through the door a print already uses, copy the call with its receiver
+  replaced by that rooted name, and let the position lower the copy — so the mutator road, the bounds raise,
+  the set's hash, the pop door and the container printer answer both spellings at once. The ROAD decides
+  which methods it serves (asked in a scratch buffer, committed only on an answer), which is what keeps a
+  refusal the road's own and keeps it naming `d(...)` rather than the door's invented `__cans9`; a method
+  that reads a slot back is taken only on the pop door's own shape proof, because the first build of this
+  door printed `1` — a text's `@str_tab` index — where the reference prints `b`. `b().append(3)`,
+  `b().pop()`, `b().pop(i)`, `b().sort()`, `b().reverse()`, `s().add()`, `s().discard()`, `s().remove()` and
+  `s().clear()` now answer the reference's bytes, their raises are catchable, the tuple's mutator keeps its
+  `AttributeError`, and each call answers a fresh object. Two neighbours are filed rather than hidden:
+  **Gap R.537** (the void a mutator answers reaches `llc` at a condition or a binding — `if xs.append(3):`
+  dies identically for a plain variable) and **Gap R.538** (the reader methods, which the container roads
+  refuse for a *variable* too). **64** record entries (10505 → 10569) came in from the reference with the
+  compiled leg cross-checked and none refused.
+
 - **A container that TRAVELS through an unpacking keeps its claims (**Gap R.527**, **ADR 0455**)** — `xs = [1, 2]` /
   `a, b = xs, 5` / `print(a)` printed **`0`** — the handle, as a number — at the exit code that means the program ran,
   and `len(a)` of the same binding refused the build with `len of a non-string variable`; `s = {1, 2}` /

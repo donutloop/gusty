@@ -17337,3 +17337,63 @@ docs phase, and (2) when a test fails in a way that contradicts what I measured,
 that the test uses* — `Compile`/`JIT`, not `gustyc --eval` — because `--eval` reported refusals for shapes the test
 harness had compiling, and believing the CLI over the harness cost a detour. The general form: a claim measured
 through a different door than the one that will judge it is not a measurement.
+
+## ADR 0458 — a method run on the container a CALL hands back is dispatched on the name the answer was recorded under (roadmap Gap R.229 closed; Gaps R.537, R.538 filed; 2026-10-29)
+
+**The `Call` that answered `printf(…, i32 )` was the honest measurement, and I nearly shipped past it.** The
+first cut of the door materialised the answer inside `callMethod` and dispatched the mutator there.
+`b().append(3)` worked; `print(b().append(3))` emitted `%t10 = call i32 (i8*, ...) @printf(i8* @.fmt1, i32 )`
+and `llc` rejected the module — **ADR 0166**'s exit 2, on a program CPython prints `None` for. The lesson is
+**ADR 0300**'s, one construct out: *the void and the value are one question*, so the print road
+(`callIsInPlaceMutation`/`isNoneExpr`) and the dispatch must ask the **same predicate** (`containerAnswerIsProven`),
+never two copies of the same rule. A door that answers a shape without the position above it knowing is a
+door that emits an operand nobody filled.
+
+**"Serve everything the scan proves" is how you manufacture a wrong number.** The second cut opened every
+container method the scan proves and printed `1` for `print(b().pop())` of `return ["a", "b"]` — the text's
+index into `@str_tab` — and `0` for a popped `None`, while the *bound* spelling printed `b` and `None`. Root
+cause: the road that renders a popped slot is `popAnswerPair`, and its gate is `attr.Obj.(*Name)` — a written
+`b().pop()` is not that shape, so the slot's raw word fell to the number road. The rule the file now states:
+a position that reads a **slot** back is taken only on the proof that the door which renders it serves the
+rewritten call (`popAnswerShape`, plus the `listVars[…] && pop` mutator arm beside it). Refusing is cheap; a
+fabricated number is the answer this toolchain may not print.
+
+**The fix was a rewrite, not an arm — and where you ask it matters as much as what you ask.** Once the door
+returns the *copied node* and the caller lowers it, every existing door (mutator, bounds raise, set hash, pop
+pair, container printer) answers both spellings without knowing anything new. The print road had to ask the
+rewrite **before** it chose a printer, beside `containerAnswerSubscript`; asking it later, inside
+`callMethod`, left the print road to lower the raw call — which is how `print(b().pop())` kept printing `1`
+long after the dispatch looked right. **ADR 0232** again: one question, asked at the altitude that decides.
+
+**Throw away what you prove with.** The door asks the road in a `strings.Builder` it discards and commits
+only on an answer; that is what lets a declined shape keep the position's own refusal about the receiver the
+*program* wrote (`d(...)`), instead of leaking the door's invented `__cans9` into a diagnostic an agent reads
+via `--json`. `TestARefusalNamesTheReceiverTheProgramWrote` is the guard; it caught the leak the first time.
+
+**Two refusals for one program is a finding, not a bug of mine.** The reader methods (`d().get`, `b().index`,
+`b().copy`, `d().clear`, …) refuse for the answer because they refuse for a container **variable** too
+(**Gap R.174**'s fold-only roads), so the door serves exactly what the roads serve and the predicate
+`containerAnswerMethodIsServed` is asked by the tests, never by the door. Filing **Gap R.538** with the bound
+twin beside each row is what stops a future widening of the roads from being mistaken for a widening here.
+
+**`if xs.append(3):` was already dying in `llc`, and saying so saved this row.** The condition/binding
+failure looked like my door's damage until I ran the plain-variable twin (`xs = [1, 2]` /
+`if xs.append(3):`), which dies on the same instruction (`icmp ne i32 , 0`). Byte-identical for a variable ⇒
+not this door's defect; filed as **Gap R.537** with four pinned rows (two spellings × two doors) that fail
+the day the shape runs. The reflex — measure the twin before confessing — is the same one the last session
+recorded, and it fired twice more here (`d().clear()`, `b().extend([3])`).
+
+**Watch for a scan that writes a verdict no field carries.** `containerAnswerScan` never set
+`fullyDescribed`, so `takesRead(containerReadSlots)` answered "no" for every entry the scan itself proved —
+the described/undescribed split **ADR 0344** added had no described side for scan-derived functions. I found
+it by asking the door's *mirror* (`containerAnswerIsProven`) and the materialiser the same question and
+getting different answers; the materialiser's described branch never consults the read, so the mirror that
+did was the one out of step with the road. Fixed at the scan (set the flag), not by loosening the mirror —
+and the blast radius is zero today precisely because the only reader of that branch is this door.
+
+**The worktree has a second occupant; measure through the door that will judge.** Files I had not touched
+changed under me mid-cycle (the door's own file gained a `containerAnswerIsProven` I had not written, and my
+first hook landed in the wrong part of `callMethod` because the file I was reading was not the file being
+built). Two habits from the previous session, both load-bearing again: rebuild the probe binary from the tree
+you just read (`go build -o /tmp/gustyc ./cmd/gustyc` before every measurement round), and trust the test
+harness's entry point (`JIT`/`Compile`) over `gustyc --eval` when they disagree.

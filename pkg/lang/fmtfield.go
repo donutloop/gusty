@@ -152,5 +152,15 @@ func (g *irGen) callIsInPlaceMutation(c *Call) bool {
 		// decide it was a mutation at all, so the two roads cannot disagree about who answered.
 		return g.nameIsContainerRecorded(attr.Obj)
 	}
+	// The receiver is a call that hands back a container: `b().append(3)` mutates the object the
+	// callee built, and the reference prints `None` for it exactly as it does for `ys.append(3)`.
+	// The question is asked of the same scan the method door materialises with, so print, `str`, the
+	// f-string field and the REPL cannot call this call a number while the call road calls it a
+	// mutation — which is the `printf(..., i32 )` that `llc` rejects at exit 2 (**ADR 0166**), the
+	// very failure **Gap R.187**/'s **ADR 0300** ended for a container VARIABLE (roadmap
+	// **Gap R.229**, **ADR 0458**).
+	if recv, isCall := attr.Obj.(*Call); isCall {
+		return g.containerAnswerIsProven(recv, containerAnswerMethodPositionRead(attr.Name.Value))
+	}
 	return false
 }

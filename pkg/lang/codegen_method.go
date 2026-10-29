@@ -132,6 +132,13 @@ func (g *irGen) callMethod(b *strings.Builder, c *Call, attr *Attr, fnName strin
 		}
 	}
 
+	// A receiver the CALLEE builds: `b().append(3)`, `b().pop()`, `s().add(3)`. The answer is the same
+	// object `ys = b()` binds, so it belongs on the roads that answer a container VARIABLE —
+	// materialise it and re-dispatch (roadmap Gap R.229, ADR 0458; container_answer_method.go).
+	if out, handled, err := g.containerAnswerMethodReceiver(b, c, attr, fnName); handled {
+		return out, err
+	}
+
 	// A receiver the compiler can see is a TEXT belongs to the text road at the bottom of this
 	// function, whatever the enclosing class happens to call itself. `class C: def upper(self, s):
 	// return s.upper()` is the shape: `upper` is a name the class declares, so the dispatch below

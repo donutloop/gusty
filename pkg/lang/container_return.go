@@ -216,7 +216,7 @@ func containerAnswerScan(prog *Program) (map[string]containerAnswer, map[string]
 			undescribed[name] = containerAnswer{kind: kind}
 			return containerAnswer{kind: notAContainerAnswer}
 		}
-		return containerAnswer{kind: kind, arms: returns}
+		return containerAnswer{kind: kind, arms: returns, fullyDescribed: true}
 	}
 
 	// Round until stable, the way `strReturningFuncs` does: `def a(): return b()` only becomes a container

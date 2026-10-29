@@ -934,9 +934,26 @@ ADR 0334: `print(f()[0])` prints `1`, `print(f()[-1])` counts from the end, `pri
 reference's catchable `IndexError: list index out of range`, `print(f()["b"])` hashes a key out of a dict
 answer, and `f()[0][1]` reads a slot of a slot — the call is lowered to the same rooted name a binding
 records, the subscript node is copied with that name as its base, and the roads that read `ys[i]` for
-`ys = f()` answer it, in the same order, with the same bounds check (roadmap **Gap R.214**, paid). What still
-has no arm — the answer as another literal's element or as a method receiver (**Gap R.229**), a slice of the
-answer (**Gap R.229** beside **Gap R.230**, whose road answers words for every base), the answer through a
+`ys = f()` answer it, in the same order, with the same bounds check (roadmap **Gap R.214**, paid).
+A **method run on the answer** is the same program as the method run on its name, as of **ADR 0458**
+(roadmap **Gap R.229**, paid): `print(b().append(3))` prints `None`, `b().append(3)` followed by
+`print(b())` prints `[1, 2]`, `print(b().pop())` prints the last element — rendered, not numbered, so a
+text slot prints its text and a popped `None` prints `None` — `print(b().pop(9))` raises the catchable
+`IndexError: pop index out of range`, `b().sort()` and `b().reverse()` answer `None`, and on a set answer
+`s().add(3)`, `s().discard(v)`, `s().remove(v)` and `s().clear()` do what the bound name does (`s().remove(9)`
+raises `KeyError: 9`). The written call is copied with its receiver replaced by the rooted name the answer
+was recorded under, and every road that answers `ys.append(3)` — the mutator, the bounds raise, the set's
+hash, the pop door, the container printer — answers it, so the two spellings are one program by construction
+rather than two roads that have to agree. Each call answers a **fresh** object: `ys = b()` / `ys.append(3)` /
+`print(ys, b())` prints `[1, 2, 3] [1, 2]`, and two `b().append(…)` statements leave `print(b())` on
+`[1, 2]`. The methods the container roads do not serve for a *variable* are not served for the answer
+either — `d().get(3)`, `d().keys()`, `d().popitem()`, `d().clear()`, `b().index(x)`, `b().count(x)`,
+`b().copy()`, `b().extend([3])`, `b().insert(i, x)`, `b().remove(x)` and their bound twins refuse with
+**Gap R.174**'s sentence, and refuse about the receiver the source wrote, never about the name the door
+invents (**Gap R.538**); `if b().append(3):` and `x = b().append(3)` are **Gap R.537**, which dies the same
+way for a plain `xs.append(3)`. What still
+has no arm — the answer as another literal's element (**Gap R.229**'s element half, paid by **ADR 0457**)
+except where the answer table declines it, the answer through a
 parameter (Gap R.154), `f() + [9]` (Gap R.175), a membership test whose needle is one of its slots (Gap R.232)
 — refuses and names the function and the door it is waiting for; none of them prints the handle. `None` handed
 back by a function is the one value in this family still answered as a number (**Gap R.228**).

@@ -10984,6 +10984,61 @@ which is the distinction that makes them two owners instead of one: the value ex
 grow an arm to reach it.
 
 <a id="gap-r-219"></a>
+
+### Gap R.229 (the method door) — a method run on the container a call hands back (✅ DONE, paid by **ADR 0458**)
+
+```
+$ gustyc --eval 'def b():
+>     return [1, 2]
+>
+> print(b().append(3))'
+gustyc: jit: codegen: string-method append on a receiver that is not a text the compiler can read: b(...) (roadmap Gap I.2, ADR 0166)
+                                                        # exit 1; the reference prints None
+
+$ gustyc --eval 'def b():
+>     return [1, 2]
+>
+> ys = b()
+> print(ys.append(3))'
+None                                                    # the same program, named — right since ADR 0333
+```
+
+The row's three doors were paid one at a time by the rows that named them: the ELEMENT door
+(`print([build(), 3])`) by **ADR 0457**/**Gap R.530**, the SLICE door (`print(b()[0:2])`) by
+**ADR 0335**/**Gap R.230**, and the METHOD door by **ADR 0458**. What follows is the third.
+
+The refusal sentence is the tell: a *text* road answered a *container* question. `callMethod` chooses its
+branch from what the receiver looks like — `isListExpr`, `listVars[…]`, `isSetExpr`, the dict arms — and a
+`*Call` looks like none of them, so the call fell to the last door that takes any receiver at all. The object
+itself was never the problem: **ADR 0333**'s scan proves the answer is a container of one kind,
+`containerAnswerOperandRead` lowers it to a rooted name carrying the notebooks, and the print, `str`,
+truthiness, loop and binding doors have read that pair for eight rows.
+
+**Measured before the door was opened, and the reason it is a rewrite.** Three attempts, three measurements:
+
+1. an arm in `callMethod` that materialised the answer and dispatched the mutator itself — `b().append(3)`
+   worked; `print(b().append(3))` emitted `%t10 = call i32 (i8*, ...) @printf(i8* @.fmt1, i32 )`, the void's
+   missing operand in a `printf` argument list, and `llc` rejected the module at **ADR 0166**'s exit 2. The
+   print road and the dispatch had each grown an opinion about whether the call answers a value.
+2. the same arm with the print road's `callIsInPlaceMutation` widened — the mutators answered, and
+   `print(b().pop())` of `return ["a", "b"]` printed **`1`**, the text's index into `@str_tab`, where the bound
+   spelling prints `b`; `return [1, "a", None]` printed **`0`** for a popped `None`. The pop door
+   (`popAnswerPair`, which is what renders a slot) asks `attr.Obj.(*Name)`, and the written node is not one.
+3. the rewrite: the position lowers the copied node whose receiver is the rooted name. Every door that
+   answers `ys.pop()`, `ys.append(3)`, `ys.sort()` answers the answer, because after the rewrite there is
+   nothing left to tell apart.
+
+The aliasing rule the row demanded was measured rather than assumed, because a method road that took the
+callee's word without the binding's copy would poison the callee's object for every later call:
+`ys = b()` / `ys.append(3)` / `print(ys, b())` prints `[1, 2, 3] [1, 2]`, and two `b().append(…)` statements
+leave `print(b())` on `[1, 2]` — the answer is a fresh object per call, and the mutation reaches nobody else.
+
+**The refusals are part of the shape.** The door asks the road, in a buffer it throws away, whether the
+rewritten call answers; a shape the roads decline (`dict.clear`, `list.index`, `b().copy()`) is a shape the
+door never took, and the position keeps the sentence its own road prints — naming `d(...)`, the receiver the
+program wrote, and never the door's invented `__cans9`. `TestARefusalNamesTheReceiverTheProgramWrote` holds
+that, because an agent consuming `--json` would otherwise go looking for a name the source does not contain.
+
 ### Gap R.219 — a function is registered as returning text on the evidence of one arm (CLOSED by ADR 0368, found by ADR 0327)
 
 **Closed 2026-10-17 by ADR 0368** — answering the shape this row asked us to refuse, and four more it did
@@ -22922,3 +22977,61 @@ door now asks `lookupFuncDef(name)` and accepts only a declaration the source wr
 lambda keeps the lambda road's own refusal — the same rule **ADR 0455** learned from the other side: hoisting is one
 pass and cannot be half-adopted. Paying this row means one road per answer: either the hoist hands its answer to the
 slot, or the element door builds its own object from the lambda body's arms.
+
+### Gap R.537 — the void a container mutator answers is lowered as if it were a value at the condition and binding doors (⏳ OPEN, filed by **ADR 0458**)
+
+```
+$ gustyc --eval 'xs = [1, 2]
+> if xs.append(3):
+>     print("y")
+> else:
+>     print("n")'
+gustyc: jit: llc: exit status 1        # exit 2 — the code ADR 0166 reserves for a compiler bug
+                                        # the module carries `  %t10 = icmp ne i32 , 0`
+                                        # the reference prints n
+```
+
+The mutator roads lower to *no operand*: that is what makes the statement `xs.append(2)` build at all. The print
+door has known this since **ADR 0300** — `isNoneExpr` asks `callIsInPlaceMutation`, and the REPL, `str`, the
+f-string field and `print` all consult it — and the condition and binding doors never asked. The result is the
+worst failure this backend can make twice over: an empty operand reaches an `icmp` (`if`/`while`) or a `store`
+(`x = …`), `llc` refuses the module, and the program spends the exit code the contract reserves for a compiler
+bug on a program CPython answers.
+
+The row was found from the outside in: **ADR 0458** grew the method door, the door's witness table reached for
+`if b().append(3):`, and the plain variable `if xs.append(3):` died in the same instruction. That identity is
+why this is its own row and not part of the door — the fix belongs to the two doors that consume a value, and it
+is the same one question `print` already asks (`callIsInPlaceMutation`), answered before the operand is spelled:
+emit the call for its side effect, then test the constant the void tests as, and bind the name through the void
+record `isNoneExpr` already writes.
+
+### Gap R.538 — the container reader methods refuse for the answer because they refuse for the variable (⏳ OPEN, filed by **ADR 0458**)
+
+```
+$ gustyc --eval 'def d():
+>     return {1: 2}
+>
+> print(d().get(3))'
+gustyc: jit: codegen: string-method get on a receiver that is not a text the compiler can read: d(...)
+                                                        # the reference prints None
+
+$ gustyc --eval 'def d():
+>     return {1: 2}
+>
+> ys = d()
+> print(ys.get(3))'
+gustyc: jit: codegen: get() on "ys", which the program bound to a container rather than a text: …
+                                                        # the BOUND twin: Gap R.174's sentence, also exit 1
+```
+
+`get`, `keys`, `values`, `items`, `popitem`, `setdefault`, `update`, `clear`, `index`, `count`, `copy`,
+`extend`, `insert`, `remove` — on an answer and on its bound twin alike — stop the build at exit 1. The bound
+spelling is the control that places the row: it refuses with **Gap R.174**'s sentence, so the container roads
+fold these methods over a literal written at the call and never ask a run-built object. The method door
+**ADR 0458** grew therefore serves what those roads serve and nothing more (`containerAnswerMethodIsServed` is
+that claim, asked by the tests and never by the door), and a widening of the roads widens the answer with no
+change to the door at all.
+
+Two refusals for one program is the honest state, and it is what the row's pins assert — with the exception the
+pop door taught the door about itself: `pop` reads a slot back, so it is taken only on that door's own shape
+proof, which is the difference between printing `b` and printing the index of `b`.

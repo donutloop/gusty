@@ -1,5 +1,329 @@
 {
  "entries": {
+"\n": {
+    "hasStdout": true
+   },
+
+"1\n2": {
+    "hasStdout": true
+   },
+
+"def b():\n    return [\"a\", \"b\"]\n\nprint(b().pop())": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [\"a\", \"b\"]\n\nprint(b().pop(0))": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [\"a\", \"b\"]\n\nys = b()\nprint(ys.pop())": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, \"a\", None]\n\nprint(b().pop())": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, \"a\", None]\n\nprint(b().pop(0))": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, \"a\", None]\n\nys = b()\nprint(ys.pop())": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nb().append(1.5)\nprint(b())": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nb().append(3)\nb().append(4)\nprint(b())": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nb().append(3)\nprint(b())": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nb().append(3)\nprint(b()[0])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nb().pop(9)": {
+    "err": "IndexError: pop index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "pop index out of range"
+   },
+
+"def b():\n    return [1, 2]\n\nb().reverse()\nprint(b())": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\ndef use():\n    b().append(3)\n    return 1\n\nprint(use())": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nfor i in range(2):\n    b().append(i)\nprint(b())": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nfor v in b():\n    print(v)": {
+    "stdout": "1\n2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(\"v\", b().append(3), \"w\")": {
+    "stdout": "v None w\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(1 in b())": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b().append(1.5))": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b().append(3))": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b().append(3), b().append(4))": {
+    "stdout": "None None\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b().append(3), b().pop())": {
+    "stdout": "None 2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b().pop())": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b().pop(-1))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b().pop(0))": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b().pop(9))": {
+    "err": "IndexError: pop index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "pop index out of range"
+   },
+
+"def b():\n    return [1, 2]\n\nprint(b().reverse())": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(f\"{b().append(3)}\")": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(f\"{b().reverse()}\")": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(len(b()))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint(str(b().append(3)))": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\ntry:\n    b().pop(9)\nexcept IndexError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\ntry:\n    print(b().pop(0), b().pop(9))\nexcept IndexError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nys = b()\nprint(ys.append(3))": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nys = b()\nprint(ys.pop())": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nys = b()\nprint(ys.reverse())": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nys = b()\ntry:\n    ys.pop(9)\nexcept IndexError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nys = b()\nys.append(3)\nprint(ys)": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nys = b()\nys.pop(9)": {
+    "err": "IndexError: pop index out of range",
+    "exnType": "IndexError",
+    "exnMsg": "pop index out of range"
+   },
+
+"def b():\n    return [1.5, 2]\n\nprint(b().pop(0))": {
+    "stdout": "1.5\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [2, 1]\n\nb().sort()\nprint(b())": {
+    "stdout": "[2, 1]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [2, 1]\n\nprint(b().sort())": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [2, 1]\n\nys = b()\nys.sort()\nprint(ys)": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [[1, 2], [3]]\n\nprint(b().pop())": {
+    "stdout": "[3]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return []\n\nb().pop()": {
+    "err": "IndexError: pop from empty list",
+    "exnType": "IndexError",
+    "exnMsg": "pop from empty list"
+   },
+
+"def b():\n    return []\n\nprint(b().pop())": {
+    "err": "IndexError: pop from empty list",
+    "exnType": "IndexError",
+    "exnMsg": "pop from empty list"
+   },
+
+"def b():\n    return []\n\ntry:\n    b().pop()\nexcept IndexError as e:\n    print(\"e\", e)": {
+    "stdout": "e pop from empty list\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return []\n\nys = b()\nprint(ys.pop())": {
+    "err": "IndexError: pop from empty list",
+    "exnType": "IndexError",
+    "exnMsg": "pop from empty list"
+   },
+
+"def g():\n    return 5\n\ndef b():\n    xs = []\n    xs.append(g())\n    return xs\n\nb().append(3)\nprint(b())": {
+    "stdout": "[5]\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return 5\n\ndef b():\n    xs = []\n    xs.append(g())\n    return xs\n\nprint(b().append(3))": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def s():\n    return {1, 2}\n\nprint(s().clear())": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def s():\n    return {1, 2}\n\nprint(s().discard(1))": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def s():\n    return {1, 2}\n\ns().clear()\nprint(s())": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"def s():\n    return {1, 2}\n\ns().discard(1)\nprint(s())": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"def s():\n    return {1, 2}\n\ns().remove(1)\nprint(s())": {
+    "stdout": "{1, 2}\n",
+    "hasStdout": true
+   },
+
+"def s():\n    return {1, 2}\n\ns().remove(9)": {
+    "err": "KeyError: 9",
+    "exnType": "KeyError",
+    "exnMsg": "9"
+   },
+
+"def s():\n    return {1, 2}\n\ntry:\n    s().remove(9)\nexcept KeyError:\n    print(\"miss\")": {
+    "stdout": "miss\n",
+    "hasStdout": true
+   },
+
+"def s():\n    return {1, 2}\n\nys = s()\nys.clear()\nprint(ys)": {
+    "stdout": "set()\n",
+    "hasStdout": true
+   },
+
+"def s():\n    return {1, 2}\n\nys = s()\nys.discard(1)\nprint(ys)": {
+    "stdout": "{2}\n",
+    "hasStdout": true
+   },
+
+"def s():\n    return {1, 2}\n\nys = s()\nys.remove(1)\nprint(ys)": {
+    "stdout": "{2}\n",
+    "hasStdout": true
+   },
+
+"def s():\n    return {1}\n\nprint(s().add(3))": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"def s():\n    return {1}\n\ns().add(3)\nprint(s())": {
+    "stdout": "{1}\n",
+    "hasStdout": true
+   },
+
+"def s():\n    return {1}\n\nys = s()\nys.add(3)\nprint(ys)": {
+    "stdout": "{1, 3}\n",
+    "hasStdout": true
+   },
 "class C:\n    def f(self):\n        return [1, 2]\n\nm = C()\nprint([m.f()])": {
     "stdout": "[[1, 2]]\n",
     "hasStdout": true

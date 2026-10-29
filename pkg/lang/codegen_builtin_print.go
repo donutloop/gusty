@@ -113,6 +113,18 @@ func (g *irGen) builtinPrint(b *strings.Builder, c *Call, fnName string) (string
 		if redo, okAns := g.containerAnswerSubscript(b, a); okAns {
 			a = redo
 		}
+		// The same judgement one construct further out: a METHOD run on the answer a call hands back.
+		// `print(b().append(3))`, `print(b().pop())` and `print(s().add(3))` are the programs the printer
+		// below answers for the bound name, and they are printed by those roads as soon as the receiver
+		// has a name to be asked about — the void of a mutator, the popped slot rendered by the door that
+		// knows what the slots hold, the container printed by the container printer instead of the
+		// printf that has no word for either (roadmap **Gap R.229**, **ADR 0458**; the rule beside
+		// **ADR 0300**, whose first symptom of this very row was a `printf(…, i32 )` that `llc` rejected).
+		if redo, okAns, ansErr := g.containerAnswerMethodCall(b, a); ansErr != nil {
+			return "", ansErr
+		} else if okAns {
+			a = redo
+		}
 		// print a constant string: literals and folded string-method results. This is a
 		// context that wants the BYTES, so it takes the global pointer from strConst
 		// directly -- value() now hands back an @str_tab index, which is the language's

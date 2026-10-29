@@ -119,11 +119,11 @@ func TestAPositionThatCannotReadAContainerAnswerRefusesThroughTheCLI(t *testing.
 		// container answer hands back and builds one object out of it, so the program is pinned as an
 		// ANSWER — `[1, 2, 9]`, beside the reference — in `TestThePairRoadKeepsWhatTheContainerAnswerLeavesIt`.
 		// The literal's element is still this row's neighbour's: Gap R.229.
-		// Two positions the container answer never reached: the method road and the length road each
-		// refused this program in their own words before this row existed, and they keep those words —
-		// the row's contract is that a refusal names what is missing, not that every refusal is this
-		// table's to make (ADR 0249). They are here so the exit class is witnessed all the same.
-		{"an answer as a method receiver", "def build():\n    return [1, 2]\n\nprint(build().append(3))", false},
+		// The method-receiver row that stood here is DELETED, not edited: **ADR 0458** (roadmap
+		// **Gap R.229**) answers `print(build().append(3))` with the reference's `None`, and the program
+		// now lives in the answered family — `TestAMethodOnACallResultAnswersThroughTheCLI` in
+		// `integration/container_answer_method_test.go`. What remains is the position the door does not
+		// take, whose refusal is another row's to print (ADR 0249).
 		{"an answer handed to a parameter", "def build():\n    return [1, 2]\n\ndef takes(xs):\n    return len(xs)\n\nprint(takes(build()))", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
