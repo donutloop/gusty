@@ -47,8 +47,9 @@ the program around the literal went unperformed, and the refusal that should hav
 permission. **ADR 0457** had taught the *print* road
 that a call handing back a container has no one-word answer and must be asked of `containerOperand`'s `*Call`
 arm (**ADR 0333**'s pair); the count door never got that lesson because it never believed it was printing
-anything — it was only counting. `docs/language.md`'s `len` row already read *"its element that is a call
-does"* — the promise, with no door behind it.
+anything — it was only counting. `docs/language.md` had already made the promise for the elements the value
+road *could* answer — *"every element that acts is evaluated first, in the order the reference evaluates them,
+and its value thrown away"* — and had nothing to say about the one element class it could not.
 
 Measured on the toolchain before this commit, with the live reference beside it:
 
@@ -67,21 +68,33 @@ door that skips a raising element answers, *at the exit code of success*, a prog
 reach an answer at all — the shape **Gap R.266** and **Gap R.126** were written to catch, in a door that the
 `in`-door (**ADR 0324**'s own twin) had already been taught about and this one had not.
 
-The gate's own one permission, the reason a **method** element was already performed here and a **function**
-element was not, is **ADR 0457**'s:
+The gate asks one question of every element and has **no arm for a call at all**:
 
 ```go
-if fn, ok := c.Fn.(*Name); ok && strings.Contains(fn.Value, ".") {
-    return false                      // the attribute-call road is not this door's question
-}
+case *IntLit, *FloatLit, *StrLit, *BoolLit, *NoneLit, *Name:
+    return false        // a spelling — and a name whose read the checker proved was written
+// …the four container literals, each asked of its own parts…
+default:
+    return true         // a call, a subscript, an arithmetic node: something ACTS
 ```
 
-— an attribute call is the string-method road's question, not this one's. A method element therefore reached
-`containerOperand`'s `*Call` arm (which does serve a `*Call` whose `Fn` is an `*Attr`) and was performed; a
-function element reached it only if that arm's `callAnswersContainer` said yes, and until this row nothing in
-this door said so for the plain spelling. **Gap R.533**'s `print(bool([f()])); while [f()]: pass` still
-stands beside this row for a different reason: those two doors fold on the *shape* and never ask about
-effects at all, and are not this door.
+A call element was therefore already `true` and the pass was already entering the literal. What made the row
+look selective lives one level down, in *which road can answer the callee's spelling*, and it was measured on
+the parent commit's own binary: a **method** element was performed — `class C:` / `def m(self):` /
+`    print("ran")` / `    return [1]` / `c = C()` / `print(len([c.m()]))` wrote `ran` then `1` — where the same
+program with a plain `def` wrote only `1`. Both elements reached the same `default: g.value(b, el)`; the
+attribute call is answered by the road that reads a method, which emits the call and hands back a word, and
+the plain call reached **Gap R.67**'s refusal, which an instrumented pass prints verbatim:
+
+```
+codegen: "probe" hands back a container, whose word is a heap object and whose kind only this table knows:
+print(...), str(...), a condition, a loop's iterable and a binding ask the door that reads a container answer,
+and this position keeps one word for the value and has no such road (roadmap Gap R.67, ADR 0333)
+```
+
+— a sentence about a WORD, answered at a position that keeps none. **Gap R.533**'s `print(bool([f()])); while
+[f()]: pass` still stands beside this row for a different reason: those two doors fold on the *shape* and never
+ask about effects at all, and are not this door.
 
 ## Decision
 
@@ -147,11 +160,11 @@ effects at all, and are not this door.
    number. Under **ADR 0166** that exit code is the compiler's own bug, so a row that turns a *silent wrong
    answer* into an *assembler failure* is not a fix; the gate keeps the pair road out of this door and
    `TestWhatTheCountDoorStillSkipsIsFiledNotFixed` pins both shapes with today's bytes and their row IDs
-   (**Gap R.542**, **Gap R.543**). The same measurement is what keeps the road `lowerContainerAnsweringExpr`
-   takes for an argument that crosses as a pair out of the count door: it is the road behind **Gap R.545**, where
-   two bodies answering one container literal leave an element slot holding the object being built and
-   `print([g()])` writes `[` until the run is killed — a count door that inherits that road would turn a wrong
-   answer into a hang.
+   (**Gap R.542**, **Gap R.543**). The same measurement is why the pair road stays out of this door at all:
+   landing an answer's payload in a slot somebody else allocated is what a pair road does, and that is the shape
+   behind **Gap R.545**, where two bodies answering one container literal leave an element slot holding the
+   object being built and `print([g()])` writes `[` until the run is killed — a count door that borrowed that
+   road would have turned a wrong answer into a hang.
 
 4. **The fold's free answers survive, and that is a behavioural claim.** `len([1, 2, 3])`, `len([[1,2],[3,4]])`
    and `len([])` still answer the number from the literal — `TestTheCountDoorOfSpellingsStillCostsNothing`
@@ -176,8 +189,12 @@ $ printf 'def f(x):\n    print("f")\n\n    return [x, x]\n\nprint(len([f(1)]))\n
 $ gustyc --file /tmp/args.gy              # was: (no output) / exit 0
 f
 1
-$ gustyc --file integration/programs/count_answer_effect.gy   # line-for-line CPython
-built-list … 3 2 0
+$ gustyc --file integration/programs/count_answer_effect.gy   # line-for-line the reference's own bytes
+built-list
+1
+built-list
+2
+…                      # 21 prints; `python3` on the same file agrees with every one of them
 ```
 
 ## Verification
@@ -196,7 +213,8 @@ built-list … 3 2 0
   beside the pre-existing `pkg/lang/length_element_effects_test.go::TestTheCountDoorPerformsTheElementsItCounts`,
   which holds the integer-answering elements to the same counts,
   `TestTheCountDoorAsksTheContainerDoorAndNotItself` (the table is shared),
-  `TestTheCountDoorOfSpellingsStillCostsNothing` (12 rows, each also read against the record), and the owed table
+  `TestTheCountDoorOfSpellingsStillCostsNothing` (six answered spellings, three modules asserted free of any
+  builder, allocation or call, and three answered modules asserted to CARRY the callee's call), and the owed table
   `TestWhatTheCountDoorStillSkipsIsFiledNotFixed` — **Gap R.542**, **Gap R.543**, **Gap R.544** (×2),
   **Gap R.545**, each with today's bytes, the reference's, its row ID, and the plain-`len` *control* that
   says which rows are this door's and which belong to the roads around it.
@@ -209,14 +227,16 @@ built-list … 3 2 0
   `caught ValueError`, and no row of this family may reach **ADR 0166**'s exit 2 — which is asserted as its own
   condition, because a skipped trap is only a bug if the code says success.
 - `integration/programs/count_answer_effect.gy` (matrix row `programs/count_answer_effect`, oracle `match`) —
-  the eight answered shapes plus the four positions that ask the door (bound, tested, looped, added), the
-  comprehension element, the tuple/dict/set answers, a forwarding body and an arms-answering body, plus the
-  three spelling-only counts as the fold's control; re-recorded from the reference, and the reason
-  `str(len([f()]))` is *not* in the program (the roads lower it four times — **Gap R.544** — and a corpus row
+  the answered shapes: a list, a dict, a set and a tuple answer each performed once, a call nested in a literal,
+  two calls in one literal, a body the answer scan can prove but not describe, and a body that only forwards
+  another call; the four positions that ask the door — bound to a name, tested by an `if`, looped by a `for`,
+  and added — the same literal asked beside `print([list_probe()])`, `sorted(...)` and a dict value; and the
+  three spelling-only counts as the fold's control. Re-recorded from the reference, and the reason
+  `str(len([f()]))` is *not* in the program (the str/concat roads lower it four times — **Gap R.544** — and a corpus row
   would have certified that as if it were this row's answer).
-- **32 sources** recorded through `tools/recmerge` (31 rows + the corpus program), the artifact going **10594 → 10626**,
-  which refuses any entry the compiled leg will not agree to; the record's count is the artifact table's and a test
-  recomputes it.
+- **32 sources** came in from the reference — 31 through this row's own recorder (`GUSTY_RECORD_COUNT_ANSWER_EFFECT`)
+  and the corpus program through `tools/recmerge`, which refuses any entry the compiled leg will not agree to —
+  the artifact going **10594 → 10626**; the record's count is the artifact table's and a test recomputes it.
 
 ## Alternatives rejected
 

@@ -17516,11 +17516,40 @@ become the matrix's own answer for a **Gap R.544** shape. It is out of the progr
 shape instead. Lesson kept: a corpus row is an assertion about whatever it contains, and including a shape whose
 answer you have not adjudicated is how a defect gets a green checkmark.
 
-**The record leg cannot be retrofitted by re-running the program.** 32 sources went in through `tools/recmerge`
-(record **10594 → 10626**), which asks CPython and refuses an entry the compiled leg will not agree to. Recording
+**The record leg cannot be retrofitted by re-running the program.** 32 sources went in from the reference — 31
+through the row's own recorder and the corpus program's one entry through `tools/recmerge` (record **10594 →
+10626**), which asks CPython and refuses an entry the compiled leg will not agree to. Recording
 the corpus program required teaching its recorder to read the file itself (with the same relative path the heap
 guard's glob uses), because a corpus row's key is the whole file — comments and blank lines included. And the
 record carries no stdout for a program that traps, which is a fact about the retired engine and not about this
 one: `pkg/lang/golden.go`'s `runGoldenStdout` says so, and a case that expects stdout from a raising program is
 testing the wrong witness. Lesson kept: ask each leg the question it can answer — the record for the exception
 class and message, the compiled leg and the reference for the stdout that came before it.
+
+**A mechanism written from memory is a fabricated mechanism, and the fix is an instrument, not a guess.** The
+first drafts of this row's `docs/`, ADR and roadmap cells named a gate arm (`literalElementAsksToBeRun`'s
+attribute-call test), a value-road predicate (`v.Type == i64T`) and a caller contract (`out.Buf`, `out.ScratchPtrs`)
+that do not exist in the tree — they were plausible shapes recalled from neighbouring files, and every one of them
+was in prose that a future cycle would have trusted. Two things killed them: reading the named function instead of
+recalling it, and building an instrumented copy of the toolchain at the parent commit that printed the swallowed
+refusal, which turned "the value road refuses" from a paraphrase into a quotation (**Gap R.67**'s own words, now
+in the ADR). That same instrument also overturned the story it was meant to support: a **method** element
+(`print(len([c.m()]))`) already performed its callee and a **function** element did not, which the drafts had
+explained with a gate that the gate does not contain — the difference is one level down, in which road can answer
+the callee's spelling. Lesson kept: a doc claim about code is a claim about code — quote the source or build the
+binary that prints it, because a wrong mechanism in a durable document costs more than a wrong line of code.
+
+**A trial road is only safe when the real road cannot repeat it.** The arm's buffer looks like the pair road's
+`trial, real` pair, and the pair road is **ADR 0447**'s reason a callee's line can be printed twice. The
+no-repeat guarantee here is the GATE, not the buffer: the element is lowered exactly once, by one arm, with no
+code path that lowers it again. That is also why the wide pair-argument version was refused — handing the same
+expression to a second road would have imported the pair road's double-print into a door whose whole claim is
+that it performs its element once. Lesson kept: before copying a two-road pattern, name what stops road two from
+running road one's work.
+
+**A refusal can become a hang, and a hang is the worse outcome.** The pair road this row declined is not merely
+wrong on `print([g()])` — the run prints `[` forever and the harness reports the program as **killed** (**Gap
+R.545**), where **ADR 0166**'s exit 2 is at least a report. Ranking the outcomes — silent wrong answer < refused
+build < exit 2 < hang — is what let the row refuse the wide road without also refusing to ship the narrow one.
+Lesson kept: when widening a gate, classify the new failure modes on that scale, not on whether they are
+"only" cosmetic.

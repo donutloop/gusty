@@ -1100,7 +1100,7 @@ print(len([{"k": 1}, probe(), (3, 4)]))  # built then 3: the answer's KIND is th
 def boom():
     raise ValueError("boom")
     return [1]
-print(len([boom()]))                     # ValueError: boom, exit 1  (this printed 1 at the exit code of success)
+print(len([boom()]))                     # ValueError: boom, exit 3  (this printed 1 at the exit code of success)
 n = len([probe()])                       # built then 1: the position that asks is the position that runs
 def k():
     print("k")
