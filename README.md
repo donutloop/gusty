@@ -3806,11 +3806,33 @@ falls back to dynamic dispatch.
   of them shipped by **ADR 0455** in a docs-only commit, had no entry at all. A guard over the registry now asks the
   question directly (`integration/corpus_record_test.go::TestEveryAssertedCorpusProgramIsOnTheRecord`), exempting
   only what the ledger itself declares `not_applicable`, and 32 corpus entries went into the record with the compiled
-  leg cross-checked. What the door declines it does not answer: a literal element whose answer IS a
-  container (`[f()]` where `f` returns a list) and an element whose kind no table records (`math.sqrt(4)`,
-  `lambda: 1` — the latter refused with a message that ends in `not ` and names nothing) still refuse, filed as
-  **Gap R.530** and **Gap R.531** and pinned with their own words in the tables that fail when a shape starts
+  leg cross-checked. What the door declines it does not answer: an element whose kind no table records
+  (`math.sqrt(4)`, `lambda: 1` — the latter refused with a message that ends in `not ` and names nothing) still
+  refuses, filed as **Gap R.531** and pinned with its own words in the tables that fail when a shape starts
   compiling.
+
+- **A container literal's ELEMENT that answers with a container asks the door that builds the answer (**Gap R.530**,
+  **ADR 0457**)** — the element one spelling further in from the row above, and the last place a literal was decided
+  five ways at once: `def f(): return [1, 2]` / `print([1, 2] in [f()])` died with
+  `codegen: list literal elements must be integers, not list[int]` while `print(len([f()]))` — the same literal, one
+  door away — had always compiled. The five DECIDING doors (`literalNeedsHeap`, `literalNeedsTags`,
+  `nestedContainerElem`, `elemKindTag`, `taggableNestedElem`) had arms for a comprehension (**ADR 0192**), a pair
+  (**ADR 0226**) and a bound container (**ADR 0438**), and none for a call; the BUILD door had had that arm since
+  **ADR 0333**. All five now take their permission from one predicate, which reads the callee's kind off the
+  whole-program answer scan, asks the carriable-argument question the build asks, and refuses to label a slot whose
+  contents it cannot see — so `print([f()])` is `[[1, 2]]`, `print([f(), 3])` is `[[1, 2], 3]`,
+  `print([1, 2] in [f()])` is `True`, `print([f()] == [[1, 2]])` is `True`, and a method's answer
+  (`print([m.f()])`) is `[[1, 2]]`, on the compiled leg, the record leg and against a live `python3`. Three shapes
+  were implemented, measured against the reference, and pulled back by name rather than left in: a tuple answer
+  printed **`[1]`** for `[(1, 2)]` (**Gap R.533**), a forwarded answer and an applied `lambda`'s answer each printed
+  `[` until the process died (**Gap R.533**, **Gap R.536**), and a `def` nested in a `def` still reaches `llc` with
+  `ret i32 @.lst1` (**Gap R.535**, re-measured on the parent commit's binary so it is filed, not confessed). The
+  cheap case stayed cheap — `x in [1, 2, 3]` emits no allocation, no `@rt_set_elem`, no `@rt_tag_elem` and no
+  `@rt_contains`, asserted by a row that fails if `@main` grows a builder — and the unity claim is a count, not a
+  reading: `[f()]` printed and `[f()]` asked for membership emit the same builder counts and ask the tagged scan
+  once. Eight rows that four files had pinned as **Gap R.67**'s refusals moved into the answered family instead of
+  being deleted, and **23 record entries (10482 → 10505)** went in from the reference with the compiled leg
+  cross-checked, through the row's own recorder (`GUSTY_RECORD_CONTAINER_ELEMENT=<path>`).
 
 - **A container that TRAVELS through an unpacking keeps its claims (**Gap R.527**, **ADR 0455**)** — `xs = [1, 2]` /
   `a, b = xs, 5` / `print(a)` printed **`0`** — the handle, as a number — at the exit code that means the program ran,

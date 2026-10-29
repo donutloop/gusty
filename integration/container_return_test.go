@@ -69,6 +69,13 @@ var containerAnswerAnswered = []string{
 	"def build():\n    return [1, 2]\n\nprint(build() + [9])",
 	"def build():\n    return [1, 2]\n\nprint(build() * 2)",
 	"def build():\n    return [1, 2]\n\nys = [0]\nprint(ys + build(), build() + ys)",
+	// A container ANSWER sitting in a literal's ELEMENT — the shape Gap R.67 refused for nineteen cycles and
+	// ADR 0457 pays: the slot carries the handle the callee's builders made and the callee's answer kind is
+	// the tag beside it (roadmap Gap R.530). The CLI row that pinned it as a refusal moved here.
+	"def build():\n    return [1, 2]\n\nprint([build(), 3])",
+	"def build():\n    return [1, 2]\n\nprint([1, 2] in [build()], 1 in [build()])",
+	"def build():\n    return {1, 2}\n\nprint([build(), 3])",
+	"def build():\n    return {1: 2}\n\nprint([build(), 3])",
 	"def build():\n    return [1]\nprint(build())",
 	"def num():\n    return 5\n\nprint(num() + 1)",
 	"def txt():\n    return \"ab\"\n\nprint(txt().upper())",
@@ -108,7 +115,6 @@ func TestAPositionThatCannotReadAContainerAnswerRefusesThroughTheCLI(t *testing.
 		src  string
 		mine bool // the refusal is this row's own sentence, not another road's
 	}{
-		{"a container literal's element", "def build():\n    return [1, 2]\n\nprint([build(), 3])", true},
 		// `print(build() + [9])` left this table with ADR 0365: the sequence door takes the handle the
 		// container answer hands back and builds one object out of it, so the program is pinned as an
 		// ANSWER — `[1, 2, 9]`, beside the reference — in `TestThePairRoadKeepsWhatTheContainerAnswerLeavesIt`.

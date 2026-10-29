@@ -22670,7 +22670,7 @@ reference's `NameError` where the read happens, catchable, and say nothing about
 keeping the module's sound definite-assignment questions (**ADR 0228**'s flag) exactly where they are.
 
 <a id="gap-r-530"></a>
-### Gap R.530 — a literal element whose answer IS a container is still refused under `in` (⏳ OPEN, filed by **ADR 0456**)
+### Gap R.530 — a literal element whose answer IS a container is still refused under `in` (✅ DONE, filed by **ADR 0456**, paid by **ADR 0457**)
 
 ```
 $ gustyc --eval 'def f():
@@ -22708,6 +22708,61 @@ question with no further work. Until then the shapes are pinned with their own r
 `pkg/lang/membership_literal_test.go::TestWhatTheLiteralHaystackDoorStillDeclines` and
 `integration/membership_literal_test.go::TestWhatTheLiteralHaystackDoorStillRefusesAtTheCLI`, in the tables that
 fail when a shape starts compiling.
+
+
+**Paid 2026-11-02 by ADR 0457.** The diagnosis above was right and one step short of the fix: the door that
+REFUSES was not the only door missing the arm. Four doors decide what a container literal is —
+`literalNeedsHeap` (may the folded global hold it?), `literalNeedsTags` (does an element need the tagged build
+path?), `nestedContainerElem` (is this element a container?) and `elemKindTag`/`taggableNestedElem` (what tag goes
+beside the payload?) — and the BUILD door, `emitList`'s tagged path, had been asking `containerAnswerOf` of each
+element since **ADR 0333**. Asked narrowly, the three gates said "no container here", the literal was routed at the
+static int-array global, `emitGlobalList` met the call's element and raised `list literal elements must be
+integers, not list[int]` — a sentence about an element kind the program had already proven. `print(len([f()]))`
+compiling all along was the tell: the same literal, one door away from an answer.
+
+The fix is one predicate, `pkg/lang/container_answer_element.go::containerAnswerSlotIsContainer`, asked by all
+five call sites, so one element cannot be a container to the builder and an integer to the gate (**ADR 0232**'s one
+question, **ADR 0249**'s gate-and-door pair, and the exact shape **ADR 0438**'s `elementNameHoldsContainer` is for
+a name). The answer is the CALLEE's: the scan (`containerAnswerOf`, seeded from `containerReturnFacts` over every
+top-level `def`) says which of the four the callee always hands back, the slot stores the handle the callee's own
+builders made, and the tag is the callee's kind — never a literal's, never a default. Before it answers, the
+predicate asks the two questions that make the claim sound: is the callee's argument carriable by the container
+roads (the `*Call` arm of `containerOperand` asks the same, **ADR 0333**, so the decision and the build cannot
+disagree), and are the callee's returned CONTENTS things the element door can describe (a `*ListLit`/`*SetLit`/
+`*DictLit` arm whose elements it can read, or an empty container call whose contents tag the runtime knows)?
+
+**Three shapes were tried, measured wrong, and declined by name.** A TUPLE answer became a slot tagged `tuple` and
+`xs = [t()]` printed `[1]` at exit 0 for the reference's `[(1, 2)]` — the handle wearing the tag of the object it
+points at, with no road in the outer list's printer that reads **ADR 0361**'s bracket bit through a slot. A
+FORWARDED answer (`def f(): return inner()`) has no contents spelled anywhere for a tag to have been read from: the
+first draft asked "is the forwarded call's answer taggable", built a list whose slot 0 pointed at the list itself,
+and printed `[` until the process died. An applied `lambda`'s answer is a handle the hoisted-lambda machinery is
+already answering at the call site, and a second road storing it segfaulted the same way
+(`print((lambda: [(lambda: [3, 4])(), 1])())` → `[[[[…`, signal 11). All three are refusals with the door's own
+sentence, filed as **Gap R.533** and **Gap R.536**, and each is pinned in a table that fails the day the shape
+compiles — because **ADR 0166** ranks a wrong answer at exit 0 above any refusal, and **ADR 0232** makes a slot tag
+a build-time claim that may only be made about what the door can read.
+
+Two more shapes surfaced beside the row and are NOT this row's: a `def` nested in a `def` still emits
+`ret i32 @.lst1` and dies in `llc` (**Gap R.535**, re-measured against the parent commit's binary to prove the
+parent had it too), and the count fold drops an element's effects — `print(len([probe()]))` swallows the callee's
+`print("built")` (**Gap R.534**).
+
+What the row bought: `print([1, 2] in [f()])` is `True` and `print(1 in [f()])` is `False` where both were refusals;
+`print([f()])` is `[[1, 2]]`, `[f(), 3]` is `[[1, 2], 3]`, `[f()] == [[1, 2]]` is `True`, a set answer, a dict
+answer, a method's answer (`m.f()` as an element), a comprehension's element, a binding, a condition, a `while`
+test, a `for` iterable and a module name read from a body all answer the reference's bytes; and eight rows that
+`pkg/lang/empty_container_tag_test.go`, `pkg/lang/container_return_test.go`,
+`pkg/lang/refusal_names_the_missing_rule_test.go` and `pkg/lang/lambda_answer_test.go` had pinned as Gap R.67's
+refusals MOVED into the answered family rather than being deleted. `x in [1, 2, 3]` still costs no allocation, no
+`@rt_set_elem`, no `@rt_tag_elem` and no `@rt_contains` — a row fails if `@main` grows a builder for a literal the
+fold serves — and the container-answer element is built by ONE literal through ONE builder, asserted as counts in
+the emitted module rather than as a reading of the code. **23 record entries** went in from the reference with the
+compiled leg cross-checked (the artifact 10482 → **10505**).
+
+The process lesson is the one **ADR 0456** wrote two cycles ago, aimed the other way: a gate and the door it gates
+are one question, and the way to find the missing arm is to ask which door BUILDS the thing the refusing door says
+cannot exist. `len([f()])` was that door — the road that already agreed, one spelling away from the one that refused.
 
 <a id="gap-r-531"></a>
 ### Gap R.531 — a literal element no door names an answer for is refused, and its message names no kind at all (⏳ OPEN, filed by **ADR 0456**)
@@ -22773,3 +22828,97 @@ claim, and it is scrubbed from every subprocess the suite starts (**Gap R.410** 
 10427 → **10459**), 24 of them this row's first finding. The general lesson is not about the GC case: when a rule
 says "a missing X is a failure", the question is which case asks the question, and a rule nobody asks is a rule that
 is quietly false.
+
+
+<a id="gap-r-533"></a>
+### Gap R.533 — a tuple answer, and a body that only forwards another call, are DECLINED at a literal's element (⏳ OPEN, filed by **ADR 0457**)
+
+```
+$ gustyc --eval 'def t():
+      return (1, 2)
+
+  xs = [t()]
+  print(xs)'
+[1]                                  # the reference prints [(1, 2)] — at exit 0, refused false
+$ gustyc --eval 'def inner():
+      return [1, 2]
+
+  def f():
+      return inner()
+
+  print([f(), 7])'
+[[[[[[[[…                            # the same object, printing itself until the process died
+```
+
+**ADR 0457**'s element door could have taken both. It does not, and the decline is the row: a slot tag is a
+build-time claim about what the object's slots hold, and **ADR 0232** allows the claim only about what the door can
+read. A tuple's immutability bit is **ADR 0361**'s `@estr[h]` flag inside the object, so a slot that copies the
+handle and writes `TagTuple` beside it is a tag the outer list's printer cannot honour — measured, `print([t()])`
+answered `[1]`. A forwarding body has no contents at the place the tag is read from: `containerAnswerContentsTaggable`
+asks the callee's `return` ARMS, and `return inner()` spells none of them, so following the forward ("ask the same
+door again") produced a slot pointing back at the list being built. Both refusals carry the door's own sentence and
+both are pinned in tables that fail when the shape starts compiling — the file's way of making a limitation
+self-announcing rather than permanent.
+
+The way to pay it is named in the row: read the object's own bracket bit at the printer for the tuple, and follow a
+forward to the callee's callee for the contents question. Both are bigger than a gate arm, which is why they are
+rows and not this cycle.
+
+<a id="gap-r-534"></a>
+### Gap R.534 — the COUNT door does not perform a literal element's effects (⏳ OPEN, filed by **ADR 0457**)
+
+```
+$ python3 -c 'def probe():
+      print("built")
+      return [1]
+  print(len([probe()]))'
+built
+1
+$ gustyc --eval '…the same program…'
+1                                    # the callee's print never ran
+```
+
+**ADR 0337**'s count fold lowers `len` of a literal without building the object — which was sound the day a literal's
+element could only be a literal, and stopped being sound the day an element could be a call. The shape is older than
+**ADR 0457** (measured on the parent commit's binary, where the same program printed `1` because the element refused
+outright — so the fold skipped the effect then too, and the row was invisible behind the refusal). A second arm pins
+the same fold dropping a raise written after a local binding, which proves the fold's permission is "the element is
+pure" and nothing in it asks whether the element can run at all. Pinned as today's bytes beside the reference's, with
+the fast path kept: `len([1, 2, 3])` must still emit no builder, and a row fails if it grows one.
+
+<a id="gap-r-535"></a>
+### Gap R.535 — a `def` nested inside a `def` that answers a container still emits `ret i32 @.lst1` (⏳ OPEN, filed by **ADR 0457**)
+
+```
+$ gustyc --eval 'def h():
+      def f():
+          return [1, 2]
+      print([1, 2] in [f()])
+  h()'
+llc-20: error: …/jit.ll:4203:11: global variable reference must have pointer type
+  ret i32 @.lst1                       # exit 2 — main.go's own compiler-bug exit class
+```
+
+The defect is **ADR 0333**'s, not **ADR 0457**'s: the scan and the materialising `return` are written for the
+program's top-level `def`s, and a nested body's `ret` still carries the literal's global. Measured against the parent
+commit's binary with the same body and a `len` element, where `llc` refused it the same way — which is what makes it
+a row rather than a regression of the cycle that found it. **ADR 0166** counts this as the compiler's own bug, so the
+fix is to run the scan into nested scopes and materialise a nested body the same way, not to have the element door
+pretend nested callees do not exist. Until then the shape is pinned by the `llc` sentence it dies on.
+
+<a id="gap-r-536"></a>
+### Gap R.536 — an applied `lambda`'s container answer cannot be stored in a literal's slot (⏳ OPEN, filed by **ADR 0457**)
+
+```
+$ gustyc --eval 'print((lambda: [(lambda: [3, 4])(), 1])())'
+[[[[[[[[[[…                            # then signal 11; the reference prints [[3, 4], 1]
+```
+
+A hoisted lambda is a `def` the backend minted: `appliedLambdaDeclaration` stamps it with **ADR 0345**'s anonymous
+display name in `CloneOf`, and the hoisted-lambda machinery (the **ADR 0455**/**ADR 0456** family) answers its
+container-valued CALL at the call site. When the element door took any name the scan could read, the literal stored
+the same handle a second road was answering, and the object's slot ended up pointing at the object being built. The
+door now asks `lookupFuncDef(name)` and accepts only a declaration the source wrote (`CloneOf == ""`), so a hoisted
+lambda keeps the lambda road's own refusal — the same rule **ADR 0455** learned from the other side: hoisting is one
+pass and cannot be half-adopted. Paying this row means one road per answer: either the hoist hands its answer to the
+slot, or the element door builds its own object from the lambda body's arms.

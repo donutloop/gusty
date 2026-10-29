@@ -188,16 +188,13 @@ func lambdaAnswerCatchable() []struct{ name, src, want string } {
 // answer. A row moves out of this table — into the answered one — the day its owner row closes.
 func lambdaAnswerFiledNotFixed() []struct{ name, src, defTwin, gap string } {
 	return []struct{ name, src, defTwin, gap string }{
-		{
-			// Gap R.67: a slot of a container literal filled by a call that answers a container is a value
-			// the answer table cannot describe, and the literal road says so. The `def` twin — a `return`
-			// whose literal holds a call to another container-returning function — is refused by the same
-			// sentence, which is the parity this row claims and the reason the refusal is not this row's.
-			"a call's container as a slot of a literal is refused by the literal road (Gap R.67's, not this row's)",
-			"print((lambda: [(lambda: [3, 4])(), 1])())\n",
-			"def h():\n    return [3, 4]\n\ndef g():\n    return [h(), 1]\n\nprint(g())\n",
-			"Gap R.67",
-		},
+		// The row this table used to carry — “a call's container as a slot of a literal is refused by the
+		// literal road (Gap R.67's, not this row's)” — is DELETED, as its own wording requires. Its `def` twin
+		// (`def h(): return [3, 4]` / `def g(): return [h(), 1]` / `print(g())`) answers `[[3, 4], 1]` now, the
+		// reference's byte, pinned in `containerAnswerPrograms` with **ADR 0457** (roadmap **Gap R.530**); its
+		// lambda half still refuses, and is pinned as a refusal in `lambdaAnswerRefusals` — the hoisted-lambda
+		// machinery owns that handle, and a slot storing what another road is answering points back at the
+		// object being built (**ROAD-R.536**).
 		// The void handed to a FORWARDING parameter — `def f(v): return v` called with `(lambda: None)()` and
 		// with a hoisted `def a1(): return None` — prints `None` on both spellings now, which is the reference's
 		// byte, so the row left this table for the answering table of `forwarded_answer_test.go` with **ADR 0445**

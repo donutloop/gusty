@@ -1041,6 +1041,14 @@ func (g *irGen) nestedContainerElem(e Expr) bool {
 		// (**ADR 0188**, **ADR 0192**), which is the road this gate lets the builder take (roadmap
 		// **Gap R.488**, **Gap R.487**).
 		return g.compIsContainerSlotExpr(n)
+	case *Call:
+		// The answer of a call the scan proves a container IS the container: the word the callee's `ret`
+		// carries is the handle its builders made, and `containerOperand`'s `*Call` arm (**ADR 0333**) is the
+		// road this gate lets the builder take. The gate had no such arm, so `heapElemKind` fell past the
+		// container road to the ordinary value road, which for a literal hands back the name of a
+		// compile-time GLOBAL — and the global emitter is the door that refused, in a sentence about an
+		// element kind the program had already proven (roadmap **Gap R.530**, **ADR 0457**).
+		return g.containerAnswerIsContainerSlotExpr(n)
 	case *Name:
 		return g.listVars[n.Value] || g.mixedLists[n.Value] || g.runtimeDicts[n.Value] || g.runtimeSets[n.Value]
 	}
@@ -1182,6 +1190,12 @@ func (g *irGen) literalNeedsHeap(e Expr) bool {
 		if isStringExpr(x) || isContainerLiteral(x) || g.compIsContainerSlotExpr(x) {
 			return true
 		}
+		// The answer of a call the scan proves a container is a heap object too: the callee's builders made
+		// it, and the static int-array layout has no word for a handle beside the tag that says which of the
+		// four it is (roadmap **Gap R.530**, **ADR 0457**; the same arm **ADR 0192** grew for a comprehension).
+		if g.containerAnswerIsContainerSlotExpr(x) {
+			return true
+		}
 		if c, isCall := x.(*Call); isCall {
 			if _, isEmpty := g.emptyContainerCall(c); isEmpty {
 				return true
@@ -1236,6 +1250,11 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 		return g.floatSlotExpr(x) || g.noneSlotExpr(x) || isContainerLiteral(x) || g.boolSlotExpr(x) ||
 			g.instanceSlotExpr(x) || g.carriedCallIsPairElem(x) || g.emptyContainerSlotExpr(x) ||
 			g.loopItemIsContainer(x) || g.elementNameHoldsContainer(x) || g.compIsContainerSlotExpr(x) ||
+			// The answer of a container-answering call is a handle whose kind only the object can say: `[f()]`
+			// with `def f(): return [1, 2]` claimed one element kind, the folded global refused the handle, and
+			// the membership test below it died reporting an element kind the program had already proven
+			// (roadmap **Gap R.530**, **ADR 0457**; **ADR 0333**'s scan is the table this asks).
+			g.containerAnswerIsContainerSlotExpr(x) ||
 			// The answer of a hand-off call — `def g(v): return v` — wears its argument's kind, and when that
 			// kind is a float box, the void, a verdict or another container the payload means nothing on its
 			// own: `[g(None), 1]` printed `[0, 1]` because the object claimed one element kind and the number
@@ -1886,6 +1905,15 @@ func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 				return int32(TagList), true
 			}
 		}
+		// A call whose answer the scan proves a container carries the callee's kind, not the default: the
+		// payload is the handle the callee's builders made, and the tag is what routes it to the container
+		// printer, the content equality and the object's own membership scan instead of reading the
+		// allocator's slot as the integer it is not. `taggableNestedElem` asks the same predicate, so the
+		// label and the build cannot disagree about one element (roadmap **Gap R.530**, **ADR 0457**;
+		// **ADR 0189**'s nested-container rule, one spelling further out than the literal).
+		if t, okTag := g.containerAnswerSlotIsContainer(c); okTag {
+			return t, true
+		}
 	}
 	switch e.(type) {
 	case *FloatLit:
@@ -2316,6 +2344,14 @@ func (g *irGen) taggableNestedElem(e Expr) bool {
 		// is asked of the literal with those contents — one reading for the comprehension and the literal
 		// of the same shape (**ADR 0249**'s gate-and-door pair, roadmap **Gap R.487**/**Gap R.488**).
 		return g.compContentsTaggable(n)
+	case *Call:
+		// The object a call hands back has the slots the callee's `return` was built from, so the question is
+		// asked of those arms — one reading for the element and the answer it came from (**ADR 0249**'s
+		// gate-and-door pair again, roadmap **Gap R.530**, **ADR 0457**). A function the scan could not
+		// describe falls through to the empty-container question below, exactly as it did before this arm.
+		if g.containerAnswerIsContainerSlotExpr(n) {
+			return true
+		}
 	}
 	_, ok := g.emptyContainerCall(e)
 	return ok

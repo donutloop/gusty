@@ -42,6 +42,11 @@ func TestACallResultSubscriptAnswersThroughTheCLI(t *testing.T) {
 		"def mk():\n    return [{}]\n\nprint(mk()[0])",
 		"def mk():\n    return [{\"k\": 1}]\n\nprint(mk()[0][\"k\"])",
 		"def mk():\n    return [[3]]\n\nprint(mk()[0][0])",
+		// A literal whose ELEMENT is a container answer, subscripted twice: the element road builds the
+		// literal once (**ADR 0457**, roadmap **Gap R.530**), so the two reads walk the object the callee
+		// built. This is the CLI row `TestAPositionThatCannotReadACallResultSubscriptRefusesThroughTheCLI`
+		// used to pin as a refusal.
+		"def xs():\n    return [1]\n\nprint([[9], xs()][1][0])",
 		"def m():\n    return {1: 2}\n\nprint(m()[1])",
 		"def m():\n    return {\"a\": \"x\", \"b\": \"y\"}\n\nprint(m()[\"b\"])",
 		// A slice of an answer is the same read one door further out: the copy `rt_slice` builds carries the
@@ -146,13 +151,10 @@ func TestAPositionThatCannotReadACallResultSubscriptRefusesThroughTheCLI(t *test
 			mustSay:    "needle",
 			mustNotSay: "index requires an inline list/dict/set literal",
 		},
-		// An answer that is an element of a literal is Gap R.229's too; the refusal is that road's sentence,
-		// so the contract here is the exit class, the silence on stdout and the wording of the road asked.
-		{
-			name:    "an answer that is an element of a literal",
-			src:     "def xs():\n    return [1]\n\nprint([[9], xs()][1][0])",
-			mustSay: "index",
-		},
+		// "An answer that is an element of a literal" left this table with **ADR 0457** (roadmap
+		// **Gap R.530**): `print([[9], xs()][1][0])` builds the literal through the element road and answers
+		// `1`, the reference's byte, so it is pinned as an ANSWER in
+		// `TestTheBuiltContainerSubscriptAnswersThroughTheCLI` rather than deleted.
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

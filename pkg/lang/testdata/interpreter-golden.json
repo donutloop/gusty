@@ -1,5 +1,233 @@
 {
  "entries": {
+"class C:\n    def f(self):\n        return [1, 2]\n\nm = C()\nprint([m.f()])": {
+    "stdout": "[[1, 2]]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint([b(), 3])": {
+    "stdout": "[[1, 2], 3]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [1, 2]\n\nprint([b()])": {
+    "stdout": "[[1, 2]]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return {1, 2}\n\nprint([b(), 3])": {
+    "stdout": "[{1, 2}, 3]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return {1: 2}\n\nprint([b(), 3])": {
+    "stdout": "[{1: 2}, 3]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1]\nprint([[f()] for x in range(1)])\n": {
+    "stdout": "[[[1]]]\n",
+    "hasStdout": true
+   },
+
+"def h():\n    return [3, 4]\n\ndef g():\n    return [h(), 1]\n\nprint(g())": {
+    "stdout": "[[3, 4], 1]\n",
+    "hasStdout": true
+   },
+"def f():\n    return [1, 2]\n\ndef g():\n    return [1, 2]\n\nprint([f(), g()] == [[1, 2], [1, 2]])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\ndef h():\n    print([f()])\n\nh()\n": {
+    "stdout": "[[1, 2]]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nfor v in [f()]:\n    print(v)\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nif [1, 2] in [f()]:\n    print(\"yes\")\n\nelse:\n    print(\"no\")\n": {
+    "stdout": "yes\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint(1 in [f()])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint(1 not in [f()])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint(7 in [f(), 7])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint([1, 2] in [[f()] for x in range(1)])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint([1, 2] in [f()])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint([f(), \"a\"])\n": {
+    "stdout": "[[1, 2], 'a']\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint([f(), 7])\n": {
+    "stdout": "[[1, 2], 7]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint([f()] == [[1, 2]])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint([f()] == [[1, 3]])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint([f()] in [[f()] for x in range(1)])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint([f()])\n": {
+    "stdout": "[[1, 2]]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint([f()][0])\n": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint(f\"{[f()]}\")\n": {
+    "stdout": "[[1, 2]]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint(f() in [f()])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint(len([f()]))\n": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint(repr([f()]))\n": {
+    "stdout": "[[1, 2]]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nprint(str([f()]))\n": {
+    "stdout": "[[1, 2]]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, 2]\n\nxs = [f()]\nprint(xs)\n": {
+    "stdout": "[[1, 2]]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, [2]]\n\nprint([1, [2]] in [f()])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [1, [2]]\n\nprint([f()])\n": {
+    "stdout": "[[1, [2]]]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return [{\"k\": [1]}]\n\nprint([f()])\n": {
+    "stdout": "[[{'k': [1]}]]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return list()\n\nxs = [f()]\nprint(xs)\nprint(len(xs))\n": {
+    "stdout": "[[]]\n1\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return set()\n\nprint([f()])\n": {
+    "stdout": "[set()]\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return set()\n\nprint(set() in [f()])\nprint(1 in [f()])\n": {
+    "stdout": "True\nFalse\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return {}\n\nprint([f()])\n": {
+    "stdout": "[{}]\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return {\"a\": 1}\n\nprint(\"a\" in [g()])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return {\"a\": 1}\n\nprint(1 in [g()])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return {\"a\": 1}\n\nprint([g()])\n": {
+    "stdout": "[{'a': 1}]\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return {\"a\": 1}\n\nprint({\"a\": 1} in [g()])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return {}\n\nprint([g()])\n": {
+    "stdout": "[{}]\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\n\nprint(1 in [probe()])\n": {
+    "stdout": "built\nFalse\n",
+    "hasStdout": true
+   },
+
+"def probe():\n    print(\"built\")\n\n    return [1]\n\nprint([probe()])\n": {
+    "stdout": "built\n[[1]]\n",
+    "hasStdout": true
+   },
+
+"def s():\n    return {1, 2}\n\nprint(1 in [s()])\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def s():\n    return {1, 2}\n\nprint([s()])\n": {
+    "stdout": "[{1, 2}]\n",
+    "hasStdout": true
+   },
+
+"def s():\n    return {1, 2}\n\nprint({1, 2} in [s()])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
 "# A dict read whose KEY arrived through a binding asks the object with the kind that binding wrote.\n# The builder stores the void's entry as (0, TagNone) and the number 0's as (0, TagInt), so a key\n# that arrives as an untagged word reads the wrong entry — or none at all, which is what this row\n# was filed against (roadmap Gap R.286, ADR 0420). Every line below is what CPython 3.12 printed\n# for this very file, one for one.\nd = {None: 3.5}\nkn = None\nkz = 0\nprint(d[None])\nprint(d[kn])\nprint(d[kn] + 1)\ns = {None: \"a\", 0: \"zero\"}\nprint(s[kn] + \"b\")\nprint(s[kn] * 2)\nprint(s[kn].upper())\nprint(len(s[kn]))\nab = {None: \"ab\"}\nfor ch in ab[kn]:\n    print(ch)\nprint(1 in [d[kn], 2])\ntwo = {None: 1, 0: 2}\nprint(len(two), two[kn], two[kz])\nflag = True\nt = {True: \"one\"}\nprint(t[flag], t[True])\nn = {1: \"one\"}\nprint(n[flag], n[True], n[1])\nprint({None: \"x\", True: 2})\n# A key that names no entry raises, and the record lets the traceback NAME the void and the text.\nz = {0: \"zero\"}\ntry:\n    print(z[kn])\nexcept KeyError as err:\n    print(\"no entry under the void:\", err)\nw = {\"a\": 1}\nmissing = \"zz\"\ntry:\n    print(w[missing])\nexcept KeyError as err:\n    print(\"no entry under the bound text:\", err)\n# The void in a name is still the void on every road that asks the name.\nprint(kn, bool(kn), kn == None, kn is None)\nprint(d[kn] == 3.5, s[kn] == \"a\")\n": {
     "stdout": "3.5\n3.5\n4.5\nab\naa\nA\n1\na\nb\nFalse\n2 1 2\none one\none one one\n{None: 'x', True: 2}\nno entry under the void: None\nno entry under the bound text: 'zz'\nNone False True True\nTrue True\n",
     "hasStdout": true

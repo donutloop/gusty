@@ -53,6 +53,15 @@ func membershipLiteralRowsCLI() []string {
 		"x = 5\nif 1 in [x]:\n    print(\"yes\")\n\nelse:\n    print(\"no\")\n",
 		"n = 0\nwhile n in [0, 1]:\n    print(n)\n    n = n + 1\n",
 		"x = 5\nfor v in [x]:\n    print(v)\n",
+		// An ELEMENT WHOSE ANSWER IS A CONTAINER: `[f()]` with `def f(): return [1, 2]` — the shape **Gap R.530**
+		// was filed with, refused by the folded global in a sentence about an element kind the program had
+		// already proven while `print(len([f()]))` beside it compiled (**ADR 0457**).
+		"def f():\n    return [1, 2]\n\nprint([1, 2] in [f()])\nprint(1 in [f()])\nprint(f() in [f()])\n",
+		"def g():\n    return {\"a\": 1}\n\nprint({\"a\": 1} in [g()])\nprint(\"a\" in [g()])\n",
+		"def s():\n    return {1, 2}\n\nprint({1, 2} in [s()])\nprint(1 in [s()])\n",
+		"def f():\n    return [1, 2]\n\nprint(7 in [f(), 7])\nprint([f(), 7])\n",
+		"def f():\n    return [1, 2]\n\nfor v in [f()]:\n    print(v)\n",
+		"def f():\n    return [1, 2]\n\nprint(len([f()]))\nprint(str([f()]))\nprint(repr([f()]))\n",
 		// The haystack's elements are evaluated: a print inside one is the program's, not the door's.
 		"def probe():\n    print(\"needle\")\n\n    return 5\n\nprint(5 in [probe()])\n",
 	}
@@ -194,7 +203,9 @@ func TestWhatTheLiteralHaystackDoorStillRefusesAtTheCLI(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	rows := []struct{ name, src, contains, owner string }{
-		{"an element whose answer is a container", "def f():\n    return [1, 2]\n\nprint([1, 2] in [f()])\n", "list literal elements must be integers", "Gap R.530"},
+		// A container answer whose kind the slot cannot wear: the object carries the tuple bit, and the outer
+		// list's printer has no road that reads it through the slot (**ADR 0361**'s bit, one handle too deep).
+		{"a tuple answer as an element", "def t():\n    return (1, 2)\n\nprint([t()])\n", "hands back a container", "Gap R.533"},
 		{"an element no door names an answer for", "import math\nprint(1 in [math.sqrt(4)])\n", "list literal elements must be integers", "Gap R.531"},
 		{"an element whose kind has no name at all", "print(1 in [lambda: 1])\n", "list literal elements must be integers", "Gap R.531"},
 	}

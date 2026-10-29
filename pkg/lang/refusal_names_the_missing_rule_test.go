@@ -94,9 +94,9 @@ func assertRefusalSentence(t *testing.T, src, wantSub, row string) string {
 // every one of them is `TypeError: unhashable type: '<inner>'` there, and a refusal here, and the only
 // question this row decides is whether the refusal says WHICH rule it is missing.
 var keyDoorRows = []struct {
-	name string
-	src  string
-	says string // the fragment of the sentence that names the hashing rule
+	name   string
+	src    string
+	says   string // the fragment of the sentence that names the hashing rule
 	quotes string
 }{
 	{
@@ -198,7 +198,9 @@ var elementDoorRows = []struct {
 }{
 	{"a slot read that is a list, in a comprehension", "d = {1: [2]}\nprint([[d[1]] for k in d])\n"},
 	{"a slot read beside a number", "d = {1: [2]}\nprint([[d[1], 1] for k in d])\n"},
-	{"a call's answer, in a comprehension's element", "def f():\n    return [1]\nprint([[f()] for x in range(1)])\n"},
+	// A CALL's answer as a comprehension's element left this table with **ADR 0457** (roadmap **Gap R.530**):
+	// the whole-program scan knows the callee's answer, so the element road builds the object once and stores
+	// the handle beside the callee's kind. It is pinned as an answer below.
 	{"a dict slot read, in a comprehension's element", "d = {\"k\": [1, \"a\"]}\nprint([[d[\"k\"]] for x in range(1)])\n"},
 }
 
@@ -237,6 +239,9 @@ func TestTheContainerDoorsStillSayWhatTheyAnsweredBefore(t *testing.T) {
 		{"a dict in a list prints", "print([{\"a\": 1}, 2])\n", "[{'a': 1}, 2]\n"},
 		{"a dict whose value is a mixed list prints", "print([[{\"a\": [1]}], 1])\n", "[[{'a': [1]}], 1]\n"},
 		{"a comprehension over a literal of containers", "xs = [[1, 2], [3]]\nprint([y for y in xs])\n", "[[1, 2], [3]]\n"},
+		// The shape **ADR 0457** took off the element door's list: the element is a call, the call answers a
+		// container, and the comprehension's element builds the object once (roadmap **Gap R.530**).
+		{"a call's answer, in a comprehension's element", "def f():\n    return [1]\nprint([[f()] for x in range(1)])\n", "[[[1]]]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

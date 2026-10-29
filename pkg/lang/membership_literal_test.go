@@ -71,6 +71,20 @@ func membershipLiteralHaystackRows() []struct{ name, src, want string } {
 		// A CONTAINER element, and a needle that is one.
 		{"a container element, asked by name", "x = [1]\nprint(x in [x])\n", "True\n"},
 		{"a nested literal", "print([1] in [[1], [2]])\n", "True\n"},
+		// An ELEMENT WHOSE ANSWER IS A CONTAINER: the callee built the object, and the slot stores the handle
+		// the callee's builders made with the callee's kind beside it (**ADR 0457**, roadmap **Gap R.530**).
+		{"a container answer, asked as a container", "def f():\n    return [1, 2]\n\nprint([1, 2] in [f()])\n", "True\n"},
+		{"a container answer, absent", "def f():\n    return [1, 2]\n\nprint(1 in [f()])\n", "False\n"},
+		{"a dict answer, the number absent", "def g():\n    return {\"a\": 1}\n\nprint(1 in [g()])\n", "False\n"},
+		{"a dict answer, the text absent — the LIST holds a dict, not a key", "def g():\n    return {\"a\": 1}\n\nprint(\"a\" in [g()])\n", "False\n"},
+		{"a dict answer, asked by content", "def g():\n    return {\"a\": 1}\n\nprint({\"a\": 1} in [g()])\n", "True\n"},
+		{"a set answer asked of its members", "def s():\n    return {1, 2}\n\nprint(1 in [s()])\n", "False\n"},
+		{"a set answer, asked by content", "def s():\n    return {1, 2}\n\nprint({1, 2} in [s()])\n", "True\n"},
+		{"an answer that nests", "def f():\n    return [1, [2]]\n\nprint([1, [2]] in [f()])\n", "True\n"},
+		{"the answer is a member of its own literal", "def f():\n    return [1, 2]\n\nprint(f() in [f()])\n", "True\n"},
+		{"a container answer beside a number", "def f():\n    return [1, 2]\n\nprint(7 in [f(), 7])\n", "True\n"},
+		{"a container answer built by a comprehension", "def f():\n    return [1, 2]\n\nprint([f()] in [[f()] for x in range(1)])\n", "True\n"},
+		{"the haystack one level above the answer", "def f():\n    return [1, 2]\n\nprint([1, 2] in [[f()] for x in range(1)])\n", "False\n"},
 		// The positions a membership test stands in, each lowering through a different road.
 		{"inside a body, the body's own name", "def g():\n    x = 5\n    print(1 in [x])\n\ng()\n", "False\n"},
 		{"a module name read from a body", "x = 5\ndef g():\n    print(5 in [x])\n\ng()\n", "True\n"},
@@ -208,12 +222,15 @@ func TestWhatTheLiteralHaystackDoorStillDeclines(t *testing.T) {
 	t.Parallel()
 	rows := []struct{ name, src, contains, owner string }{
 		{
-			// The element's answer IS a container: the builder has no word for an object inside the folded
-			// global, and the door that knows the callee's answer is a container is the container-answer road.
-			"an element whose answer is a container",
-			"def f():\n    return [1, 2]\n\nprint([1, 2] in [f()])\n",
-			"list literal elements must be integers",
-			"Gap R.530",
+			// A tuple answer in a slot: the object the callee built carries the tuple bit in its own
+			// `@estr[h]` word (**ADR 0361**) and the OUTER list's printer has no road that reads that bit
+			// through the slot, so the element door declines the shape rather than label a handle with a tag
+			// nothing honours — `xs = [t()]` printed `[1]` for `[(1, 2)]` when it was tried (roadmap
+			// **Gap R.533**; **ADR 0457**'s declined arm).
+			"a tuple answer as an element",
+			"def t():\n    return (1, 2)\n\nprint([t()])\n",
+			"hands back a container",
+			"Gap R.533",
 		},
 		{
 			// An attribute call: no door names an answer for it, so the element's kind is `any` and the

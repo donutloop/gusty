@@ -1885,9 +1885,37 @@ consequences are worth stating to a reader, because both are claims about other 
   `rt_payload_eq` (**ADR 0233**) is asked the pair: `print(None in [0])` is `False`, `print(1.0 in [1])` is `True`,
   `print([1] in [1, 2])` is `False`, `print(True in [1])` is `True` and `print(True in [0])` is `False`.
 * A needle the door cannot name a kind for, or an element no builder covers, **declines** — and declines into the
-  refusal that already names its owner, not into a new one. What still refuses is a literal element whose answer IS
-  a container (`[f()]` where `f` returns a list — **Gap R.530**) and an element whose kind no table records
-  (`math.sqrt(4)`, `lambda: 1` — **Gap R.531**), each pinned with its own message.
+  refusal that already names its owner, not into a new one. What still refuses is a literal element whose answer is
+  a TUPLE or a forwarded call (`[t()]` where `t` returns `(1, 2)`, `[f()]` where `f` only returns `inner()` —
+  **Gap R.533**), an applied `lambda`'s answer (`[1, (lambda: [1, 2])()]` — **Gap R.536**), and an element whose kind
+  no table records (`math.sqrt(4)`, `lambda: 1` — **Gap R.531**), each pinned with its own message.
+
+**A literal element that ANSWERS with a container is built by the door that builds it too** (**ADR 0457**, paying
+**Gap R.530**). The element one spelling further in — a call whose `return` hands back a list, set or dict — was the
+last place a literal was decided five ways at once, so the tag, the build and the folded-global decision disagreed:
+
+```python
+def f():
+    return [1, 2]
+
+print([f()])                  # [[1, 2]]     was: `list literal elements must be integers, not list[int]`
+print([f(), 3])               # [[1, 2], 3]
+print([1, 2] in [f()])        # True         was: the same refusal
+print(1 in [f()])             # False
+print([f()] == [[1, 2]])      # True
+class C:
+    def f(self):
+        return [1, 2]
+
+m = C()
+print([m.f()])                # [[1, 2]]     a method's answer too
+```
+
+The word the slot carries is the handle the CALLEE's builders made (**ADR 0333**'s return, unmodified) and the tag is
+the callee's one answer kind — never a literal's, never a default. The five deciding doors (`literalNeedsHeap`,
+`literalNeedsTags`, `nestedContainerElem`, `elemKindTag`, `taggableNestedElem`) ask that question of one predicate,
+which first asks whether the callee's arguments are carriable and whether the returned contents are describable; a
+shape it cannot describe is refused with a named owner rather than labelled (**ADR 0166**, **ADR 0232**).
 
 > **Subscripting a set asks the set a membership question, and that is a gusty extension, not Python.**
 > `{1, 2, 3}[2]` asks the set whether `2` is one of its members and answers `2`; asking for a member it

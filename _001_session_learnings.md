@@ -17283,3 +17283,57 @@ renumber its ADR (to **0457**) before committing, and must record `integration/p
 eval artifact before this cycle's Gap R.532 guard (`TestEveryAssertedCorpusProgramIsOnTheRecord`) is asked to
 bless a corpus that grew. Stashes are how this repo already parks other unfinished work (`stash@{2}` is
 labelled "PARKED UNVERIFIED") — read `git stash list` before ever typing `git stash drop`.
+## ADR 0457 — a container literal's ELEMENT that answers with a container asks the door that builds the answer, not the road that folds the literal (roadmap Gap R.530 closed; Gaps R.533, R.534, R.535, R.536 filed; 2026-11-02)
+
+**A gate and the door it gates are one question, and the way to find the missing arm is to ask which door BUILDS the
+thing the refusing door says cannot exist.** `print([1, 2] in [f()])` refused with `list literal elements must be
+integers, not list[int]` while `print(len([f()]))` — the same literal, one door away — had always compiled. That
+asymmetry was the whole diagnosis: five doors DECIDE a container literal (`literalNeedsHeap`, `literalNeedsTags`,
+`nestedContainerElem`, `elemKindTag`, `taggableNestedElem`) and a sixth BUILDS it, and the builder had been asking
+`containerAnswerOf` per element since **ADR 0333** while none of the deciders had. Asked narrowly they said "no
+container here", the literal went to the folded int-array global, and the global emitter raised a sentence about an
+element kind the program had already proven. The fix was one predicate shared by all six sites, not a new capability
+— the same shape **ADR 0438** is for a name, rediscovered one construct out. Whenever a construct is legal at one
+door and a build failure at another, do not "implement the feature": find the door that already agrees (**ADR 0232**).
+
+**Widening the LABEL without widening the GATE is a wrong answer, not a partial fix.** My first edit gave
+`elemKindTag` the `*Call` arm; the gates still said "no tags needed", so the literal took the folded global, the
+global emitter refused the element, and the only thing that changed was which door said no. The reverse is worse:
+open the gates and leave `elemKindTag` alone and the tagged path stores a heap handle with the default `int` tag, and
+`print([f()])` answers the allocator's slot number at exit 0. The gate test that catches both is not a program test —
+it asks the five predicates directly off a scan built from the parsed program (`containerAnswerScan` + `fds`) and
+fails if any two disagree about one element, which is the only way a widening can be caught before it becomes a
+number in a print.
+
+**Three shapes were implemented, measured against the reference, and pulled back by name — and the measurement is the
+deliverable.** A tuple answer became a slot tagged `tuple` and printed `[1]` for the reference's `[(1, 2)]` (the
+bracket bit is **ADR 0361**'s, inside the object, and the outer printer has no road through a slot to it). A forwarded
+`return inner()` — where the first draft asked "is the forwarded call's answer taggable" — built a list whose slot 0
+pointed at the list itself and printed `[` until the process died. An applied `lambda`'s answer segfaulted the same
+way, because the hoisted-lambda machinery is already answering that call at the site and a second road storing the same
+word builds an object that contains itself. Every one of those was reachable by "just take the answer the scan proves",
+which is the obvious implementation; **ADR 0166** is the reason the answer is a refusal with a named owner (Gaps R.533,
+R.536) and a pin that fails the day the shape compiles, not a door left half open.
+
+**The cheap case is what a widening quietly eats, so make it a count.** `x in [1, 2, 3]` must still emit no
+`@rt_alloc(`, no `@rt_set_elem(`, no `@rt_tag_elem(` and no `@rt_contains`; a row fails if `@main` grows a builder for
+a literal the fold serves, and another asserts that `[f()]` printed and `[f()]` asked for membership emit the SAME
+builder counts and ask the tagged scan exactly once. Both are counts in the emitted module rather than assertions
+about my reading of the code — **ADR 0456**'s lesson applied on the first day it was available.
+
+**Re-measure a suspicious failure against the parent commit's binary before you confess it.** `def h(): def f(): …`
+dying in `llc` with `ret i32 @.lst1` looked like my new door shipping a broken path; running the same body against the
+base binary (built from `HEAD` before the first edit, kept at `/tmp/gustyc-base`) reproduced it verbatim, so it became
+**Gap R.535** — filed, not fixed, and pinned by the `llc` sentence it dies on. Same for the count fold swallowing an
+element's `print` (**Gap R.534**). A "did I break it?" that skips the parent commit turns other rows' defects into this
+cycle's changelog.
+
+**Process, and it is this repo's process problem, not this cycle's: a second agent was looping in the same worktree
+while I worked.** `node ./pi-loop.mjs <repo> --force-reset` committed the sweep I had in progress as **ADR 0456**,
+then `git reset`/clean swept away untracked files that my work depended on — including files I had read the contents of
+minutes earlier, which is how a cycle ends up writing tests against helper names that do not exist. Two rules came out
+of it: (1) back the cycle up out-of-tree (`git diff > /tmp/…patch` plus copies of the new files) before starting the
+docs phase, and (2) when a test fails in a way that contradicts what I measured, re-measure through the *entry point
+that the test uses* — `Compile`/`JIT`, not `gustyc --eval` — because `--eval` reported refusals for shapes the test
+harness had compiling, and believing the CLI over the harness cost a detour. The general form: a claim measured
+through a different door than the one that will judge it is not a measurement.

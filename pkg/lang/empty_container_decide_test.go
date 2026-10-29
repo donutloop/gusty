@@ -48,6 +48,14 @@ func emptyContainerDecidePrograms() []struct{ name, src, want string } {
 		{"concatenating_on_the_left", "print([1] + list())\n", "[1]\n"},
 		{"repeating_an_empty_list", "print(list() * 2)\n", "[]\n"},
 		{"an_empty_call_printed_after_a_sort", "print(sorted(list()))\n", "[]\n"},
+		// The element door asking the container-answer scan: `f` hands back the object the callee's builders
+		// made, and the slot stores that handle beside the callee's kind (**ADR 0457**, roadmap **Gap R.530**).
+		// This row was pinned as **Gap R.67**'s refusal until the door that DECIDES a literal's element grew
+		// the arm the door that BUILDS it has had since ADR 0333.
+		{"a_container_answering_call_as_an_element", "def f():\n    return set()\n\nprint([f()])\n", "[set()]\n"},
+		{"a_container_answering_call_asked_for_membership", "def f():\n    return set()\n\nprint(set() in [f()])\nprint(1 in [f()])\n", "True\nFalse\n"},
+		{"a_container_answering_call_bound", "def f():\n    return list()\n\nxs = [f()]\nprint(xs)\nprint(len(xs))\n", "[[]]\n1\n"},
+		{"a_dict_answering_call_as_an_element", "def g():\n    return {}\n\nprint([g()])\n", "[{}]\n"},
 	}
 }
 
@@ -257,7 +265,6 @@ func TestWhatTheDecidingDoorsStillOweTheEmptyContainerCall(t *testing.T) {
 	for _, tc := range []struct{ name, src, want, row string }{
 		{"sum_of_an_empty_call", "print(sum(list()))\n", "sum requires an inline list/set/dict literal", "the same refusal `sum(xs)` gives a container VARIABLE — the fold door, not this row's"},
 		{"str_of_a_loop_variable_over_them", "print([str(x) for x in [set(), list()]])\n", "str(x) is refused", "Gap R.171"},
-		{"a_container_answering_call_as_an_element", "def f():\n    return set()\n\nprint([f()])\n", "hands back a container", "Gap R.67"},
 	} {
 		t.Run("refuse_"+tc.name, func(t *testing.T) {
 			t.Parallel()

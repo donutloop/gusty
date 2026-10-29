@@ -293,13 +293,10 @@ func TestWhatTheEmptyContainerCallStillCannotBeIsFiledNotFixed(t *testing.T) {
 			refuse: true,
 			row:    "Gap R.364",
 		},
-		{
-			name:   "a container-answering call as a list element",
-			src:    "def f():\n    return set()\n\nprint([f()])\n",
-			actual: "hands back a container",
-			refuse: true,
-			row:    "Gap R.67",
-		},
+		// The element that answered with a container left this table with **ADR 0457** (roadmap **Gap R.530**):
+		// the door that DECIDES a literal's element now asks the whole-program container-answer scan the question
+		// the door that BUILDS it has asked since ADR 0333, so `def f(): return set()` answers `[set()]` — pinned
+		// as an answer in `empty_container_decide_test.go`'s answered table, and on the record.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

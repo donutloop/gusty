@@ -33,6 +33,17 @@ var containerAnswerPrograms = []struct {
 }{
 	// The row's own three shapes — the Definition of Done, which asks for `[1, 2]`, `{1, 2}` and `{1: 2}`.
 	{"def build():\n    return [1, 2]\n\nprint(build())", "[1, 2]"},
+	// A container-answering call sitting in a LITERAL's slot — the shape **Gap R.67** refused for nineteen
+	// cycles and **ADR 0457** pays: the slot carries the handle the callee's builders made and the callee's
+	// one answer kind is the tag beside it (**ROAD-R.530**).
+	{"def b():\n    return [1, 2]\n\nprint([b(), 3])", "[[1, 2], 3]"},
+	{"def b():\n    return [1, 2]\n\nprint([b()])", "[[1, 2]]"},
+	{"def b():\n    return {1, 2}\n\nprint([b(), 3])", "[{1, 2}, 3]"},
+	{"def b():\n    return {1: 2}\n\nprint([b(), 3])", "[{1: 2}, 3]"},
+	{"class C:\n    def f(self):\n        return [1, 2]\n\nm = C()\nprint([m.f()])", "[[1, 2]]"},
+	// The `def` twin of the hoisted-lambda row that left `lambda_answer_test.go` for this cycle: a body whose
+	// literal holds a call to another container-returning function (**ADR 0457**, **ROAD-R.530**).
+	{"def h():\n    return [3, 4]\n\ndef g():\n    return [h(), 1]\n\nprint(g())", "[[3, 4], 1]"},
 	{"def build():\n    return {1, 2}\n\nprint(build())", "{1, 2}"},
 	{"def build():\n    return {1: 2}\n\nprint(build())", "{1: 2}"},
 	// The empty containers, which are the same object spelled two ways.
@@ -337,10 +348,24 @@ func TestAPositionWithoutAContainerRoadRefusesByName(t *testing.T) {
 		src     string
 		mention string
 	}{
-		{"a container literal's element", "def b():\n    return [1, 2]\n\nprint([b(), 3])", "b"},
+		{
+			// A tuple answer is still refused, and refused on purpose: the slot would wear the tag of the object
+			// it points at and the outer list's printer has no road that reads the tuple bit through it —
+			// **ADR 0361**'s bit lives in the object, not in the slot (**ROAD-R.533**).
+			"a tuple answer as a container literal's element",
+			"def t():\n    return (1, 2)\n\nprint([t()])", "t",
+		},
+		{
+			// A forwarding body hands on a handle with no contents spelled anywhere, so there is nothing for the
+			// slot's tag to have been read from (**ROAD-R.533**).
+			"a forwarded container answer as a container literal's element",
+			"def inner():\n    return [1, 2]\n\ndef f():\n    return inner()\n\nprint([f()])", "f",
+		},
 		// `print(b() + b())` left this table with ADR 0365: the sequence door takes two container ANSWERS and
 		// builds one object out of them, so it is pinned as an ANSWER — `[1, 2, 1, 2]` — beside the rest of
-		// the door in `sequence_ops_test.go`. A literal's element is still refused: Gap R.229 owns it.
+		// the door in `sequence_ops_test.go`. A literal's element is no longer one of those positions: it
+		// answers through the element road with **ADR 0457** (roadmap **Gap R.530**), and is pinned as an
+		// answer in `containerAnswerPrograms` above.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
