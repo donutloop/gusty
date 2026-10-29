@@ -1,0 +1,75 @@
+# Membership asked of a value that has no members raises — roadmap Gap R.521 (ADR 0452).
+#
+# `x in y` is a question about `y`. When the SOURCE says `y` is a number, a verdict or the void, there is no
+# answer to print: the reference ends the program with `argument of type 'int' is not iterable` (and the
+# `NoneType`, `float`, `bool` versions of the same sentence). The compiled backend used to fold the question
+# to `False` and exit 0 — while the runtime door one step away, `1 in xs[0]`, already raised the reference's
+# own words. The fold now raises through the same non-local road, so the four spellings below are catchable
+# by the program's own `except TypeError:`, the needle still runs first, and every haystack that DOES have
+# members keeps its answer.
+
+try:
+    print(1 in 5)
+except TypeError as e:
+    print(str(e))
+
+try:
+    print(1 in None)
+except TypeError as e:
+    print(str(e))
+
+try:
+    print("a" in 1.5)
+except TypeError as e:
+    print(str(e))
+
+try:
+    print(1 in True)
+except TypeError as e:
+    print(str(e))
+
+try:
+    print(1 not in 5)
+except TypeError as e:
+    print(str(e))
+
+# A chain link asks the same door, through the ordinary comparison road (ADR 0288).
+try:
+    print(1 == 1 in 5)
+except TypeError as e:
+    print(str(e))
+
+# The needle is evaluated first: an effect the reference performs is in the program.
+def probe():
+    print("needle ran")
+
+    return 1
+
+try:
+    print(probe() in 5)
+except TypeError:
+    print("caught after the needle ran")
+
+# What HAS members keeps its answer, at the exit code of success.
+print(1 in [1, 2])
+print(3 not in [1, 2])
+print("b" in "abc")
+print("z" in "abc")
+print(1 in {1, 2})
+print("k" in {"k": 1})
+xs = [10, 20]
+print(20 in xs)
+print(10 in (10, 20))
+nested = [[1], [2]]
+print([2] in nested)
+s = {None, 1}
+print(None in s)
+
+# The run-time door and the fold name the same sentence, because they read one table.
+slot = [1]
+try:
+    print(1 in slot[0])
+except TypeError as e:
+    print(str(e))
+
+print("done")

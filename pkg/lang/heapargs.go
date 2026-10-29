@@ -4800,22 +4800,18 @@ func (g *irGen) membershipOfBuiltSlotHaystack(b *strings.Builder, n *BinOp) (str
 	// A number, a verdict and None have no elements, keys, members or characters. The reference stops
 	// on each with a sentence naming the kind, and the program's `except TypeError:` reaches every one
 	// of them (ADR 0228).
-	for _, t := range []struct {
-		tg   int32
-		name string
-	}{
-		{int32(TagInt), "int"},
-		{int32(TagFloat), "float"},
-		{int32(TagBool), "bool"},
-		{int32(TagNone), "NoneType"},
-	} {
+	// A number, a verdict and None have no elements, keys, members or characters. The reference stops
+	// on each with a sentence naming the kind, and the program's `except TypeError:` reaches every one
+	// of them (ADR 0228). The list is `notIterableKinds` — the same table the compile-time fold over a
+	// spelled literal reads, so the tag question and the fold agree by construction (**Gap R.521**, **ADR 0452**).
+	for _, t := range notIterableKinds {
 		arm, chk := g.newLabel("in.bad"), g.newLabel("in.chk")
 		c := g.newTmp()
-		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, hayTag, t.tg)
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, hayTag, t.Tag)
 		g.markI1(c)
 		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, arm, chk)
 		fmt.Fprintf(b, "%s:\n", arm)
-		g.raiseTo(b, exnCode("TypeError"), "TypeError", notIterableSentence(t.name), sp)
+		g.raiseTo(b, exnCode("TypeError"), "TypeError", notIterableSentence(t.Name), sp)
 		fmt.Fprintf(b, "%s:\n", chk)
 	}
 	// What is left is a kind this language has no membership for — a tuple, a class or a function.

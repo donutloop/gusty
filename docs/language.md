@@ -1728,6 +1728,34 @@ follow the needle into a list haystack, where it would turn a working program in
 refuses, rather than answering, is a key whose kind is only a run-time fact: a name the compiler cannot
 pin to one container keeps its lookup honest by declining (L11.1's tagged word, `Gap R.212`).
 
+**Membership asked of a value that has no members raises** (ADR 0452, paying `Gap R.521`). The haystack's kind
+decides whether the question is legal at all, and where the SOURCE spells a kind that has no members, keys,
+elements or characters, the answer is not `False`:
+
+```python
+print(1 in 5)        # TypeError: argument of type 'int' is not iterable      (was False, at exit 0)
+print(1 in None)     # TypeError: argument of type 'NoneType' is not iterable (was False)
+print("a" in 1.5)    # TypeError: argument of type 'float' is not iterable    (was False)
+print(1 in True)     # TypeError: argument of type 'bool' is not iterable     (was False)
+print(1 not in 5)    # the same raise — `not in` asks the same question
+print(1 == 1 in 5)   # the same raise, reached as one link of a comparison chain (ADR 0288)
+```
+
+This is the raise the run-time door already gave for the same value one step away — `xs = [1]` /
+`print(1 in xs[0])` has raised the reference's own sentence all along — so the fold over a literal and the
+question asked of a tag read **one table** (`notIterableKinds`) and write **one sentence**
+(`notIterableSentence`, **ADR 0271**'s one-trap-one-wording: the membership sentence names the type where the
+loop's names the object, and the two are not variations of one another). It is a raise, not a refusal: the
+program's `except TypeError:` reaches it and the program keeps running, and the needle is evaluated FIRST, so
+`print(probe() in 5)` prints what `probe` prints and then raises, which is the order the reference uses. Every
+haystack that DOES have members keeps its answer — a list, a tuple, a set, a dict's keys, a text's characters, a
+container element.
+
+What the fold does not reach is a haystack whose kind the source does not spell: a name (`x = 5` /
+`print(1 in x)`) and a call's answer (`print(1 in f())`) still answer `False`, because the compiler's kind maps
+are not a promise the value carries. That residue is `Gap R.522` and **L11.1**'s tagged value word, not this
+door's.
+
 > **Subscripting a set asks the set a membership question, and that is a gusty extension, not Python.**
 > `{1, 2, 3}[2]` asks the set whether `2` is one of its members and answers `2`; asking for a member it
 > does not have is `KeyError: not in set`. CPython rejects the shape outright with

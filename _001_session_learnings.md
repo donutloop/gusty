@@ -16934,3 +16934,48 @@ the reference with the compiled leg cross-checked, and each then *required* by t
 `AGENTS.md` and `roadmap.md` all quote the corpus size and all get recomputed by
 `golden_artifact_counts_test.go`, and the snapshot row caught me quoting 263 matrix rows after the artifact said
 264 — the counters are the artifact's, and the suite reads them out of the files.
+
+## ADR 0452 — membership asked of a value with no members RAISES (roadmap Gap R.521 closed, Gap R.522 filed; 2026-10-30)
+
+**A fold is allowed to substitute a verdict only when the verdict is the answer.** `print(1 in 5)` printed `False`
+at exit 0 where CPython ends the program with `argument of type 'int' is not iterable` — and `print(1 in None)`,
+`print("a" in 1.5)`, `print(1 in True)`, `print(1 not in 5)` (which printed `True`) and the chain link
+`print(1 == 1 in 5)` did the same. The emitter had lowered the question into
+`call i32 @rt_contains(i32 5, i32 1)`, and the runtime's untagged scan answered "not present" for a value that has
+no presence to check. **ADR 0266** and **ADR 0329** are the house's rule for exactly this shape, and I reached for
+them by name before writing the gate: when the compiler has the kind in hand and the kind makes the operator
+impossible, the answer is the raise.
+
+**The embarrassing half is that the door already exists.** `xs = [1]` / `print(1 in xs[0])` has raised the
+reference's exact sentence all along, because there the value arrives with a tag beside its payload and the object
+is asked. Two spellings of one question, one right answer and one wrong, is the cheapest possible evidence that the
+defect is in a WITNESS and not in a semantic: the missing witness was the tag. Which is also why this row stopped at
+spelled literals and filed **Gap R.522** — deciding `x = 5` / `print(1 in x)` from the compiler's kind maps would
+replace a wrong answer with a guess about a value that another statement may have rebound.
+
+**When two roads walk the same set of values, one of them must own the list.** The four no-member kinds were an
+inline `[]struct{tg int32; name string}` inside the tagged membership road. The fold needed the same four, and my
+first draft spelled them again in the new file. The fix was to hoist them to `notIterableKinds` and make the
+runtime loop iterate it, so the tag walk and the literal fold cannot disagree about which values have no members —
+**ADR 0232**'s one-question rule applied to a SET rather than to a word, and the same instinct `abs_kind_test.go`
+polices for the print, negation and index doors. The sentence came from the existing door too (`notIterableSentence`),
+with a row that fails if the membership road ever speaks the loop's `'int' object is not iterable` (**ADR 0271**).
+
+**Where a raise goes in the block decides whether an effect survives.** The gate had to sit *after* both operands
+were lowered: `print(probe() in 5)` has to print `needle` and then raise, because the reference evaluates the needle
+before it asks the haystack what it is. Emitting the raise earlier would have dropped an effect the program performed
+— **Gap R.520**'s bug one operator over, arrived at from the opposite direction. Two rows now pin the order: the
+stdout count of `needle`, and the exit code.
+
+**Replacing a runtime question looks like answering beside it, so assert the IR.** `print(1 in 5)`'s `@main` carries
+no `@rt_contains` at all today, which is a different module from one that raises after asking. The IR row is the only
+thing that tells those apart; the stdout bytes are identical. Same lesson as **ADR 0451**'s conjunction row: when the
+claim is about *how* the answer is produced, the module is the only witness that can sign it.
+
+**A raise, not a refusal — and say which one you shipped.** `except TypeError:` reaching the new raise is a separate
+test family from the raise itself, including a loop that catches it twice and keeps running, because a front-end
+refusal (`lower.unsupported.membership-scalar`) would have been the tempting wrong fix: it makes the same stdout
+disappear, and it stops a program the reference runs to completion at exit 0 (**ADR 0166**'s ladder, and the exact
+distinction **ADR 0450** drew for the checker's warning). 20 sources went to the record from the reference with the
+compiled leg cross-checked (**10296 → 10317**), the corpus gained its 279th program as a `match` row, and the
+snapshot guard caught my hand-written matrix count again — the counters are the artifacts', and the suite reads them.

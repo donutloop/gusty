@@ -1,5 +1,114 @@
 {
  "entries": {
+"# Membership asked of a value that has no members raises — roadmap Gap R.521 (ADR 0452).\n#\n# `x in y` is a question about `y`. When the SOURCE says `y` is a number, a verdict or the void, there is no\n# answer to print: the reference ends the program with `argument of type 'int' is not iterable` (and the\n# `NoneType`, `float`, `bool` versions of the same sentence). The compiled backend used to fold the question\n# to `False` and exit 0 — while the runtime door one step away, `1 in xs[0]`, already raised the reference's\n# own words. The fold now raises through the same non-local road, so the four spellings below are catchable\n# by the program's own `except TypeError:`, the needle still runs first, and every haystack that DOES have\n# members keeps its answer.\n\ntry:\n    print(1 in 5)\nexcept TypeError as e:\n    print(str(e))\n\ntry:\n    print(1 in None)\nexcept TypeError as e:\n    print(str(e))\n\ntry:\n    print(\"a\" in 1.5)\nexcept TypeError as e:\n    print(str(e))\n\ntry:\n    print(1 in True)\nexcept TypeError as e:\n    print(str(e))\n\ntry:\n    print(1 not in 5)\nexcept TypeError as e:\n    print(str(e))\n\n# A chain link asks the same door, through the ordinary comparison road (ADR 0288).\ntry:\n    print(1 == 1 in 5)\nexcept TypeError as e:\n    print(str(e))\n\n# The needle is evaluated first: an effect the reference performs is in the program.\ndef probe():\n    print(\"needle ran\")\n\n    return 1\n\ntry:\n    print(probe() in 5)\nexcept TypeError:\n    print(\"caught after the needle ran\")\n\n# What HAS members keeps its answer, at the exit code of success.\nprint(1 in [1, 2])\nprint(3 not in [1, 2])\nprint(\"b\" in \"abc\")\nprint(\"z\" in \"abc\")\nprint(1 in {1, 2})\nprint(\"k\" in {\"k\": 1})\nxs = [10, 20]\nprint(20 in xs)\nprint(10 in (10, 20))\nnested = [[1], [2]]\nprint([2] in nested)\ns = {None, 1}\nprint(None in s)\n\n# The run-time door and the fold name the same sentence, because they read one table.\nslot = [1]\ntry:\n    print(1 in slot[0])\nexcept TypeError as e:\n    print(str(e))\n\nprint(\"done\")\n": {
+    "stdout": "argument of type 'int' is not iterable\nargument of type 'NoneType' is not iterable\nargument of type 'float' is not iterable\nargument of type 'bool' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nneedle ran\ncaught after the needle ran\nTrue\nTrue\nTrue\nFalse\nTrue\nTrue\nTrue\nTrue\nTrue\nTrue\nargument of type 'int' is not iterable\ndone\n",
+    "hasStdout": true
+   },
+"d = {\"a\": 1}\nprint(\"b\" in d)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"hits = 0\nfor k in [1, 2]:\n    try:\n        if 1 in 5:\n            hits = hits + 1\n\n    except TypeError:\n        hits = hits + 1\n\nprint(hits)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(\"a\" in 1.5)\n": {
+    "err": "TypeError: argument of type 'float' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'float' is not iterable"
+   },
+
+"print(\"b\" in \"abc\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(\"k\" in {\"k\": 1})\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(1 == 1 in 5)\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"print(1 in (1, 2))\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(1 in 5)\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"print(1 in None)\n": {
+    "err": "TypeError: argument of type 'NoneType' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'NoneType' is not iterable"
+   },
+
+"print(1 in True)\n": {
+    "err": "TypeError: argument of type 'bool' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'bool' is not iterable"
+   },
+
+"print(1 in [1, 2] and \"a\" in \"abc\")\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(1 in [1, 2])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(1 in {1, 2})\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(1 not in 5)\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"print(3 not in [1, 2])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"s = {None, 1}\nprint(None in s)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"try:\n    print(\"a\" in 1.5)\nexcept TypeError as e:\n    print(str(e))\n": {
+    "stdout": "argument of type 'float' is not iterable\n",
+    "hasStdout": true
+   },
+
+"try:\n    print(1 in 5)\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"xs = [10, 20]\nprint(20 in xs)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [[1], [2]]\nprint([2] in xs)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
 "a = 1.5\nb = 2.5\nprint(0 \u003c a + b \u003c 5)\n": {
     "stdout": "True\n",
     "hasStdout": true

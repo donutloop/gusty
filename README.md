@@ -3768,6 +3768,29 @@ falls back to dynamic dispatch.
   **Gap R.491** container-of-containers row: `print([[x for x in [[1]]][0], 2])` now prints `[[1], 2]` instead of raising
   the reference’s class against a position the fold invented.
 
+- **Membership asked of a value that has NO members raises (**Gap R.521**, **ADR 0452**)** — `print(1 in 5)` printed
+  **`False`** at the exit code that means the program ran, where CPython ends it with
+  `TypeError: argument of type 'int' is not iterable`; and so did `print(1 in None)` (`'NoneType'`),
+  `print("a" in 1.5)` (`'float'`), `print(1 in True)` (`'bool'`), `print(1 not in 5)` (which printed **`True`**) and the
+  same question as a comparison-chain link, `print(1 == 1 in 5)`. The embarrassment is where the answer already lives:
+  `xs = [1]` / `print(1 in xs[0])` has raised the reference's exact sentence all along, because there the haystack's kind
+  is a run-time fact and the object is ASKED — it is only the operand the front end can FOLD that reached a containment
+  fold which does not know what a member is and answered "not present". A fold may substitute a verdict only when the
+  verdict IS the answer (**ADR 0266**, **ADR 0329**), so the fold raises now: same non-local road as every other
+  compiler-detected trap (`exnCode`/`raiseTo`), so `except TypeError:` reaches it and the program carries on, and asked
+  AFTER both operands are lowered so `print(probe() in 5)` prints `needle` and then raises — the order the reference
+  uses. The four kinds stopped being spelled twice: the runtime road's inline `{TagInt, "int"}, {TagFloat, "float"},
+  {TagBool, "bool"}, {TagNone, "NoneType"}` list is the package-level `notIterableKinds`, read by the tag walk AND the
+  literal fold (**ADR 0232**'s one question, now about a SET of values), and the text is the one door `notIterableSentence`
+  — the loop's `'int' object is not iterable` stays the loop's (**ADR 0271**), with a row that fails if the membership door
+  speaks it. `@main` for `print(1 in 5)` now carries no `@rt_contains` at all, which is the difference between replacing a
+  runtime question and answering beside it. Eleven haystacks that DO have members — list, tuple, set, dict keys, text
+  characters, container elements — keep their bytes on both legs, and what the fold cannot reach is named rather than
+  guessed: a NAME's or a call's answer still answers `False`, because a name's kind is a summary of the assignments a pass
+  saw and not a promise the value carries (**Gap R.522**, **L11.1**'s tagged value word), pinned in the row that files it.
+  Corpus 278 → **279** programs with `membership_not_iterable.gy` as a `match` row, and **21 record entries
+  (10296 → 10317)** from `tools/recmerge`, reference-answered and compiled-leg cross-checked.
+
 - **A comparison chain STOPS at the first link its verdict rejects (**Gap R.520**, **ADR 0451**)** — the chain had
   been evaluated as if a link were a pure expression, and a link is not: `x = None` / `print(1 == x < 3)` printed
   nothing and died with `TypeError: '<' not supported between instances of 'NoneType' and 'int'` at **exit 3** where

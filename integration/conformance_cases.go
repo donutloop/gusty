@@ -249,6 +249,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// DOES reach is still a raise the program can catch
 		// (roadmap Gap R.520, ADR 0451; the eager conjunction answered all three at the wrong exit code).
 		"chain_short_circuit",
+		// Membership asked of a value the SOURCE says has no members is not a question with the answer
+		// `False`: the reference ends it with `argument of type 'int' is not iterable` (and the `NoneType`,
+		// `float`, `bool` forms), catchably. The fold used to print `False` at exit 0 while the runtime door
+		// one step away — `1 in xs[0]` — already raised the reference's words; both doors now read one table
+		// (roadmap Gap R.521, ADR 0452). The last block is the control: every haystack that has members
+		// keeps its answer, on the same exit code as the reference.
+		"membership_not_iterable",
 		// A ternary with text arms used to print the @str_tab POSITION on the compiled leg:
 		// `print("a" if c > 0 else "b")` said `0` where the reference prints `a`. Gap R.127's
 		// recorded debt, promoted to parity by ADR 0290 (ADR 0261's rule: a promoted probe's

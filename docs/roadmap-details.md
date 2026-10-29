@@ -22126,7 +22126,7 @@ is stale, not green), plus the counting conformance program `integration/program
 unchanged, which is this row's "the verdicts did not move" claim stated as a test rather than as a sentence.
 
 <a id="gap-r-521"></a>
-### Gap R.521 — membership in a value with no members answers `False` instead of raising (⏳ OPEN, filed by **ADR 0450**)
+### Gap R.521 — membership in a value with no members answers `False` instead of raising (✅ DONE, filed by **ADR 0450**, closed by **ADR 0452**)
 
 ```
 $ python3 -c 'print(1 in 5)'
@@ -22171,3 +22171,85 @@ one chain, not two statements — and its fourth row above shows the fold missin
 The checker named this pair as of **ADR 0450** (`type.compare.uncomparable`, warning level, at `--check`),
 which is the front end's half: it tells an agent the program is asking something the reference will refuse.
 It is not this row's half — the program must still RUN, and raise.
+
+**Closed 2026-10-30 by ADR 0452**, on the plan the paragraph above names: the fold is asked the question the
+runtime door asks, and answers with a raise.
+
+`pkg/lang/membership_fold.go` adds one gate to `valueBinOp`'s membership block. It is asked where both operands
+have already been lowered, so a needle with an effect still performs it — `print(probe() in 5)` prints `needle`
+and then raises, which is the order the reference uses and the **Gap R.520** mistake avoided at the other end of
+the operator. The raise is the non-local kind (`exnCode`/`raiseTo`), the same one the tagged membership arms
+use, so `except TypeError:` reaches it and the program continues afterwards; the word the door hands back is
+never read, because the raise's block has no successor edge.
+
+The four kinds are no longer spelled twice. The runtime road carried an inline
+`[]struct{tg int32; name string}{{TagInt,"int"},…}`; that list is now the package-level `notIterableKinds`, which
+the tag walk iterates and the literal fold consults — **ADR 0232**'s one-question rule applied to a SET of values
+rather than to a word, since two tables about which values have no members is one drift waiting to happen. The
+sentence is the same function the runtime arms call (`notIterableSentence`), and the loop's sibling wording
+(`notIterableLoopSentence`, `'int' object is not iterable`) stays the loop's: **ADR 0271** already recorded what
+it costs when one door writes another's sentence, and a row now fails if the membership door speaks the loop's.
+
+Measured on the parent (`af0eace`) and here:
+
+| program | parent | this commit | CPython |
+|---|---|---|---|
+| `print(1 in 5)` | `False`, exit 0 | `TypeError: argument of type 'int' is not iterable`, exit 3 | same sentence |
+| `print(1 in None)` | `False`, exit 0 | `… 'NoneType' …`, exit 3 | same |
+| `print("a" in 1.5)` | `False`, exit 0 | `… 'float' …`, exit 3 | same |
+| `print(1 in True)` | `False`, exit 0 | `… 'bool' …`, exit 3 | same |
+| `print(1 not in 5)` | `True`, exit 0 | `… 'int' …`, exit 3 | same |
+| `print(1 == 1 in 5)` | `False`, exit 0 | `… 'int' …`, exit 3 | same |
+| `try: print(1 in 5) / except TypeError:` | printed `False` | prints the handler, exit 0 | same |
+| `print(probe() in 5)` | `False`, no `needle` | `needle`, then the raise | same order |
+| `1 in [1, 2]`, `"b" in "abc"`, `1 in {1, 2}`, `"k" in {"k": 1}`, `1 in (10, 20)`, `[2] in [[1],[2]]`, `None in {None, 1}` | answered | answered, unchanged | same bytes |
+| `xs = [1]` / `print(1 in xs[0])` | raised | raises the same sentence | same |
+
+The IR claim is asserted rather than described: `@main` for `print(1 in 5)` contains **no** `@rt_contains` call
+at all — the fold replaced the runtime question, it did not answer beside it — and does contain the non-local
+raise. The four-table rows ask the fold and the tag door the same four kinds and require the same four sentences
+from both.
+
+Evidence: `pkg/lang/membership_fold_test.go` (6 trap rows on the compiled leg AND the record leg, 4 catchable
+rows, the needle-order row, 11 controls each on both legs, 4 one-table rows, 2 IR rows) and
+`integration/membership_fold_test.go` (7 CLI rows whose sentence is read out of a live `python3` traceback
+inside the case, 4 catchable rows, 7 control rows, the `--emit-llvm` row).
+`integration/programs/membership_not_iterable.gy` joins the corpus as a `match` row — 279 programs, matrix
+265 rows with 229 asserted and 215 `match` — and **21 record entries (10296 → 10317)** were written from the
+reference by `tools/recmerge` with the compiled leg cross-checked.
+
+<a id="gap-r-522"></a>
+### Gap R.522 — a haystack whose kind the source does not spell still answers `False` (⏳ OPEN, filed by **ADR 0452**)
+
+```
+$ gustyc --eval 'x = 5
+print(1 in x)'
+False                                            reference: TypeError: argument of type 'int' is not iterable
+$ gustyc --eval 'x = None
+print(1 in x)'
+False                                            reference: … 'NoneType' …
+$ gustyc --eval 'def f():
+    return 5
+
+print(1 in f())'
+False                                            reference: … 'int' …
+```
+
+The same wrong answer as **Gap R.521**, one step further from the literal — and the pair of them localises the
+defect exactly. The value is an `int`; the door that asks a value what it is (`@rt_contains`, and the tagged
+membership road above it) answers correctly when the value arrives from a container slot, where the builder left
+a `(payload, tag)` pair beside it. When the value arrives as a bare word — out of a name's slot, or out of a
+call's return — the tag is not there to ask, and the containment fold answers "not present" at the exit code of
+success.
+
+That is why **ADR 0452** stopped at spelled literals. Extending the same gate to a NAME would decide membership
+from the compiler's kind maps, which are a summary of the assignments a pass happened to see, not a promise about
+the value: the same name can hold a list because another statement put one there, and a container element is
+exactly the position where only the object is a witness. The row this belongs to is **L11.1** — the tagged value
+word at the positions that read one word (**Gap R.82**, **ADR 0331**) — and the mechanism to reach for is the one
+the sibling rows already use: the pair a binding leaves behind (**Gap R.442**/**ADR 0423** for a chain operand,
+**Gap R.416**/**ADR 0426** for a loop item), read by `taggedOperand` and asked by `comparePair`.
+
+Pinned today in `pkg/lang/membership_fold_test.go::TestWhatTheMembershipRowStillOwesIsFiledNotFixed`: four rows
+that FAIL if the answer moves, so the residue cannot quietly become the fix, and are DELETED rather than edited
+when it does.

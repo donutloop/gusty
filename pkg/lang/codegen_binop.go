@@ -596,6 +596,17 @@ func (g *irGen) valueBinOp(b *strings.Builder, e Expr, n *BinOp) (string, error)
 	// Membership tests need runtime container access, so handle them
 	// separately from the i32 arithmetic/comparison ops.
 	if n.Op == "in" || n.Op == "not in" {
+		// Membership asked of a value the SOURCE says has no members — `print(1 in 5)`, `print("a" in 1.5)`,
+		// `print(1 in None)`, `print(1 in True)` — is not a question with the answer `False`: the reference
+		// raises `argument of type 'int' is not iterable`, catchably, and the untagged `rt_contains` fold
+		// answered `False` at the exit code of success (**Gap R.521**, **ADR 0452**). Asked here, after both
+		// operands are lowered, so a needle with an effect still performs it; every other haystack — a name,
+		// a call, a container, a text — falls through to the roads that ask the object.
+		if res, bad, merr := g.membershipOfAValueWithNoMembers(b, n); merr != nil {
+			return "", merr
+		} else if bad {
+			return res, nil
+		}
 		// An instance is not iterable, and it is not a number either. The compiler may know the class
 		// from the name or constructor that wrote the value, in which case the raise can name it directly;
 		// when the value only carries a tag, the tag asks the object. Either way, asking membership of
