@@ -4986,6 +4986,27 @@
     },
     {
       "case": {
+        "id": "programs/applied_lambda_module_read",
+        "name": "applied_lambda_module_read.gy",
+        "source": "# An applied `lambda` whose body reads a module-level literal answers the VALUE the module bound\n# (roadmap Gap R.331, ADR 0461).\n#\n# `t = \"hey\"` above `print((lambda: t)())` wrote the intern table's index — the digit `0` — at the exit code\n# of success, where the reference writes `hey`. The read was fine (the module road carries an interned text\n# through an i32 exactly as ADR 0227 designed); what was missing was the KIND at the call boundary, which\n# ADR 0368's answer direction names only out of a spelling and `return t` spells nothing. The pass now\n# folds a read of a never-rebound module literal into the body, so the body spells its own kind and every\n# door that already answers a text, a verdict, a void or a number answers this one.\n\nTEXT = \"hey\"\nOTHER = \"bye\"\nFLAG = True\nOFF = False\nVOID = None\nNUM = 7\n\n# The row as filed: the value, not the word that points at it.\nprint((lambda: TEXT)())\nprint((lambda: FLAG)())\nprint((lambda: OFF)())\nprint((lambda: VOID)())\nprint((lambda: NUM)())\n\n# Every position the answer reaches once the kind travels with it.\nbound = (lambda: TEXT)()\nprint(bound, bound == \"hey\", len(bound), bound.upper(), bound + \"!\")\nprint(f\"[{(lambda: TEXT)()}]\")\nprint(str((lambda: TEXT)()), repr((lambda: OTHER)()))\nprint([(lambda: TEXT)(), 2])\nprint({\"k\": (lambda: NUM)()})\nprint(((lambda: VOID)(), 1))\nprint((lambda: TEXT)() in {\"k\": 1, \"hey\": 2})\nif (lambda: FLAG)():\n    print(\"taken\")\n\nfor i in range(2):\n    print((lambda: TEXT)(), (lambda: VOID)())\n\n# A parameter the body ignores is not the read's owner; the module's value still answers.\nprint((lambda x: TEXT)(9))\n\n# The controls beside every row above: a body that already spells its kind, and the same read written as a\n# `def` — both answered all along, which is what localised the row to the spelling rather than the road.\nprint((lambda: \"hey\")(), (lambda: True)(), (lambda: None)())\n\ndef read_it():\n    return TEXT\n\nprint(read_it())\n\n# Deliberately NOT in this program: the three container answers above in ONE print statement\n# (`print([…, (lambda: TEXT)(), 2], {\"k\": (lambda: NUM)()}, (…, 1))`). That shape loses the dict's text key\n# and writes `{1: 7}` — a pre-existing defect of the element-kind claims a print statement carries, byte-identical\n# on a build of this row's parent commit, and it needs an applied `lambda`'s answer as the dict's VALUE and a\n# CONTAINER as the sibling that follows (`{\"k\": 7}` and `{\"k\": g()}` over a `def` both print right in the same\n# seat). Owned by **Gap R.548** and pinned in its own filed table. A corpus row must not certify an answer this\n# toolchain gets wrong.\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "hey\nTrue\nFalse\nNone\n7\nhey True 3 HEY hey!\n[hey]\nhey 'bye'\n['hey', 2]\n{'k': 7}\n(None, 1)\nTrue\ntaken\nhey None\nhey None\nhey\nhey True None\nhey\n",
+      "python_ok": true,
+      "python_stdout": "hey\nTrue\nFalse\nNone\n7\nhey True 3 HEY hey!\n[hey]\nhey 'bye'\n['hey', 2]\n{'k': 7}\n(None, 1)\nTrue\ntaken\nhey None\nhey None\nhey\nhey True None\nhey\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -6406,11 +6427,11 @@
       ]
     }
   ],
-  "rows": 270,
+  "rows": 271,
   "skipped": 36,
-  "pass": 234,
+  "pass": 235,
   "fail": 0,
-  "oracle_match": 220,
+  "oracle_match": 221,
   "oracle_debt": 24,
   "oracle_not_applicable": 26,
   "oracle_drift": 0

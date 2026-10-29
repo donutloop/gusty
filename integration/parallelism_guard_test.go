@@ -108,6 +108,9 @@ var artifactWritingVars = []string{
 	// the same shape again: the sources the answered tables ask, plus the corpus program this row registered,
 	// dumped for `tools/recmerge` (**Gap R.534** / **ADR 0460**).
 	"GUSTY_RECORD_COUNT_ANSWER_EFFECT=",
+	// The applied-lambda module-read row's recorder (`pkg/lang/lambda_module_read_test.go::TestTheFoldedModuleReadRecordSourcesWhatItOwed`),
+	// which dumps the same corpus this row registered (**Gap R.331** / **ADR 0461**).
+	"GUSTY_RECORD_LAMBDA_MODULE_READ=",
 	// The unpacking row's recorder (`pkg/lang/unpack_container_test.go::TestTheUnpackingRecordSourcesTheTableAsks`),
 	// the same shape one row further down the tracker — and the reason the list below is now checked against the
 	// documents that describe it (`TestEveryRecordingKnobTheDocumentsDescribeIsScrubbed`).

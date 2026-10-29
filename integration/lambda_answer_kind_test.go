@@ -120,12 +120,12 @@ func lambdaAnswerKindPinned() []struct {
 			"0\n",
 			"Gap R.387, Gap R.333",
 		},
-		{
-			"a module-level name the body reads answers the payload (Gap R.331's, not this row's)",
-			"t = \"hey\"\nprint((lambda: t)())\n",
-			"0\n",
-			"Gap R.331",
-		},
+		// Gap R.331's half is PAID — **ADR 0461** — and its pin is DELETED rather than edited, on this file's own
+		// rule: `t = "hey"` / `print((lambda: t)())` prints the reference's `hey`, because the pass now folds a read
+		// of a never-rebound module literal into the body and the answer is spelled where the doors can read it. The
+		// program, and the family around it, stands in
+		// `integration/lambda_module_read_test.go::TestTheFoldedModuleReadAnswersWhatCPythonAnswersAtTheCLI`.
+		//
 		// Gap R.388 is PAID — **ADR 0427** — and the pin that stood there is DELETED rather than edited: the
 		// program prints the reference's `True` and stands in the answered family above.
 		//

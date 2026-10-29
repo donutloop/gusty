@@ -1170,7 +1170,9 @@ const astIRSchemaTemplate = `{
         "symbols",
         "declined",
         "names_consumed",
-        "refused"
+        "refused",
+        "reads_folded",
+        "folded_reads"
       ],
       "description": "The applied-lambda answer pass's own account of one source (gustyc --lambda-answers <src>; lang.LambdaAnswersJSON, roadmap L11.7 and Gap R.382, ADR 0401): which (lambda ...: ...)(...) applications were given a declaration of their own, so the container they answer is registered, materialised at the return and read by the same doors a def's answer uses, and which the gate left on the road the emitter has always taken. The document is written by the code path the rewrite takes, so it cannot describe a hoist the compiler did not perform.",
       "properties": {
@@ -1208,6 +1210,15 @@ const astIRSchemaTemplate = `{
           "type": "array",
           "items": { "$ref": "#/definitions/lambdaAnswerDecline" },
           "description": "One entry per application the pass left alone, with the shape of the gate that closed and the sentence that says why."
+        },
+        "reads_folded": {
+          "type": "integer",
+          "description": "How many applied-lambda bodies the pass rewrote from a read of a module-level name into the literal that name holds (roadmap Gap R.331, ADR 0461): the body of (lambda: NAME)() becomes (lambda: \"hey\") when the module bound NAME once, to a literal, and never rebound it. A separate claim from rewritten and from declarations, because a fold does not have to buy a hoist — a body the answer table still declines keeps the emitter's road and travels it as a literal, which is the answer the row owed. Added additively to gusty.lambda-answers.v1: a consumer that ignores unknown fields is unaffected."
+        },
+        "folded_reads": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/lambdaAnswerFold" },
+          "description": "One entry per folded read, in the order the walk met them: the name the program read, the literal the module had bound to it, and the line the application stood on."
         },
         "names_consumed": {
           "type": "integer",
@@ -1258,7 +1269,7 @@ const astIRSchemaTemplate = `{
         "shape": {
           "type": "string",
           "enum": ["captures_frame", "answers_nothing_provable"],
-          "description": "The stable name of the gate that closed, and the field a script branches on. \"captures_frame\": the body reads a name the frame of the application owns, and a hoisted lambda becomes a def that reads the module instead (roadmap Gap R.386 owns widening that road). \"answers_nothing_provable\": no scan proves an answer this pass can register — a number or a float answers here because the one-word road renders both correctly and is left alone, and a name, a call or an operation answers here because its kind belongs to a table this gate does not read (roadmap Gap R.331, Gap R.387; the text, verdict and void bodies that used to answer here became declarations under ADR 0402)."
+          "description": "The stable name of the gate that closed, and the field a script branches on. \"captures_frame\": the body reads a name the frame of the application owns, and a hoisted lambda becomes a def that reads the module instead (roadmap Gap R.386 owns widening that road). \"answers_nothing_provable\": no scan proves an answer this pass can register — a number or a float answers here because the one-word road renders both correctly and is left alone, and a name the module does NOT bind to a never-rebound literal, a call or an operation answers here because its kind belongs to a table this gate does not read (roadmap Gap R.387; a name the module bound once to a literal is folded to that literal before this question is asked — Gap R.331, ADR 0461; the text, verdict and void bodies that used to answer here became declarations under ADR 0402)."
         },
         "reason": {
           "type": "string",
@@ -1267,6 +1278,25 @@ const astIRSchemaTemplate = `{
         "line": {
           "type": "integer",
           "description": "The line the application was written on."
+        }
+      }
+    },
+    "lambdaAnswerFold": {
+      "type": "object",
+      "required": ["name", "literal", "line"],
+      "description": "One applied-lambda body the pass rewrote from a read of a module-level name into the literal that name holds (roadmap Gap R.331, ADR 0461).",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The module-level name the source read, spelled as the program wrote it."
+        },
+        "literal": {
+          "type": "string",
+          "description": "What the module had bound to it, spelled: a quoted text, a decimal number, True or False, None. The fold writes exactly this node into the body, so the document shows the body the emitter will lower rather than one the pass hoped for (ADR 0401's rule for the account)."
+        },
+        "line": {
+          "type": "integer",
+          "description": "The line the APPLICATION stood on — where the program wrote the read, not where the module bound the name."
         }
       }
     },

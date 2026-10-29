@@ -17553,3 +17553,67 @@ R.545**), where **ADR 0166**'s exit 2 is at least a report. Ranking the outcomes
 build < exit 2 < hang — is what let the row refuse the wide road without also refusing to ship the narrow one.
 Lesson kept: when widening a gate, classify the new failure modes on that scale, not on whether they are
 "only" cosmetic.
+
+## Cycle: an applied `lambda` that reads a module literal (roadmap **Gap R.331** / **Gap R.333**, **ADR 0461**)
+
+**A kind the source does not spell is not a kind to register — it is a spelling to put back.** The row's own
+`Next concrete action` said to register the applied `lambda`'s answer kinds the way `funcReturnsFloat` registers a
+float, and a table keyed by a name the program never wrote is exactly what **ADR 0368** refuses ("a gate that guesses
+is worse than a gate that declines") and exactly what **Gap R.219** documents as the outcome. The shipped fix is a
+**fold**: `(lambda: NAME)()` where the module bound `NAME` once, to a literal, and never rebound it, gets a body that
+IS the literal. Then nothing new is written — **ADR 0402**'s arm hoists the spelled answer, and the eleven doors that
+read a `def`'s answer read this one — which is the shape of a good fix in this codebase: not a new arm, but the
+program made to say what it meant so the existing arms apply (**ADR 0232**). Lesson kept: when a gate "needs to know"
+something the source already answers, prefer the rewrite that makes the source say it over the table that remembers
+it; a table is a second opinion, and second opinions are where this repo's defects live (**ADR 0294**).
+
+**A fold's safety is its table, so the fold must ask the table the read asks — and must be run before the reads.**
+`foldAppliedLambdaModuleReads` consults `moduleEnvFor`, the same table `codegen_value.go` consults for a compiled
+body's module read (**ADR 0227**), not a copy of it: a private duplicate would have been free to admit a name the
+read rejects, which is an answer no program can defend. Its containers-exempt rule is also what stops the fold
+minting a fresh list per read where the reference shares one. And it runs before the candidate walk, the container
+scan and the text-return scan, because a rewrite that arrives after a whole-program read is a second opinion about a
+program those scans already answered (**ADR 0345**'s rule, inherited rather than re-derived). Lesson kept: when
+adding a rewrite to a pass, check what reads the tree afterwards and in what order — correctness here is a property
+of the sequence, not of the rewrite alone.
+
+**A measurement of the wrong subject is worse than no measurement — and a CLI that lets you measure the wrong
+subject is a roadmap row.** `gustyc --lambda-answers` takes a SOURCE STRING; writing it the way every other input
+mode of this CLI is written (`--lambda-answers --file prog.gy`) puts `--file` in the flag's value, which parses as
+the program `-(-file)`, and the toolchain returns a well-formed `gusty.lambda-answers.v1` account of THAT program —
+`reads_folded: 0`, `rewritten: false` — at **exit 0**. The account was believed, the fold was suspected, and twenty
+minutes went into the compiler before the command line was doubted. Two lessons in one: an all-zero machine document
+must be doubted before it is trusted (**ADR 0004**/ADR 0346: the payload is an agent's input; a true document about
+the wrong program is the failure mode), and the inconsistency itself is now **Gap R.549** — because
+`--verify-llvm`/`--debug-info` already refuse exactly this mis-typing with `expects a source, not "--file"` at
+**exit 4** (the usage class, **ADR 0006**), and the fix is to hoist that door over every value-taking source flag —
+and to fix `reorderFlags`, which is the half that lets a value-taking flag swallow a flag at all — not to write the
+guard twice more. Lesson
+kept: when a measurement contradicts a working feature, verify what the instrument was pointed at before believing
+either; and when it cost you time, the CLI's fault is the row, not your day.
+
+**A control group is a claim, and claims get measured.** The first drafts of the **Gap R.548** row said the dict
+shape "reproduces on the parent commit's binary with a literal-bodied `lambda`" — a sentence that sounded like the
+strongest possible evidence (pre-existing! not my damage!) and was false: the literal-bodied form prints `{'k': 7}`
+correctly on both builds. The narrowing that replaced it came from running the variants side by side against a build
+of the parent (`5f72e56`): the dict's value must be an applied `lambda`'s answer, the following sibling must be a
+container, and widening one step further loses the LIST's element too (`[1] {1: 7} (1,)` against the reference's
+`[7] {'k': 7} (1,)`) — which is why the row is about a print statement's argument list and not about a dict. Same
+cycle, same rule: the ADR's float example claimed the float face "answers once the literal is in the body", and the
+float never folds at all (`moduleEnvFor` has no float arm), so the sentence described a road that does not exist.
+Lesson kept (the **ADR 0460** lesson, reinforced): a "this one was already broken / this one behaves thus" sentence is
+load-bearing evidence, and the only arbiter is the built binary — the instrument that overturns a mechanism is worth
+one build, and it costs less than the wrong mechanism in the tracker.
+
+**A corpus row certifies whatever it contains, so a program's comment has to carry what it left out.**
+`integration/programs/applied_lambda_module_read.gy` deliberately does not contain the three-container print that
+loses the dict key, and the reason is in the file as a comment, in the same words the row uses. That is the same
+discipline **ADR 0460** applied when it kept `str(len([f()]))` out of its corpus program: an asserted `match` row is a
+claim about every byte of its stdout, so the exclusion is part of the evidence and belongs in the artifact, not in a
+commit message.
+
+**The record leg has to be *walked*, and a leg that quietly stops being walked is a green that was not earned.** The
+family's record case carries an `asked` counter and fails if NO row was covered, alongside the artifact's own rule
+that a missing record fails a case (**ADR 0302**, Gap R.204's numbering); its subtests are non-parallel because the
+counter is shared, while the parents stay parallel. Lesson kept: a witness that cannot fail is not a witness — say
+what the leg would have said if it had run, and assert that it said something.

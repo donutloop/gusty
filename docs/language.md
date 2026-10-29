@@ -7222,6 +7222,58 @@ for v in ys:
 ```
 `integration/programs/lambda_answer_kind.gy` is the line-for-line reference witness for the answered family.
 
+### The one name a body may be spelled for: a read of a module literal folds to that literal (L11.7, Gap R.331, Gap R.333, ADR 0461)
+
+The section above refuses a body whose kind the source does not spell. There is exactly one name for which the
+source spells it after all — a name the **module** bound once, to a literal, and never wrote again:
+
+```python
+TEXT = "hey"
+print((lambda: TEXT)())                      # hey   — was `0`, the index the intern table gave "hey"
+FLAG = True
+print((lambda: FLAG)())                      # True  — was `1`
+VOID = None
+print((lambda: VOID)())                      # None  — was `0`
+NUM = 7
+print((lambda: NUM)())                       # 7     — the road always answered a number; now the program says so
+bound = (lambda: TEXT)()
+print(bound, bound == "hey", len(bound), bound.upper(), bound + "!")   # hey True 3 HEY hey!
+print(f"[{(lambda: TEXT)()}]")               # [hey]
+print([(lambda: TEXT)(), 2])                 # ['hey', 2]
+print((lambda x: TEXT)(9))                   # hey   — a parameter the body ignores owns nothing
+```
+
+**ADR 0461**'s fix is a **fold**, not a registry: `foldAppliedLambdaModuleReads` (in `pkg/lang/lambda_answer.go`,
+at the head of **ADR 0401**'s pass, before the candidate walk and before any whole-program scan) rewrites the body
+of an applied `lambda` that is *nothing but* a read of such a name into the literal itself. The body then spells
+its kind, and the eleven doors that have always answered a spelled answer — print, `str`, `repr`, a binding, an
+interpolation, a container literal, membership, a condition, a loop — answer this one; no door learned anything.
+The fold asks **one** table, `moduleEnvFor`, which is the one `codegen_value.go` asks when a compiled body reads a
+module name (**ADR 0227**), so the fold and the read cannot hold different opinions of the same name (**ADR 0294**).
+It installs a **fresh** node carrying the READ's span, because the module's own statement still holds the original
+and two emitters walking one node is how a per-node cache starts answering two programs at once.
+
+Three binders make a name not the module's, and all three are asked: the `lambda`'s own parameter, a parameter of
+an enclosing `lambda` (`(lambda t: (lambda: t)())("own")` — the reference prints `own`, and the fold reports
+`reads_folded: 0` for it, because the read belongs to the enclosing `lambda`'s parameter and not to the module;
+the compiled leg declines that program one door earlier, on a text in a parameter slot), and any frame
+below module level, which the walk skips whole — a `def`'s or `class`'s body reads its own frame, and those rows
+are **Gap R.386**/**Gap R.387**. The machine path grew with the feature: `gustyc --lambda-answers` reports
+`reads_folded` and `folded_reads[]` (`{name, literal, line}`, described by `definitions.lambdaAnswerFold` in
+`gustyc --schema`), and they are a separate claim from `rewritten`/`declarations`, because a fold that bought no
+hoist still rewrote the program — `n = 7` / `print((lambda: NUM)())` folds and declares nothing.
+
+What the fold leaves where it was, in words and at exit 1: a module FLOAT (`t = 2.5` — the answer needs
+**L11.1**'s tagged word, and `moduleEnvFor` never admitted the name), a module CONTAINER (`xs = [1, 2]` —
+**Gap R.35**), a name the module rebinds (`t = "hey"` / `t = t + "!"` — **Gap R.546**, which still answers `0` at
+exit 0 and is pinned as filed), and a `def` whose `return` reads a module `None` (`print(f())` is `0` —
+**Gap R.547**: a `def`'s body belongs to no application, so there is no read sitting in a body to fold).
+The table this family is measured on is `pkg/lang/lambda_module_read_test.go` (20 answered sources on the compiled
+and record legs, 14 rows asking the gate as a function with the fold COUNT asserted, an IR row that the module both
+CALLS and DEFINES `@rt_str_intern2` — **Gap R.333**'s first half) and `integration/lambda_module_read_test.go`
+(23 through the CLI against a live `python3`, with every `@rt_*` the module calls checked for a definition);
+`integration/programs/applied_lambda_module_read.gy` is the line-for-line reference witness.
+
 ### A callable written in a `match` arm, an f-string field or an `except` handler is read where it is written (L11.7, Gap R.383, ADR 0403)
 
 Three constructs keep their expressions in AST values that are not nodes — they carry code and answer no `Span()`:

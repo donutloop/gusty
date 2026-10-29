@@ -1,0 +1,58 @@
+# An applied `lambda` whose body reads a module-level literal answers the VALUE the module bound
+# (roadmap Gap R.331, ADR 0461).
+#
+# `t = "hey"` above `print((lambda: t)())` wrote the intern table's index — the digit `0` — at the exit code
+# of success, where the reference writes `hey`. The read was fine (the module road carries an interned text
+# through an i32 exactly as ADR 0227 designed); what was missing was the KIND at the call boundary, which
+# ADR 0368's answer direction names only out of a spelling and `return t` spells nothing. The pass now
+# folds a read of a never-rebound module literal into the body, so the body spells its own kind and every
+# door that already answers a text, a verdict, a void or a number answers this one.
+
+TEXT = "hey"
+OTHER = "bye"
+FLAG = True
+OFF = False
+VOID = None
+NUM = 7
+
+# The row as filed: the value, not the word that points at it.
+print((lambda: TEXT)())
+print((lambda: FLAG)())
+print((lambda: OFF)())
+print((lambda: VOID)())
+print((lambda: NUM)())
+
+# Every position the answer reaches once the kind travels with it.
+bound = (lambda: TEXT)()
+print(bound, bound == "hey", len(bound), bound.upper(), bound + "!")
+print(f"[{(lambda: TEXT)()}]")
+print(str((lambda: TEXT)()), repr((lambda: OTHER)()))
+print([(lambda: TEXT)(), 2])
+print({"k": (lambda: NUM)()})
+print(((lambda: VOID)(), 1))
+print((lambda: TEXT)() in {"k": 1, "hey": 2})
+if (lambda: FLAG)():
+    print("taken")
+
+for i in range(2):
+    print((lambda: TEXT)(), (lambda: VOID)())
+
+# A parameter the body ignores is not the read's owner; the module's value still answers.
+print((lambda x: TEXT)(9))
+
+# The controls beside every row above: a body that already spells its kind, and the same read written as a
+# `def` — both answered all along, which is what localised the row to the spelling rather than the road.
+print((lambda: "hey")(), (lambda: True)(), (lambda: None)())
+
+def read_it():
+    return TEXT
+
+print(read_it())
+
+# Deliberately NOT in this program: the three container answers above in ONE print statement
+# (`print([…, (lambda: TEXT)(), 2], {"k": (lambda: NUM)()}, (…, 1))`). That shape loses the dict's text key
+# and writes `{1: 7}` — a pre-existing defect of the element-kind claims a print statement carries, byte-identical
+# on a build of this row's parent commit, and it needs an applied `lambda`'s answer as the dict's VALUE and a
+# CONTAINER as the sibling that follows (`{"k": 7}` and `{"k": g()}` over a `def` both print right in the same
+# seat). Owned by **Gap R.548** and pinned in its own filed table. A corpus row must not certify an answer this
+# toolchain gets wrong.

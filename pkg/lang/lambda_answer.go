@@ -75,6 +75,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strconv"
 )
 
 // appliedLambdaSite is one `(lambda …: …)(…)` the pass is considering: the CALL whose callee was the
@@ -107,6 +108,13 @@ func hoistAppliedLambdaAnswersTelling(prog *Program, rep *lambdaAnswerAccount) (
 	if prog == nil || len(prog.Stmts) == 0 {
 		return prog, 0
 	}
+	// A body that is nothing but a read of a module-level name the program never rebinds IS the literal
+	// the module bound, and the road that emits the read does not know it (roadmap **Gap R.331**). The
+	// fold runs before a single whole-program read of this tree — before the candidate walk, before the
+	// container-answer scan, before the text-return scan — because a rewrite that arrived after them
+	// would be a second opinion about a program they had already answered (**ADR 0345**'s rule, the same
+	// one this pass and the defunctionalisation pass above it obey).
+	foldAppliedLambdaModuleReads(prog, rep)
 	// The names the program itself spells. A `def lambda_0(): …` is legal source, and a `define` of the
 	// same spelling is `llc`'s `duplicate symbol` at exit 2, so a collision is avoided rather than
 	// compiled and hoped for.
@@ -224,6 +232,180 @@ func hoistAppliedLambdaAnswersTelling(prog *Program, rep *lambdaAnswerAccount) (
 	return declined(0)
 }
 
+// appliedLambdaFoldRow is one body this pass rewrote: the module-level name the source read, the
+// literal the module had bound to it, and the line the read stood on. It exists for the account
+// `gustyc --lambda-answers` prints — an agent reading the document has to be able to tell a body the
+// pass hoisted from a body the pass rewrote and then left on the emitter's road (roadmap **Gap R.331**,
+// **ADR 0401**'s rule that the account is written by the path the rewrite takes).
+type appliedLambdaFoldRow struct {
+	name    string
+	literal string
+	line    int
+}
+
+// foldAppliedLambdaModuleReads rewrites, in place, an applied `lambda` whose whole body is a read of a
+// module-level name the program never rebinds: `(lambda: NAME)()` becomes `(lambda: <literal>)()` where
+// `<literal>` is what the module bound to NAME.
+//
+// The row this closes is two lines of the most ordinary kind — `t = "hey"` above `print((lambda: t)())`
+// — and the answer it gives today is the intern table's INDEX, the digit `0`, at the exit code of success
+// (**roadmap Gap R.331**; **ADR 0368**'s answer direction, which registers a kind only out of a spelling
+// and finds no spelling in a `Name`). The read is not the defect: the module road carries an interned text
+// through an `i32` correctly (**ADR 0227**), and the same read written in a `def` answers `hey` because a
+// `def`'s `return "hey"` is a spelling the text-return scan can read. Folding the read to the literal the
+// module owns therefore does two things at once: the answer kind becomes something a scan can spell, and
+// the road that emits it becomes the one that already requests the runtime block the intern call lives in
+// (**Gap R.333**'s missing definition, which this program reaches today through a lambda body the request
+// was never asked for).
+//
+// # What the fold will read
+//
+//   - a body that is EXACTLY one `*Name`. A body that puts the name inside a literal, an operation or a
+//     call is a program whose answer is not the module's literal, and folding half of it would be a
+//     rewrite that changes what the source said.
+//   - a name `moduleEnvFor` still holds: bound once, at module level, to an `IntLit`, `StrLit`, `BoolLit`
+//     or `NoneLit`, never rebound, and never declared `global` by any body. That is the same table the
+//     `def` road already reads through (`codegen_value.go`), so the fold and the read cannot disagree
+//     about which names are values (**ADR 0294**'s one gate) — and it excludes containers by construction,
+//     which is what keeps this from minting a fresh object where CPython shares one.
+//   - a name no binder owns: not one of the lambda's own parameters, and not one an enclosing `lambda`
+//     binds. `lambda t: (lambda: t)()` reads the OUTER `t`, and folding it to the module's literal would
+//     be the wrong answer wearing this pass's clothes.
+//   - an application written at MODULE level. A body reads its own frame, so a `def`'s or a `class`'s
+//     subtree is skipped outright: `(lambda: t)()` written inside a function that also binds `t` is the
+//     capture road's, and the row it owns is **Gap R.386** / **Gap R.387**, not this one.
+//
+// Everything the fold does not touch keeps the road, the answer and the row it has today.
+func foldAppliedLambdaModuleReads(p *Program, rep *lambdaAnswerAccount) int {
+	if p == nil || len(p.Stmts) == 0 {
+		return 0
+	}
+	consts, _ := moduleEnvFor(p)
+	if len(consts) == 0 {
+		return 0
+	}
+	rows := []appliedLambdaFoldRow{}
+	shadow := map[string]int{}
+	w := &appliedLambdaWalk{
+		skip: func(n Node) bool {
+			switch n.(type) {
+			case *FuncDef, *ClassDef:
+				// A body reads its own frame, and a name it binds there is not the module's.
+				return true
+			}
+			return false
+		},
+		enter: func(n Node) func() {
+			lam, ok := n.(*Lambda)
+			if !ok || lam == nil {
+				return nil
+			}
+			var bound []string
+			for _, pr := range lam.Params {
+				if pr == nil {
+					continue
+				}
+				bound = append(bound, pr.Name)
+				shadow[pr.Name]++
+			}
+			return func() {
+				for _, nm := range bound {
+					shadow[nm]--
+				}
+			}
+		},
+		visit: func(n Node) {
+			c, isCall := n.(*Call)
+			if !isCall || c == nil {
+				return
+			}
+			lam, isLambda := c.Fn.(*Lambda)
+			if !isLambda || lam == nil || lam.Body == nil {
+				return
+			}
+			lit, nm, ok := appliedLambdaModuleReadFold(lam, consts, shadow)
+			if !ok {
+				return
+			}
+			lam.Body = lit
+			rows = append(rows, appliedLambdaFoldRow{name: nm, literal: appliedLambdaFoldSpelling(lit), line: c.Span().Line})
+		},
+	}
+	w.stmts(p.Stmts)
+	if rep != nil {
+		rep.folds = len(rows)
+		rep.foldRows = rows
+	}
+	return len(rows)
+}
+
+// appliedLambdaModuleReadFold asks the three questions the fold may not guess at, and answers the
+// literal to write. A nil expression is "no fold", and the body stays exactly as the source wrote it.
+func appliedLambdaModuleReadFold(lam *Lambda, consts map[string]Expr, shadow map[string]int) (Expr, string, bool) {
+	nm, isName := lam.Body.(*Name)
+	if !isName || nm == nil || nm.Value == "" {
+		return nil, "", false
+	}
+	for _, pr := range lam.Params {
+		if pr != nil && pr.Name == nm.Value {
+			return nil, "", false // the parameter owns the name inside this body
+		}
+	}
+	if shadow[nm.Value] > 0 {
+		return nil, "", false // an enclosing `lambda` binds it; this read is not the module's
+	}
+	lit, ok := consts[nm.Value]
+	if !ok || lit == nil {
+		return nil, "", false
+	}
+	cp := copyModuleLiteral(lit, nm.Span())
+	if cp == nil {
+		return nil, "", false // not one of the four kinds the table admits — no fold
+	}
+	return cp, nm.Value, true
+}
+
+// copyModuleLiteral mints a FRESH node for the folded read rather than sharing the module's own: the
+// module's `AssignStmt` still holds the original, and two emitters walking one node is how a per-node
+// cache (an interned-text slot, an inferred type, a span) starts answering two programs at once.
+// The span is the READ's, not the binding's — the traceback and the line table point at the line the
+// program wrote, not at the line the module happened to bind the name on.
+func copyModuleLiteral(lit Expr, at Span) Expr {
+	switch n := lit.(type) {
+	case *IntLit:
+		return &IntLit{Value: n.Value, Text: n.Text, Src: at}
+	case *StrLit:
+		return &StrLit{Value: n.Value, Raw: n.Raw, Triple: n.Triple, Src: at}
+	case *BoolLit:
+		return &BoolLit{Value: n.Value, Src: at}
+	case *NoneLit:
+		return &NoneLit{Src: at}
+	}
+	return nil
+}
+
+// appliedLambdaFoldSpelling spells a folded literal for the account — the document has to show an agent
+// what the body became, and it is written from the node the pass actually installed.
+func appliedLambdaFoldSpelling(lit Expr) string {
+	switch n := lit.(type) {
+	case *IntLit:
+		if n.Text != "" {
+			return n.Text
+		}
+		return strconv.FormatInt(n.Value, 10)
+	case *StrLit:
+		return strconv.Quote(n.Value)
+	case *BoolLit:
+		if n.Value {
+			return "True"
+		}
+		return "False"
+	case *NoneLit:
+		return "None"
+	}
+	return "?"
+}
+
 // appliedLambdaSites collects the applications this pass may take a declaration for, in the order the
 // walk meets them, in one order that every round agrees about.
 //
@@ -271,6 +453,13 @@ type appliedLambdaWalk struct {
 	visit  func(Node)
 	onPath map[uintptr]bool
 	depth  int
+	// skip, when set, names the nodes the walk must not descend into at all. It is asked after
+	// `visit`, so a reader can still see the node and choose to stop below it.
+	skip func(Node) bool
+	// enter, when set, is asked of a node the walk is about to descend and what it returns is run
+	// when the walk leaves it — the scope discipline a rewrite that binds names needs (roadmap
+	// **Gap R.331**: `(lambda t: (lambda: t)())("hey")` reads the OUTER `t`).
+	enter func(Node) func()
 }
 
 func (w *appliedLambdaWalk) stmts(ss []Stmt) {
@@ -308,6 +497,16 @@ func (w *appliedLambdaWalk) value(v reflect.Value) {
 		defer func() { delete(w.onPath, p); w.depth-- }()
 		if n, ok := v.Interface().(Node); ok {
 			w.visit(n)
+			if w.skip != nil && w.skip(n) {
+				return
+			}
+			if w.enter != nil {
+				if leave := w.enter(n); leave != nil {
+					defer leave()
+				}
+				w.value(v.Elem())
+				return
+			}
 		}
 		w.value(v.Elem())
 	case reflect.Struct:
@@ -541,6 +740,11 @@ type lambdaAnswerAccount struct {
 	// withdrew: the emitter's counter has to start above those too, or the module gets two `define`s of
 	// one spelling — `llc`'s duplicate-symbol complaint at ADR 0166's exit 2.
 	names int
+	// folds is how many applied-`lambda` bodies the pass rewrote from a read of a never-rebound
+	// module-level name into the literal that name holds (roadmap **Gap R.331**), and foldRows is each
+	// one of them, for `gustyc --lambda-answers`.
+	folds    int
+	foldRows []appliedLambdaFoldRow
 	// settled says the rounds agreed; false is the path that hands the program back untouched.
 	settled bool
 }
@@ -645,6 +849,21 @@ type lambdaAnswerReport struct {
 	Declined      []lambdaAnswerDeclineJSON `json:"declined"`
 	NamesConsumed int                       `json:"names_consumed"`
 	Refused       []string                  `json:"refused"`
+	// ReadsFolded counts the applied-`lambda` bodies the pass rewrote from a read of a never-rebound
+	// module-level name into the literal that name holds; FoldedReads names each one. It is a separate
+	// claim from `rewritten`, because a fold does not have to buy a hoist: a body the answer table still
+	// declines keeps the emitter's road and travels it as a literal, which is the answer the row owed
+	// (roadmap **Gap R.331**).
+	ReadsFolded int                    `json:"reads_folded"`
+	FoldedReads []lambdaAnswerFoldJSON `json:"folded_reads"`
+}
+
+// lambdaAnswerFoldJSON is one folded read in the machine document: the name the program read, the
+// literal the module had bound to it, and the line the application stood on.
+type lambdaAnswerFoldJSON struct {
+	Name    string `json:"name"`
+	Literal string `json:"literal"`
+	Line    int    `json:"line"`
 }
 
 // LambdaAnswersJSON asks the pass its own questions and prints the answers: which applied `lambda`s
@@ -710,6 +929,18 @@ func LambdaAnswersJSON(src string) (string, error) {
 	}
 	if doc.Refused == nil {
 		doc.Refused = []string{}
+	}
+	doc.ReadsFolded = acc.folds
+	for _, f := range acc.foldRows {
+		doc.FoldedReads = append(doc.FoldedReads, lambdaAnswerFoldJSON{Name: f.name, Literal: f.literal, Line: f.line})
+	}
+	if doc.FoldedReads == nil {
+		doc.FoldedReads = []lambdaAnswerFoldJSON{}
+	}
+	// A fold that bought no hoist still rewrote the program: the body the emitter lowers is not the body
+	// the parser built. `rewritten` says what happened to the tree, not what happened to the hoist list.
+	if acc.folds > 0 {
+		doc.Rewritten = true
 	}
 	b, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {

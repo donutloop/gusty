@@ -295,6 +295,54 @@ func appliedLambdaPrograms() []struct{ name, src, want string } {
 			"def third(f, g, h, v):\n    base = 5\n    off = 6\n    return f(v) + g(v) + h(v)\n\ndef use(seed):\n    base = 2\n    off = 3\n    return third(lambda x: x + base, lambda x: x * base, lambda x: x + off, seed)\n\nprint(use(3))\n",
 			"17\n",
 		},
+		{
+			// A module-level literal the module never rebinds is a VALUE, and an applied `lambda` whose
+			// whole body reads it now answers that value (**Gap R.331**, **ADR 0461**): the pass folds the
+			// read to the literal before any answer scan runs, so the body spells its own kind and the print
+			// door reads a kind instead of a payload word. The three rows this replaces printed the intern
+			// table's index (`0`), a verdict's payload (`1`) and the void's payload (`0`), all of them at the
+			// exit code of success.
+			"a module-level TEXT read by an applied lambda",
+			"t = \"hey\"\nprint((lambda: t)())\n", "hey\n",
+		},
+		{
+			"a module-level VERDICT read by an applied lambda",
+			"b = True\nprint((lambda: b)())\n", "True\n",
+		},
+		{
+			"a module-level VOID read by an applied lambda",
+			"z = None\nprint((lambda: z)())\n", "None\n",
+		},
+		{
+			"a module-level NUMBER read by an applied lambda — the control that never moved",
+			"n = 7\nprint((lambda: n)())\n", "7\n",
+		},
+		{
+			"the folded read filled by a parameter the body never uses",
+			"t = \"hey\"\nprint((lambda x: t)(9))\n", "hey\n",
+		},
+		{
+			"the folded read bound, measured, compared and sent a message",
+			"t = \"hey\"\nx = (lambda: t)()\nprint(x == \"hey\", len(x), x.upper())\n", "True 3 HEY\n",
+		},
+		{
+			"the folded read inside an interpolation",
+			"t = \"hey\"\nprint(f\"[{(lambda: t)()}]\")\n", "[hey]\n",
+		},
+		{
+			"the folded read taken twice by a loop",
+			"t = \"hey\"\nfor i in range(2):\n    print((lambda: t)())\n", "hey\nhey\n",
+		},
+		{
+			"the folded read as a container element",
+			"t = \"hey\"\nprint([(lambda: t)(), 2])\n", "['hey', 2]\n",
+		},
+		{
+			// the fold's own negative, written where the answered rows live: a name that a callable's
+			// parameter owns is not the module's, and the value that arrives is the argument's
+			"a callable whose parameter carries the value answers the argument",
+			"def call(f, v):\n    return f(v)\n\nprint(call(lambda v: v, 5))\n", "5\n",
+		},
 	}
 }
 
@@ -623,21 +671,20 @@ func TestWhatACaptureRefusalNamesTheRoadThatWouldCarryIt(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestWhatTheAppliedLambdaRowsLeaveStandingIsFiledNotFixed pins the half of the family that is worse than a
-// refusal: a module-level name of a non-number kind, read by a lambda applied at module level, reaches the
-// screen as the payload word — at the exit code that means the program ran.
+// refusal: a read that reaches the screen as the payload word — at the exit code that means the program ran.
 //
-//   - `t = "hey"` above `print((lambda: t)())` prints `0` where the reference prints `hey`, and `b = True`
-//     above `print((lambda: b)())` prints `1` for `True` (roadmap **Gap R.331**). These are not this row's
-//     regression: the pre-ADR-0370 binary prints the same two bytes, which is what localises the defect to the
-//     return-kind registration rather than to the lambda road — `funcReturnsFloat` is the template, and the
-//     text and bool arms of the same question are missing for every body. They cannot be recorded either:
-//     `tools/recmerge` asks CPython and cross-checks the compiled leg, so a source whose legs disagree has no
-//     answer to write, and the row keeps the reference's bytes in this table until the tag travels.
-//   - The same two programs written INSIDE a `def` are refused by this row's gate with the sentence that names
-//     L11.1 (**Gap R.332**'s shape), which is the control that says the gate is on the capture road and the
-//     module-global road is the one with the hole.
+//   - The same body written INSIDE a `def` is refused by this row's gate with the sentence that names
+//     L11.1 (**Gap R.332**'s shape), which is the control that says the gate is on the capture road: a frame
+//     that owns the name gets a refusal, and it was the module-global road that had the hole.
 //
-// Three rows that used to live here are GONE, not edited, because they now answer what the reference prints:
+// Two rows that used to live here are GONE, not edited, because **ADR 0461** folds the read to the literal the
+// module bound once and never rebound: `t = "hey"` above `print((lambda: t)())` prints the reference's `hey` and
+// `b = True` above `print((lambda: b)())` prints `True`, and both programs — with the rest of the family — stand
+// in the answered tables of `lambda_applied_test.go` and `lambda_module_read_test.go`, on the record leg too.
+// While they were filed they could not even be recorded: `tools/recmerge` asks CPython and cross-checks the
+// compiled leg, so a source whose legs disagree has no answer to write.
+//
+// Three further rows that used to live here are GONE, not edited, because they now answer what the reference prints:
 // the applied `lambda` whose body was a comprehension (printed the handle `0`), the same answered by the
 // outermost of three forwarding lambdas, and the one whose body was a container LITERAL (which did not reach
 // the run time at all — `llc-20` refused `ret i32 @.lst1` at ADR 0166's exit 2). **ADR 0401** gave an applied
@@ -653,27 +700,6 @@ func TestWhatTheAppliedLambdaRowsLeaveStandingIsFiledNotFixed(t *testing.T) {
 		rejects string // when one leg dies in `llc` instead, the message it dies with
 		gap     string
 	}{
-		{
-			// The CLI answers this program `0` at exit 0 on the linked leg and on the in-process one — and
-			// did so on the pre-ADR-0370
-			// build too, which is what makes the wrong value filed (Gap R.331) rather than a regression.
-			// Asked through the leg every `pkg/lang` compiled case walks, the program goes further: the
-			// module calls `@rt_str_intern2` with no definition anywhere, and `llc-20` rejects it — which is
-			// Gap R.333, and ADR 0166's exit-2 shape arriving as an exit 0 instead.
-			name:    "a module-level text read by an applied lambda: a word on one leg, a rejected module on the other",
-			src:     "t = \"hey\"\nprint((lambda: t)())\n",
-			want:    "hey\n",
-			today:   "0\n",
-			rejects: "use of undefined value '@rt_str_intern2'",
-			gap:     "Gap R.331, Gap R.333",
-		},
-		{
-			name:  "a module-level bool read by an applied lambda prints its payload",
-			src:   "b = True\nprint((lambda: b)())\n",
-			want:  "True\n",
-			today: "1\n",
-			gap:   "Gap R.331",
-		},
 		{
 			// the control: the same body inside a `def` is refused in words, not answered wrongly
 			name:  "the same read inside a def is a refusal, not a wrong answer",

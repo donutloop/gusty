@@ -13114,7 +13114,9 @@ runs** (ADR 0166); and `isFloat`/`floatValue` grew the `Call`-of-`Lambda` arm th
 left the toolchain at exit 2. `TestWhatTheLambdaDefaultRowLeavesStandingIsFiledNotFixed` had its two `Gap R.276` cases
 **deleted**, as its own rule requires; what is left standing is the value that cannot cross as one word
 (**Gap R.332**) and a module-level name of a non-number kind read by an applied lambda (**Gap R.331**, the same wrong
-answer the pre-ADR-0370 binary prints — `0` for `"hey"`, `1` for `True`, at the exit code that means the program ran).
+answer the pre-ADR-0370 binary prints — `0` for `"hey"`, `1` for `True`, at the exit code that means the program ran;
+**closed by ADR 0461**, which folds such a read to the literal the module bound once and never rebound, so the two
+programs print `hey` and `True` and stand in the answered family above).
 
 ### Gap R.277 — a default argument that is not a scalar is never bound: the parameter reads `0`
 
@@ -16103,23 +16105,44 @@ What the same family still owes, measured by this cycle's probe and filed rather
 mark hands such a call to the closure road (**Gap R.347**); and a comprehension's own target, read by a body at the
 bottom of a chain, refuses with `undefined name` (**Gap R.348**). Both are identically refused on the pre-ADR build.
 
-### Gap R.331 — a `lambda` applied at module level whose body reads a non-number module name answers the payload word (OPEN)
+### Gap R.331 — a `lambda` applied at module level whose body reads a non-number module name answers the payload word (closed by ADR 0461)
 
 ```python
 t = "hey"
 print((lambda: t)())   # hey in the reference; 0 here, at exit 0
 b = True
 print((lambda: b)())   # True in the reference; 1 here, at exit 0
+z = None
+print((lambda: z)())   # None in the reference; 0 here, at exit 0
+t = "hey"
+print((lambda x: t)(9))   # hey in the reference; 0 here — a parameter the body ignores owns nothing
 ```
 
 Not a regression from ADR 0370 — the pre-0370 binary prints the same two bytes — and not the capture gate's hole: a
 module-level name is not a capture, so it reaches the body through the module-global road, and the print door
 downstream of a call is never told the call answers a text or a bool. The same two programs written **inside a `def`**
-are refused by ADR 0370's gate with the sentence that names L11.1, which is what localises this to the module road and
-why the row is a return-kind registration rather than a new gate: `funcReturnsFloat` is the template ADR 0370 needed
-to answer `print((lambda m: m / 2)(3))`, and the text and bool arms of the same question are missing for every body,
-lambda or not. Both programs are on the record with the reference's `hey` and `True`, so the compiled leg cannot
-silently keep the `0`.
+are refused by ADR 0370's gate with the sentence that names L11.1, which is what localised this to the module road.
+The control that decided the shape of the fix was the third spelling, one construct away: `def f():` / `    return t`
+above `print(f())` has always printed `hey`, because a `def` whose body is `return "hey"` SPELLS a text and
+**ADR 0368**'s answer direction names a kind only out of a spelling. So the row is not a missing door and not a
+missing table — it is a missing spelling, and the fix (**ADR 0461**) is to put the spelling back where the program
+can read it: an applied `lambda` whose body is nothing but a read of a name the module bound once, to a literal, and
+never wrote again is rewritten to the literal before any scan reads the tree, and the eleven doors that answer a
+spelled answer answer this one. The row's original `Next concrete action` said to *register* the kinds the way
+`funcReturnsFloat` registers a float; that road was built, considered and refused — a kind table keyed by a name the
+program never spelled is **Gap R.219** waiting to happen, and **ADR 0368**'s own rule is that a gate which guesses is
+worse than a gate which declines. Containers are excluded by the table itself (`moduleEnvFor`, the one
+`codegen_value.go` asks, **ADR 0227**), which is what keeps the fold from minting a fresh object per read where the
+reference shares one; a module CONTAINER stays the honest refusal it was (**Gap R.35**), as does a module FLOAT
+(**L11.1**'s tagged word).
+
+What the fold leaves wrong is three filed rows, not a footnote: **Gap R.546** (a name the module rebinds — still `0`
+at exit 0 on the CLI and an `llc` rejection on the other leg), **Gap R.547** (the mirror image: a `def` whose
+`return` READS a module `None`), and **Gap R.548** (a dict literal's text key lost across a sibling print argument,
+pre-existing and byte-identical on the parent, which is why the corpus program does not contain it). Both original
+programs are on the record with the reference's `hey` and `True`, so the compiled leg cannot silently keep the `0`;
+the family's witnesses are `pkg/lang/lambda_module_read_test.go` and `integration/lambda_module_read_test.go`, and
+`integration/programs/applied_lambda_module_read.gy` is the line-for-line reference row.
 
 ### Gap R.332 — a captured name whose value is not a number has no word to travel in (OPEN)
 
@@ -16138,7 +16161,7 @@ the road that would carry it (L11.1) and this row (L11.7 · Gap R.265, Gap R.276
 the same program that do answer today — pass the value to the call, or write the body as a nested `def`. The fix is the
 (payload, tag) pair ADR 0368 gives a call's answer, two words at the call site instead of one.
 
-### Gap R.333 — a module-level text read inside a `lambda` body calls a runtime entry the module never defines, and exits 0 (OPEN)
+### Gap R.333 — a module-level text read inside a `lambda` body calls a runtime entry the module never defines, and exits 0 (PARTIAL — the named program closed by ADR 0461, the audit owed)
 
 ```python
 t = "hey"
@@ -16168,6 +16191,18 @@ emits the call without registering anything. The second is ADR 0166's: a module 
 code that means "the compiler is broken", and it is not allowed to be the run a program got. `def f(): return "hey"`
 above `print(f())` answers `hey`, which localises both halves to the lambda road's emission, and the pre-ADR-0370
 build prints the same `0` at the same exit code, which is why the row is filed rather than folded into ADR 0370.
+
+**ADR 0461** closed the named program and not the row. Its fold puts the literal in the body, the body is then
+hoisted by **ADR 0402**'s arm to a declaration, and the road that emits `@rt_str_intern2` becomes the `def` road —
+the one that asks for the runtime block the helper lives in — so the missing definition, and the module `llc-20` was
+rejecting, went with it. `TestTheFoldedReadCarriesTheKindIntoTheModule` asserts the module both CALLS and DEFINES the
+helper, and `integration/lambda_module_read_test.go::TestTheFoldedReadModuleDefinesWhatItCalls` walks every `@rt_*`
+the emitted module calls across all 23 sources of the family with `--verify-llvm` asked beside it. What the row still
+owns is its own second clause and its own Definition-of-done line — *a module that calls a runtime entry without
+defining it cannot leave the toolchain at any exit code but 2* — and that is a general audit the compiler does not
+have: the fold fixed the road this program travelled, not the class. **ADR 0378**'s frame-slot audit is the template
+for the missing one — read the finished module, ask which `@rt_*` it calls, and fail as a toolchain rejection when
+one has no `define`/`declare`, which is `llc`'s `use of undefined value` said out loud by the compiler.
 
 ### Gap R.340 — a conditional expression ran the arm its test rejected (closed by ADR 0374)
 
@@ -23376,3 +23411,191 @@ circle. Both shapes are pinned by
 `pkg/lang/count_answer_effect_test.go::TestWhatTheElementDoorStillOwesIsFiledNotFixed` (the case FAILS the day the
 run finishes, which is the only witness a non-terminating program can be given) and are deliberately kept out of the
 corpus, because the corpus cannot survive them either.
+
+<a id="gap-r-546"></a>
+### Gap R.546 — a module text the program rebinds, read by an applied `lambda`, answers the intern table's index at exit 0 on one leg and dies in `llc` on the other (⏳ PLANNED, filed by **ADR 0461**)
+
+```python
+t = "hey"
+t = t + "!"
+print((lambda: t)())
+#   CPython:  hey!
+#   this toolchain (CLI, --file):  0     at the exit code of success
+#   this toolchain (the leg every pkg/lang case walks): llc-20 rejects the module
+```
+
+The second binding is the whole of it. `moduleEnvFor` admits a name bound **once**, at module level, to a literal,
+and never written again; a name the module writes twice is state, and the name's value at the read is the *last*
+binding, which a compile-time table does not know. **ADR 0461**'s fold therefore declines — correctly, and by the
+same rule that keeps it from folding a `global` (**Gap R.48** / **ADR 0448**, whose measured failure was a print
+folded to `a` after a setup function had written `b`). What is left standing is the road the declined read takes:
+the module-slot road, which carries an interned text as one `i32` index and never tells the print door downstream
+that the word it holds is an index. That is **Gap R.343**'s missing half, one door before this one.
+
+The two legs disagree about how the program fails, which is why both are pinned. On the CLI the run prints `0` and
+exits **0** — a wrong value at the exit code of success, the class **ADR 0166** ranks worst. On the leg that builds
+the module with `llc-20` (every `pkg/lang` case, and `--emit-llvm`/`--verify`), the body emits
+`call i32 @rt_str_intern2(...)` against a helper the module never requested its block for, and `llc` answers
+`use of undefined value '@rt_str_intern2'` — **Gap R.333**'s class, and an exit code that is neither 1 (a refusal a
+program can act on) nor 2 (the compiler admitting it is broken).
+
+The fix is not a fold over mutable state: reading the last binding at compile time is the guess **ADR 0368**
+forbids, and it is wrong the moment a loop or a function writes the name. The fix is **Gap R.343**'s — carry the
+kind on the other end of the slot, the way a `str`-parameter body carries its `internedVars` marking to the print,
+`str`/`repr`, `len`, `in`, `==` and formatting doors (**ADR 0366**), none of which the module road has. Both
+spellings are pinned with today's bytes beside the reference's in
+`pkg/lang/lambda_module_read_test.go::TestWhatTheFoldedModuleReadLeavesStandingIsFiledNotFixed` and
+`integration/lambda_module_read_test.go::TestWhatTheFoldedModuleReadLeavesStandingAtTheCLI`, each row carrying the
+sentence that says DELETE when the two agree.
+
+<a id="gap-r-547"></a>
+### Gap R.547 — a `def` whose `return` READS a module-level void answers the void's payload (⏳ PLANNED, filed by **ADR 0461**)
+
+```python
+t = None
+def f():
+    return t
+print(f())
+#   CPython:  None
+#   this toolchain: 0    at the exit code of success
+```
+
+The literal form — `def f(): return None` — has printed `None` since **ADR 0368** closed **Gap R.228**, and the read
+form prints `0`, the void's own payload, which is the digit the intern table and the void agree on and the reason
+this shape is the worst of the family to get wrong: it looks like a number the program might have written. Same
+missing spelling as **Gap R.331**, one door over, and it is the door the fold cannot reach: a `def`'s body belongs to
+no application, so there is no read sitting inside a body that the pass could rewrite, and the kind has to come from
+the `return` arm itself.
+
+**ADR 0368**'s answer direction registers what a body hands back out of the arm's *spelling* — a `StrLit` spells a
+text, a `True` spells a verdict, a `NoneLit` spells the void — and a `Name` spells nothing, so the answer travels
+the one-word road and the print door downstream is never told what the word is. The fix is to ask the one question
+**ADR 0461**'s fold asks — what does the module bind this name to, and does any binder own it — of the ARM instead
+of of the body, in `answerKindPlan`, so `return t` registers the void exactly as `return None` does and a body whose
+arms answer two kinds still answers per arm (**ADR 0368**'s rule, which no fix here may bend: a function registered
+as returning one kind on the evidence of one arm is **Gap R.219**). The sibling road — a method's void body — is
+**Gap R.452**; the tagged word that would make the payload self-describing rather than re-registered is **L11.1**.
+Pinned with today's `0` and the reference's `None` in both suites' filed tables, and deleted the day it answers.
+
+<a id="gap-r-548"></a>
+### Gap R.548 — a dict literal printed beside a sibling argument that carries a text writes its KEY's intern index (⏳ PLANNED, filed by **ADR 0461**)
+
+```python
+print({"k": (lambda: 7)()}, (1,))
+#   CPython:  {'k': 7} (1,)
+#   this toolchain: {1: 7} (1,)
+
+print((1,), {"k": (lambda: 7)()})
+#   CPython:  (1,) {'k': 7}      — and this toolchain agrees
+```
+
+The order decides, which is the signature of state that outlives the position it belongs to. The dict's text key
+prints its `@str_tab` index — the digit `1` — exactly when the statement goes on to print a sibling whose own
+element-kind claim was set first. **ADR 0173**'s per-side claims (`dictKeyStr`, `dictValStr`) are saved and restored
+*per container*, and nothing saves them across the arguments of one `print`, so the second argument's claim is read
+by the first argument's key. The reversed order is right for the same reason: whoever claims first is believed.
+
+The shape was narrowed by measurement rather than by guessing, on a build of the parent commit and of this one
+side by side, and it needs three things: the dict's VALUE is an APPLIED `lambda`'s answer (`{"k": 7}`, `{"k": x}`
+with `x = 7`, and `{"k": g()}` over a `def g(): return 7` all print correctly in the same position), the sibling that
+follows is a CONTAINER (a tuple or a list; a text sibling is harmless), and the claim travels forward — `print((1,),
+{"k": (lambda: 7)()})` is right. Widening the same statement one step further loses more than the key:
+`print([(lambda: 7)()], {"k": (lambda: 7)()}, (1,))` prints `[1] {1: 7} (1,)` where the reference prints
+`[7] {'k': 7} (1,)`, so the LIST's element is read as a word too, and the row is about the statement's argument
+list rather than about a dict.
+
+This is NOT **ADR 0461**'s damage, and the measurement says so in the only way that settles it: every shape above
+prints the same bytes on a build of the parent commit (`5f72e56`) as on this one, and the fold is not even asked for
+the dict's value in a way that would change its kind. It is kept out of
+`integration/programs/applied_lambda_module_read.gy` for the same reason **ADR 0460** kept `str(len([f()]))` out of
+its own corpus row: a corpus row certifies whatever it contains, and a program the matrix asserts must be right about
+every byte in it. The shape is instead pinned as filed, today's bytes beside the reference's, in
+`pkg/lang/lambda_module_read_test.go::TestWhatTheFoldedModuleReadLeavesStandingIsFiledNotFixed`.
+
+The fix is a door per argument rather than a save/restore per container: the print statement lowers its arguments
+one at a time, and each lowering should own the element-kind claims its own containers make, so an argument cannot
+inherit a claim its sibling wrote. The Definition of done asks for both orders pinned against each other, and for a
+mixed-kind table (a text list, a dict, a tuple and a set in one statement) in every order, because the current
+pairwise behaviour is only accidentally right in one of them.
+
+<a id="gap-r-549"></a>
+### Gap R.549 — a source-string flag handed another flag measures the flag's own name, and answers at the exit code of success (⏳ PLANNED, filed by **ADR 0461**)
+
+```console
+$ gustyc --lambda-answers --file integration/programs/applied_lambda_module_read.gy
+{
+  "tool": "callable-values",
+  "pass": "hoist-applied-lambda-answers",
+  "schema": "gusty.lambda-answers.v1",
+  "rewritten": false,
+  "reads_folded": 0,
+  "folded_reads": [],
+  …
+}
+$ echo $?
+0
+```
+
+`--lambda-answers` takes a **source string**, not a path — `cmd/gustyc/main.go` registers it as
+`fs.String("lambda-answers", "", "print, as JSON, what the applied-`lambda` answer pass did to a source string …")`.
+Writing the flag the way every other input mode of this CLI is written (`--file <path>`) therefore puts the string
+`--file` in the flag's value, and `--file` is a legal *program*: it parses as the expression `-(-file)`. The toolchain
+then reports, in the schema the agent was given, what the pass did to that program — nothing — at the exit code of
+success. Nothing is wrong with the document; it is a true account of a program nobody asked about.
+
+This row was filed from inside the feature it delayed. The fold was measured, working, printing `reads_folded: 1`
+— and then a re-run through `--lambda-answers --file` reported zero, which read as a regression in the gate and sent
+the investigation to the compiler for twenty minutes before it went to the command line. The instrument that ended
+it was a direct call to the pass from a test, on the exact source string:
+
+```console
+hoistAppliedLambdaAnswersTelling(prog, &acc) → folds=1 rows=[{t "hey" 2}]
+```
+
+— which agreed with `--lambda-answers '<the same source string>'` and disagreed only with the command that had been
+run. An all-zero machine document is the worst kind of wrong answer for a toolchain whose second customer is an
+agent: **ADR 0004** makes the payload an input, **ADR 0346** requires an account to describe the program the caller
+named, and **ADR 0379**'s reason for writing an account at all is that it cannot describe a compile the compiler did
+not perform.
+
+The mechanism has two halves, and both are in `cmd/gustyc/main.go`. `reorderFlags` is what lets a value-taking flag
+swallow a flag at all — for any non-bool flag it takes the next argument as the value unconditionally, without asking
+whether that argument is itself a flag:
+
+```go
+if _, isBool := f.Value.(interface{ IsBoolFlag() bool }); !isBool && !strings.Contains(a, "=") {
+    if i+1 < len(args) {
+        i++
+        flags = append(flags, args[i])
+    }
+}
+```
+
+and the doors that already notice are `--verify-llvm` and `--debug-info`, quoted rather than recalled:
+
+```go
+// A value-taking flag followed by another flag swallows it: `--verify-llvm
+// --json "src"` would compile the string "--json" instead. Catch it as the
+// usage error it is rather than compiling nonsense.
+if strings.HasPrefix(v, "-") {
+    fmt.Fprintf(os.Stderr, "gustyc: %s expects a source, not %q — pass it last or use --flag=<source>\n", "--verify-llvm", v)
+    return exitUsage
+}
+```
+
+`exitUsage` is **4** (**ADR 0006**'s usage class), which is the point: those two flags answer a mis-typing as a usage
+error, and the account flags answer it as a successful run. Measured side by side on this row's parent:
+
+| command | today | exit |
+|---|---|---|
+| `--lambda-answers --file prog.gy` | a full `gusty.lambda-answers.v1` document about `--file` | **0** |
+| `--capabilities --file prog.gy` | the capabilities document | **0** |
+| `--check --file prog.gy` | `error at 1:3: undefined name "file"` | 1 |
+| `--emit-ast` / `--emit-llvm --file prog.gy` | `codegen: undefined name "file" …` | 1 |
+| `--verify-llvm --file prog.gy` | `expects a source, not "--file" — pass it last or use --flag=<source>` | **4** |
+
+The fix is to make the two-line pattern one door over every value-taking source flag, and the Definition of done
+refuses the cheap version of it: `--flag <source>` and `--flag=<source>` must answer the *same* account afterwards,
+or the guard has only moved the trap one keystroke to the left. Pinned at today's bytes by
+`integration/lambda_module_read_test.go::TestTheSourceStringAnswerFlagsRefuseToMeasureTheirOwnName`, which holds the
+account flags and the one guarded door in the same table so the day the doors agree the case says so.

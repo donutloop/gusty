@@ -1137,6 +1137,19 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// of SPELLINGS that still costs no builder, no allocation and no call. Every line is what CPython
 		// prints for it.
 		"count_answer_effect",
+
+		// An applied `lambda` whose body READS a module-level literal answers the value the module bound:
+		// `t = "hey"` above `print((lambda: t)())` wrote the intern table's INDEX — the digit `0` — at the exit
+		// code of success, because the answer direction names a kind only out of a spelling and `return t`
+		// spells none (roadmap **Gap R.331**, **ADR 0461**). The pass now folds a read of a never-rebound
+		// module literal into the body, so the body spells its own kind and the doors that already answer a
+		// text, a verdict, the void and a number answer this program too — including the one that requests the
+		// runtime block the intern helper lives in (**Gap R.333**'s undefined `@rt_str_intern2`). The program
+		// asks the answer from every position it reaches — printed, bound, compared, measured, sent a message,
+		// interpolated, put in a list, a dict and a tuple, tested by an `if`, looped over, filled by a
+		// parameter it ignores — and keeps the two controls that answered all along: a body that already
+		// spells its kind, and the same read written as a `def`. Every line is what CPython prints for it.
+		"applied_lambda_module_read",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))
