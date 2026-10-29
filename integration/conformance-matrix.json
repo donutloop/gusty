@@ -1024,6 +1024,27 @@
     },
     {
       "case": {
+        "id": "programs/membership_promised_kind",
+        "name": "membership_promised_kind.gy",
+        "source": "# Membership asked of a kind the SOURCE promises raises — roadmap Gap R.522 (ADR 0453).\n#\n# ADR 0452 paid the haystack the source spells — `1 in 5`. This program is the haystack the source only\n# PROMISES: a NAME whose one and only binder is a top-level assignment of a literal with no members, and a\n# CALL every `return` road of which answers such a literal. Both used to print `False` at the exit code that\n# means the program ran, where the reference ends it with `argument of type 'int' is not iterable`:\n#\n#   x = 5            def f():\n#   print(1 in x)        return 5\n#   False, at exit 0     print(1 in f())\n#                        False, at exit 0\n#\n# A promise is the whole gate: where the program writes the name again, binds it in a loop, hands it a\n# parameter, or lets one road of a body answer a different kind, the door has nothing to read and asks the\n# object instead. The raises below are catchable, the call under a raise still runs, and every haystack with\n# members — including the ones below that a body, an arm or a loop also writes — keeps its answer.\n\n# A name whose one binder is a spelled literal.\nnum = 5\ntry:\n    print(1 in num)\nexcept TypeError as e:\n    print(str(e))\n\nvoid = None\ntry:\n    print(1 in void)\nexcept TypeError as e:\n    print(str(e))\n\ndbl = 1.5\ntry:\n    print(\"a\" in dbl)\nexcept TypeError as e:\n    print(str(e))\n\nverdict = True\ntry:\n    print(1 in verdict)\nexcept TypeError as e:\n    print(str(e))\n\n# The negated question asks the same door.\ntry:\n    print(1 not in num)\nexcept TypeError as e:\n    print(str(e))\n\n# A call whose every road answers the same kind.\ndef answer():\n    return 5\n\ntry:\n    print(1 in answer())\nexcept TypeError as e:\n    print(str(e))\n\ndef both_arms(chosen):\n    if chosen:\n        return 1\n\n    return 2\n\ntry:\n    print(1 in both_arms(1))\nexcept TypeError as e:\n    print(str(e))\n\n# A body that writes no `return` answers the void, and the side effect it performs still happens.\ndef quiet():\n    print(\"quiet ran\")\n\ntry:\n    print(1 in quiet())\nexcept TypeError:\n    print(\"caught after the call ran\")\n\n# A name bound from such a call is the same promise, read a step later.\nfrom_call = answer()\ntry:\n    print(1 in from_call)\nexcept TypeError as e:\n    print(str(e))\n\n# A builtin's answer, and a conversion's.\nitems = [1, 2]\ntry:\n    print(1 in len(items))\nexcept TypeError as e:\n    print(str(e))\n\ntry:\n    print(1 in int(\"5\"))\nexcept TypeError as e:\n    print(str(e))\n\n# A module name read from inside a body is read in the frame that owns it.\nshared = 5\n\ndef reader():\n    try:\n        print(1 in shared)\n    except TypeError as e:\n        print(str(e))\n\nreader()\n\n# Where the program writes the name again, the promise is gone and the answer comes back.\nrebound = 5\nrebound = [1, 2]\nprint(1 in rebound)\n\nmaybe = [1]\nif 1 \u003e 2:\n    maybe = 5\n\nprint(1 in maybe)\n\n# A body that answers two different kinds settles nothing: the door has no promise to read, and the object\n# answers. The reference raises here (`mixed(1)` hands back a number), which is the residue this row leaves to\n# L11.1's tagged word — pinned with today's bytes in `TestWhatTheMembershipDoorStillDeclines`, not in this\n# program, because a conformance row may only carry a line both legs give the same way.\n\n# The ordinary answers, untouched by the door.\nwords = \"hello\"\nprint(\"ell\" in words)\nprint(\"zz\" in words)\nprint(\"a\" in {\"a\": 1})\nprint(1 in {1, 2})\nprint(1 in (1, 2))\nbuilt = []\nbuilt.append(3)\nprint(3 in built)\nprint(5 in [5])\n# A chain link asks the same door through the ordinary comparison road (ADR 0288), and a name whose promise\n# the program retired keeps its answer.\nones = [1]\nprint(1 == 1 in ones)\n\nprint(\"done\")\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "argument of type 'int' is not iterable\nargument of type 'NoneType' is not iterable\nargument of type 'float' is not iterable\nargument of type 'bool' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nquiet ran\ncaught after the call ran\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nTrue\nTrue\nTrue\nFalse\nTrue\nTrue\nTrue\nTrue\nTrue\nTrue\ndone\n",
+      "python_ok": true,
+      "python_stdout": "argument of type 'int' is not iterable\nargument of type 'NoneType' is not iterable\nargument of type 'float' is not iterable\nargument of type 'bool' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nquiet ran\ncaught after the call ran\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nTrue\nTrue\nTrue\nFalse\nTrue\nTrue\nTrue\nTrue\nTrue\nTrue\ndone\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/probe_ternary_text_arms",
         "name": "probe_ternary_text_arms.gy",
         "source": "# What CPython prints for these two lines (python3, 3.12):\n#\n#   a       x\n#\n# A ternary whose arms are text hands back the text, and both engines agree with the reference on the\n# interpreter leg. The compiled leg prints `0`: the arms are interned indices into `@str_tab`, the\n# `select` picks one, and nothing beside the chosen index says it is text — so the print renders the\n# index instead of asking for the string. This is the same wall as the number half of the ternary\n# (roadmap Gap R.102, closed by ADR 0262 for the double) seen from the other side of the value: the\n# answer needs a tag, not a second guess at what the arms were (roadmap Gap R.127, owner L11.1 with\n# Gaps R.107–R.110; measured 2026-10-03 while landing ADR 0262).\n#\n# Pinned per leg rather than skipped: the compiled leg's answer is a number, printed happily, and a row\n# that only recorded the interpreter would let that answer look like parity.\nc = 1\nprint(\"a\" if c \u003e 0 else \"b\")\nprint(\"x\" if 1 else \"y\")\n",
@@ -6301,11 +6322,11 @@
       ]
     }
   ],
-  "rows": 265,
+  "rows": 266,
   "skipped": 36,
-  "pass": 229,
+  "pass": 230,
   "fail": 0,
-  "oracle_match": 215,
+  "oracle_match": 216,
   "oracle_debt": 24,
   "oracle_not_applicable": 26,
   "oracle_drift": 0

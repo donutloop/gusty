@@ -22219,7 +22219,7 @@ inside the case, 4 catchable rows, 7 control rows, the `--emit-llvm` row).
 reference by `tools/recmerge` with the compiled leg cross-checked.
 
 <a id="gap-r-522"></a>
-### Gap R.522 — a haystack whose kind the source does not spell still answers `False` (⏳ OPEN, filed by **ADR 0452**)
+### Gap R.522 — a haystack whose kind the source does not spell still answers `False` (✅ DONE, filed by **ADR 0452**, paid by **ADR 0453**)
 
 ```
 $ gustyc --eval 'x = 5
@@ -22250,6 +22250,150 @@ word at the positions that read one word (**Gap R.82**, **ADR 0331**) — and th
 the sibling rows already use: the pair a binding leaves behind (**Gap R.442**/**ADR 0423** for a chain operand,
 **Gap R.416**/**ADR 0426** for a loop item), read by `taggedOperand` and asked by `comparePair`.
 
-Pinned today in `pkg/lang/membership_fold_test.go::TestWhatTheMembershipRowStillOwesIsFiledNotFixed`: four rows
-that FAIL if the answer moves, so the residue cannot quietly become the fix, and are DELETED rather than edited
-when it does.
+### What was paid, and by what question
+
+**ADR 0453** paid this row without ever reading a name-keyed kind map, by asking a different question — not
+*"what kind does the compiler think `x` is"* but *"did every road that could ever have written this name write
+THIS LITERAL"*. One binder, in the frame that owns the name, and that binder is a plain assignment of a spelled
+no-member literal: then the value standing at the read IS that literal whatever the program does afterwards, and
+a raise is sound. Every other shape retires the name — a second assignment, an assignment inside an
+`if`/`for`/`while`/`try` arm, an augmented write, a loop or comprehension target, an `except … as`, a `match`
+capture, an unpack, a name another frame writes through `global` (**ADR 0448**'s road), a name this frame binds
+by any of the roads that hide inside an expression.
+
+A call's answer is the same question asked of a body: every `return` road, through every compound statement, with
+every arm required and a fall-off-the-end spelling the void, must spell a literal of one no-member kind — the
+answer direction's own four questions, asked of the ONE body walk and the ONE kind table (**ADR 0232**), with two
+guards in front of the answer (the name is not a parameter at any call site; the program never assigns to the
+name, which is a program taking its own promise back).
+
+The two readings that are program-wide are taken once in `GenerateIRReport`, before the pass that lowers bodies —
+read from inside `enterBody`, whether a promise reached a body would have depended on which loop the emitter was
+standing in, which is the class of fact **ADR 0343** outlaws rather than grades.
+
+| Shape | before (compiled) | reference | now (compiled) |
+|---|---|---|---|
+| `x = 5` / `print(1 in x)` | `False`, exit 0 | `… 'int' …` | raise, exit 3, both legs |
+| `x = None` / `print(1 in x)` | `False`, exit 0 | `… 'NoneType' …` | raise, exit 3 |
+| `x = 1.5` / `print("a" in x)` | `False`, exit 0 | `… 'float' …` | raise, exit 3 |
+| `x = True` / `print(1 in x)` | `False`, exit 0 | `… 'bool' …` | raise, exit 3 |
+| `x = 5` / `print(1 not in x)` | `True`, exit 0 | `… 'int' …` | raise, exit 3 |
+| `x = 5` / `print(1 == 1 in x)` | `False`, exit 0 | `… 'int' …` | raise, exit 3 |
+| `x = 5` / loop body asks `i in x` | `False`, exit 0 | `… 'int' …` | raise, exit 3 |
+| `def f(): return 5` / `print(1 in f())` | `False`, exit 0 | `… 'int' …` | raise, exit 3 |
+| both arms of `f` answer `1`/`2` | `False`, exit 0 | `… 'int' …` | raise, exit 3 |
+| `def f(): print("side")` / `print(1 in f())` | `False`, no `side` | `side`, then `… 'NoneType' …` | `side`, then raise, once |
+| `def f(): return 1.5` / `print("a" in f())` | `llc` rejection, exit 2 | `… 'float' …` | raise, exit 3 |
+| `x = f()` / `print(1 in x)` | `False`, exit 0 | `… 'int' …` | raise, exit 3 |
+| `print(1 in len(xs))`, `print(1 in int("5"))` | `False`, exit 0 | `… 'int' …` | raise, exit 3 |
+| module `x = 5`, read from a body (one and two frames deep) | `False`, exit 0 | `… 'int' …` | raise, exit 3 |
+| `x = 5` / `x = [1]` / `print(1 in x)` | `True` | `True` | `True` — promise retired |
+| `x = [1]` / dead arm writes `x = 5` / `print(1 in x)` | `True` | `True` | `True` — no promise |
+| a body that binds its own `x` | `True` | `True` | `True` — frames own their names |
+| a body with two arms of two kinds | `False` | `False` | `False` — nothing settled |
+| `xs = [1]` / `print(1 in xs[0])` | raised | raises | unchanged |
+
+The `def f(): return 1.5` row is the one that shows what the door was worth beyond the wrong answer: the double
+literal reached `call i32 @rt_contains(i32 %t6, …)` with `%t6` a `double`, so `llc` rejected the module and the
+compiler paid **exit 2**, **ADR 0166**'s code for its own bug, on a program the reference stops with a sentence.
+
+Evidence: `pkg/lang/membership_name_test.go` (17 promise rows on the compiled leg AND the record leg, 3 rows for
+the call under the raise still running exactly once, 4 catchable rows, 15 control rows the door must stay out of,
+7 decline rows pinned with today's bytes and the row that owns each, 3 refusals owned by other rows pinned with
+their own messages, 5 IR rows, 9 rows that fail if either door is replaced by a guess about a name-keyed kind, and
+a recorder that dumps this file's own sources to `tools/recmerge`) and `integration/membership_name_test.go`
+(17 CLI trap rows, 3 order rows, 4 catchable rows, 11 control rows — every expectation read out of a live
+`python3` inside the case — and 3 `--emit-llvm` rows).
+`integration/programs/membership_promised_kind.gy` joins the corpus as a `match` row (280 programs, matrix 266
+rows with 230 asserted and 216 `match`), and **35 record entries (10317 → 10352)** were written from the
+reference by `tools/recmerge` with the compiled leg cross-checked. Three rows that had been written into the
+control table with answers nobody had asked the reference for were REMOVED rather than recorded — the loop-target
+row raises in the reference, and two of the shapes refuse here on rows that are not membership's
+(**Gap R.523**, **Gap R.524**).
+
+The residue is `TestWhatTheMembershipDoorStillDeclines`, and it is a defect list, not a specification: a
+parameter's kind, a name bound inside an arm, a copy binding, a call that forwards its parameter, a body with two
+arms of two kinds, a builtin no door names an answer for, a read above its only binding, and any value that
+arrives as a `(payload, tag)` pair (**L11.1**, **Gap R.146**).
+
+### Why the old pin was deleted rather than edited
+
+`TestWhatTheMembershipRowStillOwesIsFiledNotFixed` held four rows asserting `False` for exactly the shapes this
+row fixes. **ADR 0452** wrote that table so the residue could not quietly become the fix, and it worked: the rows
+failed the day the fix landed, which is the day they were worth deleting. A residue table is a claim about today,
+and keeping yesterday's `False` beside today's raise would have made the file contradict itself. The residue
+table this row ships is `TestWhatTheMembershipDoorStillDeclines`, in the same file as the cases that replaced the
+old rows.
+
+<a id="gap-r-523"></a>
+### Gap R.523 — a list literal asked for an element kind a NAME does not hand it (⏳ OPEN, filed by **ADR 0453**)
+
+```
+$ gustyc --eval 'x = 5
+print(1 in [x])'
+codegen: list literal elements must be integers, not int      reference: TypeError: … 'int' is not iterable
+$ gustyc --eval 'x = 5
+print([x])'
+[5]                                                            compiles, prints, no complaint
+```
+
+One element shape, two doors, two verdicts. `print([x])`, `print(len([x]))` and `print([[x]])` all build the
+list; the membership road for the same literal reaches an untagged int-list fast path, asks the element's kind,
+cannot see a NAME's kind, and refuses the program with a message that contradicts itself — "must be integers,
+not int". **ADR 0332** gave the literal element that is itself a READ the `(payload, tag)` pair the builder
+takes; an element that is a name holding a number is the same position one shape short, and until the membership
+road asks the same builder the print road asks, this stays a build failure for a program CPython ends with a
+sentence. The message is a second defect inside the first: **ADR 0166**'s second clause says a refusal names the
+thing that is missing, and this names an operand and a kind that are both present.
+
+Pinned with its own refusal words in `pkg/lang/membership_name_test.go::TestWhatTheMembershipDoorStillDeclines`,
+in the subtable that fails when the shape starts compiling — so the row cannot be paid and quietly stay.
+
+<a id="gap-r-524"></a>
+### Gap R.524 — a tuple-unpacking target storing a spelled container emits IR `llc` rejects (⏳ OPEN, filed by **ADR 0453**)
+
+```
+$ gustyc --eval 'x, y = [1], 2
+print(x)'
+llc-20: jit.ll:4202:13: error: global variable reference must have pointer type
+  store i32 @.lst1, i32* %_x                                             reference: [1]
+$ gustyc --eval 'x = [1]
+print(x)'
+[1]                                                            compiles
+```
+
+The same container, bound by an ordinary assignment, is stored through the road that loads the global's value (or
+routes it to the heap builder, **ADR 0306**/**ADR 0310**). The unpacking road stores the global itself into an
+`i32` slot and the module never reaches an executable image — a program the reference runs is rejected by the
+toolchain, at the exit class that means the compiler broke (**ADR 0166**), beside **Gap R.144** and **Gap R.321**,
+which are the pair-road shapes of the same assignment. Found while checking a control row of **Gap R.522** against
+the reference: the table had a `True` written for it that neither leg had ever given.
+
+Pinned with `llc`'s own words in `pkg/lang/membership_name_test.go::TestWhatTheMembershipDoorStillDeclines`.
+
+<a id="gap-r-525"></a>
+### Gap R.525 — `except … as name` leaves the name bound where the reference unbinds it (⏳ OPEN, filed by **ADR 0453**)
+
+```
+$ gustyc --eval 'x = 5
+try:
+    print(1 / 0)
+except ZeroDivisionError as x:
+    pass
+
+print("z" in [x, "z"])'
+True       reference: NameError: name 'x' is not defined
+```
+
+The reference unbinds a handler's exception name at the end of the handler — the name exists only while the
+handler runs — so the program above does not print, it dies naming `x`. This backend leaves the binding in place
+and prints `True`, at the exit code of success: a whole scoping rule missing, and the ordinary name underneath it
+reappearing as if the handler had never named it. It surfaced in this sweep because the membership control table
+needed a program that binds a name in a handler, and the row's answer turned out to be the reference's `NameError`
+rather than anybody's `True`; it is not a membership defect and does not belong to this row, which is why it is a
+row and not a footnote.
+
+The fix is the handler's exit roads: clear the exception name on the normal end of the handler and on any
+`break`/`return` that leaves it, and let the binding underneath reappear. Until then no conformance program and no
+record entry claims an answer for it, and the sweep that found it left it unabsorbed rather than writing its
+behaviour into a table as if it were correct.

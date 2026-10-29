@@ -241,6 +241,20 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 	// pre-scan top-level for user function names
 	// escape analysis: dead list-literal assignments skip rt_alloc
 	g.deadLists = deadListAssignments(prog.Stmts)
+	// The two program-wide readings the membership door asks a NAME and a CALL about, taken once here rather
+	// than per ask: which kinds every road of each module `def` spells, and which names the program ever
+	// assigns to (roadmap **Gap R.522**, **ADR 0453**; `membership_kind.go` is the rule and the door).
+	g.callKinds = callLiteralAnswerKinds(prog.Stmts)
+	g.assignedNames = assignedNamesEverywhere(prog.Stmts)
+	// …and the MODULE's own table of kind promises, installed HERE rather than beside `enterBoundFlags`
+	// below, because the function bodies are lowered by the pass over `prog.Stmts` that runs first: read
+	// from there, a `def` whose body reads the module's `x` would find no frame to walk up to, and whether
+	// the promise reached a body would depend on which loop the emitter was standing in — the shape of fact
+	// **ADR 0343** exists to outlaw. `cross` is every `global` declaration anywhere in the program: a name a
+	// function declares global is written in a body this scan never reads, which is the one road
+	// (**ADR 0448**) that turns a name-keyed summary into a wrong raise.
+	doneModuleScalars := g.beginSpelledScalars(prog.Stmts, programGlobalWrites(prog.Stmts))
+	defer doneModuleScalars()
 	for _, st := range prog.Stmts {
 		if fd, ok := st.(*FuncDef); ok {
 			g.funcs[fd.Name] = true
@@ -948,6 +962,19 @@ type irGen struct {
 	// and every other use refuses (roadmap L11.1, ADR 0185).
 	taggedVars map[string]bool
 
+	// spelledScalars is the frame being emitted's table of names whose ONE and ONLY binder is a top-level
+	// assignment of a spelled no-member literal — the promise the membership door raises on, and nothing else
+	// reads it. It is per-frame for the reason `enterBody` gives for the float, slot and target tables: what
+	// one body bound is not a fact about the next (roadmap Gap R.522, ADR 0453; `membership_kind.go`).
+	spelledScalars *spelledScalarFrame
+	// callKinds names, for a module-level `def` whose every `return` road spells a literal of one no-member
+	// kind, that kind — read once for the whole program, because a `define` and its call sites have to agree
+	// whichever of them the emitter reaches first (ADR 0273's rule, roadmap Gap R.522).
+	callKinds map[string]string
+	// assignedNames is every name the program assigns to anywhere, by any road. It is the call door's guard
+	// against answering a module `def`'s kind for a call the program re-pointed at a lambda.
+	assignedNames map[string]bool
+
 	// taggedOrigin says which door bound each tagged variable's pair, so a refusal can name the
 	// shape that produced the tag instead of blaming a loop for a binding a statement made — the
 	// rule Gap R.38 states about what a refusal may claim (roadmap L11.1, Gap R.138).
@@ -1534,9 +1561,14 @@ func (g *irGen) enterBody(body []Stmt) func() {
 	// and an ordinary three-line program left at exit 2, ADR 0166's code for a compiler bug (roadmap
 	// L11.6 · **Gap R.342**, ADR 0378; `frame_slots.go` is the rule, and `auditFrameSlots` is its guard).
 	savedSlots := g.enterFrameSlots()
+	// …and the frame's table of names whose kind the SOURCE settles, for the same reason and by the same
+	// argument: a promise about `x` made by one body is not a promise about the next body's `x`, and a name
+	// this body writes through `global` is another frame's to settle (roadmap Gap R.522, ADR 0453).
+	savedSpelled := g.beginSpelledScalars(body, globalDeclsIn(body))
 	return func() {
 		g.funcLocals = saved
 		g.globalDecls = savedGlobals
+		savedSpelled()
 		savedFloats()
 		savedTargets()
 		savedSlots()

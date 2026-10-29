@@ -171,6 +171,12 @@ func TestMembershipAnswersWhatHasMembers(t *testing.T) {
 	}
 }
 
+// The half this row left unpaid — a NAME whose kind the program settles, and a CALL every road of which
+// answers a no-member literal — is paid by Gap R.522 in `membership_name_test.go`, whose
+// `TestWhatTheMembershipDoorStillDeclines` is the residue table now. A residue table is a defect list with
+// today's bytes: when the row that owned it pays, the table moves rather than keeping a claim that is no
+// longer true.
+
 // TestTheFoldAndTheRuntimeObjectDoorReadOneTable is the ADR 0232 claim stated as a test: the compile-time
 // raise over a spelled literal and the run-time raise over a tag name the SAME set of values, because both
 // read `notIterableKinds`. Before this row the runtime road spelled the list inline and the fold did not
@@ -267,32 +273,4 @@ func TestTheFoldRaisesAndAsksNoContainer(t *testing.T) {
 			t.Errorf("the membership raise is in a program that answers:\n%s", main)
 		}
 	})
-}
-
-// TestWhatTheMembershipRowStillOwesIsFiledNotFixed pins the half ADR 0452 does NOT pay, with today's bytes, so
-// the residue is a measurement and not a rumour: the haystacks whose kind is not spelled in the source — a
-// NAME the compiler has a kind for, and a call's answer — still reach the untagged fold and answer `False`.
-// The run-time door reaches the same value correctly when a container slot hands it over (`1 in xs[0]`), which
-// is what makes this L11.1's tagged value word rather than this row's gate.
-func TestWhatTheMembershipRowStillOwesIsFiledNotFixed(t *testing.T) {
-	t.Parallel()
-	rows := []struct{ name, src string }{
-		{"a name the compiler has a kind for", "x = 5\nprint(1 in x)\n"},
-		{"the void behind a name", "x = None\nprint(1 in x)\n"},
-		{"a float behind a name", "x = 1.5\nprint(\"a\" in x)\n"},
-		{"a call's answer", "def f():\n    return 5\n\nprint(1 in f())\n"},
-	}
-	for _, r := range rows {
-		r := r
-		t.Run(r.name, func(t *testing.T) {
-			t.Parallel()
-			got, err := compileAndRun(t, r.src)
-			if err != nil {
-				t.Skipf("this shape refuses today (%v), which is a different owed half", err)
-			}
-			if got != "False\n" {
-				t.Fatalf("row is stale: the shape printed %q — the residue this row filed has moved, so move the row\n%s", got, r.src)
-			}
-		})
-	}
 }

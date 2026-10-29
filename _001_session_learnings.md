@@ -16979,3 +16979,66 @@ disappear, and it stops a program the reference runs to completion at exit 0 (**
 distinction **ADR 0450** drew for the checker's warning). 20 sources went to the record from the reference with the
 compiled leg cross-checked (**10296 → 10317**), the corpus gained its 279th program as a `match` row, and the
 snapshot guard caught my hand-written matrix count again — the counters are the artifacts', and the suite reads them.
+
+## ADR 0453 — membership asked of a kind the SOURCE PROMISES raises (roadmap Gap R.522 closed; Gaps R.523, R.524, R.525 filed; 2026-11-01)
+
+**"A name's kind is a summary, not a promise" is a design instruction, not a caveat.** ADR 0452 wrote that sentence
+about why it stopped at spelled literals, and reading it as an instruction rather than an excuse is the whole cycle:
+the fix was not to read a kind from one of the fourteen name-keyed notebooks, it was to ask a question whose answer
+cannot be a summary — *did every road that could ever have written this name write THIS LITERAL?* One binder, in the
+frame that owns the name, spelled as a no-member literal, behind the read. Everything else retires the name. The
+distinction is not academic: the counterexample is one statement long (`x = [1]` / `if 1 > 2: x = 5` /
+`print(1 in x)`, where the reference prints `True`), and a door that read the summary would have traded a wrong answer
+for a broken operator. **ADR 0299**'s "a gate that guessed is worse than a gate that declines", and
+`membership_fold_test.go`'s own header, are the two sentences I wrote on the gate's doc comment so the next reader
+does not have to rediscover them.
+
+**A promise about a name is a fact about a FRAME, so it needs the frame's lifetime.** The table went into
+`enterBody` at first — beside the float, slot and target tables — and it was wrong twice for one reason. A name the
+module writes is read from a body that never entered the module's `enterBody`, so whether a promise reached a body
+depended on which loop the emitter happened to be standing in; that is **ADR 0343**'s class of bug exactly, and the
+case that catches it is `TestTheMembershipPromiseDoorIsAskedAsAFunction`, not an argument I made. The module's table
+now goes in `GenerateIRReport`, before the pass that lowers function bodies. The second wrong was the mirror image:
+a body that binds its own `x` must hide the module's entry, which is shadowing read off the binder counts rather
+than written beside them.
+
+**`global` is the road a name-keyed analysis never sees coming, and it was the newest one in the tree.** A body may
+declare `global x` and write the module's `x` with a text, and the module's own scan never reads function bodies, so
+"one binder" was a lie about a name the program writes in two places. **ADR 0448**'s `globalDeclsIn` is the door — the
+cross-frame exclusion reads the declarations themselves rather than my estimate of which names look global. Same rule
+in the other direction: a name some other frame declares global is not this frame's promise to make.
+
+**Check a control row against the reference before you write it into a table; three of mine were fiction.** The
+load-bearing table of this row is the one that must NOT raise, and while writing it I put in
+`x = 5` / `for x in [1, 2]: pass` / `print(1 in x)` expecting `True`. CPython raises: the loop leaves `2` behind and
+`1 in 2` is a `TypeError`. `x = 5` / `x = 5` / `x += 1` / `print(1 in [x])` does not compile at all (Gap R.523's
+self-contradicting list-literal refusal), `x, y = [1], 2` produces IR `llc` rejects (Gap R.524: a container global
+stored into an `i32`), and `except ZeroDivisionError as x` leaves `x` bound where the reference unbinds it (Gap R.525,
+a whole scoping rule missing). Four real defects, found by the table that was supposed to be a formality. All three
+candidates were REMOVED from the control table rather than recorded — `tools/recmerge` refuses to write an entry whose
+compiled leg disagrees with the reference, and it is right that the sweep aborts on the first one rather than quietly
+shaping the record around the compiler.
+
+**The record leg is a ratchet on my own prose, and it should be read as a witness rather than a gate.** 34 entries
+(**10317 → 10352**) went in from the reference with the compiled leg cross-checked, and `onRecordIs` then *requires*
+each — a case that cannot find its record fails rather than skipping. That is what makes the recorder worth having:
+the new `TestTheRecordSourcesThisRowAsksFor` (env `GUSTY_RECORD_MEMBERSHIP=<path>`) dumps the sources the tables
+themselves ask, so a row cannot ship without a record under it (ADR 0302) and the list cannot drift from the cases it
+is supposed to serve. Like the other artifact-writing modes it is scrubbed from every subprocess the suite starts
+(**Gap R.410**/**ADR 0409**) — N shards each writing the same file would leave whichever finished last as the evidence.
+
+**A residue table is a defect list, and deleting it is the success condition.** ADR 0452's
+`TestWhatTheMembershipRowStillOwesIsFiledNotFixed` asserted `False` for exactly the four shapes this row fixes — that
+is why it was worth writing, and it failed the day the fix landed, which is the day it was worth deleting. I deleted
+it rather than editing its expectations, and moved the residue to `TestWhatTheMembershipDoorStillDeclines`, where each
+row carries today's bytes AND the row that owns it (a parameter's kind, a copy binding, a forwarding call, two arms of
+two kinds, a pair arriving at a one-word position — **L11.1**, **Gap R.146**). A guard on a stale expectation is a
+guard that has stopped defending anything.
+
+**An IR claim has to name the scope it is true in.** My first negative row asserted the module carries no
+`argument of type` sentence for a haystack that has members, and failed instantly: the runtime's tagged membership
+door carries all four sentences for any program that asks a container at run time. Scoping the assertion to `@main`
+made it the claim I meant — and the same fix, applied to the CLI file, turned up a helper worth sharing
+(`inCLIMain`), because two files making the same claim in two ways is the drift the rest of this suite exists to catch.
+Matters like `f = lambda: [1]` (a lambda returning a container) also can't be compiled today, so a negative row has to
+be written in a shape that survives the toolchain, and `--emit-llvm` is where I found that out.

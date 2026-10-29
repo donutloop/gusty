@@ -1,0 +1,140 @@
+# Membership asked of a kind the SOURCE promises raises — roadmap Gap R.522 (ADR 0453).
+#
+# ADR 0452 paid the haystack the source spells — `1 in 5`. This program is the haystack the source only
+# PROMISES: a NAME whose one and only binder is a top-level assignment of a literal with no members, and a
+# CALL every `return` road of which answers such a literal. Both used to print `False` at the exit code that
+# means the program ran, where the reference ends it with `argument of type 'int' is not iterable`:
+#
+#   x = 5            def f():
+#   print(1 in x)        return 5
+#   False, at exit 0     print(1 in f())
+#                        False, at exit 0
+#
+# A promise is the whole gate: where the program writes the name again, binds it in a loop, hands it a
+# parameter, or lets one road of a body answer a different kind, the door has nothing to read and asks the
+# object instead. The raises below are catchable, the call under a raise still runs, and every haystack with
+# members — including the ones below that a body, an arm or a loop also writes — keeps its answer.
+
+# A name whose one binder is a spelled literal.
+num = 5
+try:
+    print(1 in num)
+except TypeError as e:
+    print(str(e))
+
+void = None
+try:
+    print(1 in void)
+except TypeError as e:
+    print(str(e))
+
+dbl = 1.5
+try:
+    print("a" in dbl)
+except TypeError as e:
+    print(str(e))
+
+verdict = True
+try:
+    print(1 in verdict)
+except TypeError as e:
+    print(str(e))
+
+# The negated question asks the same door.
+try:
+    print(1 not in num)
+except TypeError as e:
+    print(str(e))
+
+# A call whose every road answers the same kind.
+def answer():
+    return 5
+
+try:
+    print(1 in answer())
+except TypeError as e:
+    print(str(e))
+
+def both_arms(chosen):
+    if chosen:
+        return 1
+
+    return 2
+
+try:
+    print(1 in both_arms(1))
+except TypeError as e:
+    print(str(e))
+
+# A body that writes no `return` answers the void, and the side effect it performs still happens.
+def quiet():
+    print("quiet ran")
+
+try:
+    print(1 in quiet())
+except TypeError:
+    print("caught after the call ran")
+
+# A name bound from such a call is the same promise, read a step later.
+from_call = answer()
+try:
+    print(1 in from_call)
+except TypeError as e:
+    print(str(e))
+
+# A builtin's answer, and a conversion's.
+items = [1, 2]
+try:
+    print(1 in len(items))
+except TypeError as e:
+    print(str(e))
+
+try:
+    print(1 in int("5"))
+except TypeError as e:
+    print(str(e))
+
+# A module name read from inside a body is read in the frame that owns it.
+shared = 5
+
+def reader():
+    try:
+        print(1 in shared)
+    except TypeError as e:
+        print(str(e))
+
+reader()
+
+# Where the program writes the name again, the promise is gone and the answer comes back.
+rebound = 5
+rebound = [1, 2]
+print(1 in rebound)
+
+maybe = [1]
+if 1 > 2:
+    maybe = 5
+
+print(1 in maybe)
+
+# A body that answers two different kinds settles nothing: the door has no promise to read, and the object
+# answers. The reference raises here (`mixed(1)` hands back a number), which is the residue this row leaves to
+# L11.1's tagged word — pinned with today's bytes in `TestWhatTheMembershipDoorStillDeclines`, not in this
+# program, because a conformance row may only carry a line both legs give the same way.
+
+# The ordinary answers, untouched by the door.
+words = "hello"
+print("ell" in words)
+print("zz" in words)
+print("a" in {"a": 1})
+print(1 in {1, 2})
+print(1 in (1, 2))
+built = []
+built.append(3)
+print(3 in built)
+print(5 in [5])
+# A chain link asks the same door through the ordinary comparison road (ADR 0288), and a name whose promise
+# the program retired keeps its answer.
+ones = [1]
+print(1 == 1 in ones)
+
+print("done")

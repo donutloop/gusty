@@ -1728,9 +1728,10 @@ follow the needle into a list haystack, where it would turn a working program in
 refuses, rather than answering, is a key whose kind is only a run-time fact: a name the compiler cannot
 pin to one container keeps its lookup honest by declining (L11.1's tagged word, `Gap R.212`).
 
-**Membership asked of a value that has no members raises** (ADR 0452, paying `Gap R.521`). The haystack's kind
-decides whether the question is legal at all, and where the SOURCE spells a kind that has no members, keys,
-elements or characters, the answer is not `False`:
+**Membership asked of a value that has no members raises** (ADR 0452, paying `Gap R.521`; extended to a name and
+a call by **ADR 0453**, paying **Gap R.522**). The haystack's kind decides whether the question is legal at all,
+and where the PROGRAM settles that kind to one that has no members, keys, elements or characters, the answer is not
+`False`:
 
 ```python
 print(1 in 5)        # TypeError: argument of type 'int' is not iterable      (was False, at exit 0)
@@ -1739,22 +1740,54 @@ print("a" in 1.5)    # TypeError: argument of type 'float' is not iterable    (w
 print(1 in True)     # TypeError: argument of type 'bool' is not iterable     (was False)
 print(1 not in 5)    # the same raise — `not in` asks the same question
 print(1 == 1 in 5)   # the same raise, reached as one link of a comparison chain (ADR 0288)
+
+x = 5                # the same raise: the program writes x ONCE, and writes it as 5
+print(1 in x)
+
+def f():             # and the same raise again: every road of f answers a number
+    return 5
+
+print(1 in f())
+print(1 in len([1, 2]))   # a builtin's answer is a call's answer
 ```
 
 This is the raise the run-time door already gave for the same value one step away — `xs = [1]` /
-`print(1 in xs[0])` has raised the reference's own sentence all along — so the fold over a literal and the
-question asked of a tag read **one table** (`notIterableKinds`) and write **one sentence**
+`print(1 in xs[0])` has raised the reference's own sentence all along — so the fold over a literal, the reading of
+a name and the reading of a call read **one table** (`notIterableKinds`) and write **one sentence**
 (`notIterableSentence`, **ADR 0271**'s one-trap-one-wording: the membership sentence names the type where the
 loop's names the object, and the two are not variations of one another). It is a raise, not a refusal: the
-program's `except TypeError:` reaches it and the program keeps running, and the needle is evaluated FIRST, so
-`print(probe() in 5)` prints what `probe` prints and then raises, which is the order the reference uses. Every
-haystack that DOES have members keeps its answer — a list, a tuple, a set, a dict's keys, a text's characters, a
-container element.
+program's `except TypeError:` reaches it and the program keeps running, and the needle and the haystack's own call
+are evaluated FIRST, so `print(probe() in 5)` prints what `probe` prints and then raises, which is the order the
+reference uses. Every haystack that DOES have members keeps its answer — a list, a tuple, a set, a dict's keys, a
+text's characters, a container element.
 
-What the fold does not reach is a haystack whose kind the source does not spell: a name (`x = 5` /
-`print(1 in x)`) and a call's answer (`print(1 in f())`) still answer `False`, because the compiler's kind maps
-are not a promise the value carries. That residue is `Gap R.522` and **L11.1**'s tagged value word, not this
-door's.
+**A name or a call raises only on a promise.** The gate is not "what kind does the compiler currently associate
+with `x`" — that reading would raise at the program below, where the reference prints `True`:
+
+```python
+x = [1]
+if 1 > 2:
+    x = 5            # an arm that may or may not run
+
+print(1 in x)        # True, and it stays True
+```
+
+A name raises when **one and only one** road ever wrote it, that road is a plain assignment of a spelled literal
+of the kind, and the read sits behind it; a call raises when **every** `return` road of its body — through
+`if`, `for`, `while`, `try` and `match`, with every arm required and a missing `return` spelling the void —
+answers such a literal. Anything that could put a different value at the read retires the promise: a second
+assignment, a write inside any arm of any compound statement, an augmented assignment, a `for`/`while` target, a
+comprehension target, a `match` capture, an unpacking target, `except … as`, a name another frame writes through
+`global`, or a name the program assigns to at all in the call's case (a program that re-points `f` at a lambda has
+taken the promise back). Names are read in the frame that owns them, so a body that binds its own `x` settles
+nothing about the module's. This is **ADR 0453**'s rule, and the rule's other half is that a door which raised at a
+kind the program did not settle would turn `1 in xs` into a trap — declining is always the answer when the kind is
+a run-time fact.
+
+What the door still does not reach is a haystack whose kind only the run time can name: a parameter, a name bound
+inside an arm, a copy binding (`y = x`), a call that forwards its parameter, a body whose arms answer two different
+kinds, and any value that arrives as a `(payload, tag) pair` — the last is **L11.1**'s tagged value word
+(**Gap R.146**), and each of them is pinned with today's bytes in `TestWhatTheMembershipDoorStillDeclines`.
 
 > **Subscripting a set asks the set a membership question, and that is a gusty extension, not Python.**
 > `{1, 2, 3}[2]` asks the set whether `2` is one of its members and answers `2`; asking for a member it

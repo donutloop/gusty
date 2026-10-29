@@ -3768,6 +3768,46 @@ falls back to dynamic dispatch.
   **Gap R.491** container-of-containers row: `print([[x for x in [[1]]][0], 2])` now prints `[[1], 2]` instead of raising
   the reference’s class against a position the fold invented.
 
+- **Membership asked of a kind the SOURCE PROMISES raises (**Gap R.522**, **ADR 0453**)** — ADR 0452 paid the
+  haystack the source spells; this pays the haystack the source only NAMES. `x = 5` / `print(1 in x)` printed
+  **`False`** at the exit code that means the program ran, where CPython ends it with
+  `TypeError: argument of type 'int' is not iterable` — and so did `x = None`, `x = 1.5`, `x = True`,
+  `print(1 not in x)`, the chain link `print(1 == 1 in x)`, the same question inside a loop body, a builtin's answer
+  (`print(1 in len(xs))`), a conversion's (`print(1 in int("5"))`), a module name read from inside a function, the same
+  name two frames down, and `def f(): return 5` / `print(1 in f())`. The `return 1.5` form was worse than wrong: a
+  `double` reached `call i32 @rt_contains(i32 %t6, …)`, `llc` rejected the module, and the compiler paid **exit 2** —
+  its own bug code — on a program the reference stops with a sentence. What ADR 0452 refused to read is what this row
+  had to make sound first: a name's kind out of the compiler's fourteen name-keyed notebooks is a SUMMARY of the
+  assignments a pass happened to see, not a PROMISE about the value a read receives, and raising at
+  `x = [1]` / `if 1 > 2: x = 5` / `print(1 in x)` — where the reference prints `True` — would trade a wrong answer for
+  a broken language (**ADR 0299**'s cliff, one step to the left). So `pkg/lang/membership_kind.go` asks a different
+  question, about the PROGRAM: *did every road that could ever have written this name write THIS LITERAL?* One binder in
+  the frame that owns the name, and that binder is a plain assignment of a no-member literal — then the value standing
+  at the read IS that literal whatever happens next, and the raise is sound. Every other road retires the name: a second
+  assignment, a write inside any arm of any compound statement, an augmented write, a `for`/`while` target, a
+  comprehension target hiding inside an expression, a `match` capture, an unpack, `except … as`, a name another frame
+  writes through `global` (**ADR 0448**'s road is the newest in the tree and the one a name-keyed summary would never
+  have noticed). A call answers the same question of a BODY: every `return` road through `if`, `for`, `while`, `try` and
+  `match` — every arm required, a missing `return` spelling the void — must spell one such literal, asked of the answer
+  direction's own walk and the one kind table (**ADR 0232**), with a guard in front for a program that re-points the
+  name at something else, which has taken its own promise back. Names are read in the frame that owns them, and the two
+  program-wide readings are taken in `GenerateIRReport` before any body is lowered, because whether a promise reached a
+  body may not depend on which loop the emitter was standing in (**ADR 0343**). The raise is the same non-local road and
+  the same one sentence as every other membership raise, so `except TypeError:` reaches all 17 shapes and the haystack's
+  own call still runs — exactly once — before it. Fifteen control programs (a name written twice, an arm that may not
+  run, a loop-bound name, a body that binds its own `x`, a `global` written from another frame, an unpack, a text, a
+  dict, a set, a tuple, a run-time-built container) keep the reference's bytes, and the residue is a defect list rather
+  than a claim: a parameter's kind, a copy binding, a forwarding call, two arms of two kinds, and any value arriving as
+  a `(payload, tag)` pair stay pinned with the row that owns each (**L11.1**, **Gap R.146**). Checking the control table
+  against the reference also turned up three defects this row does not own and filed instead of absorbing —
+  **Gap R.523** (`print(1 in [x])` refuses with a self-contradicting list-literal message while `print([x])` compiles),
+  **Gap R.524** (`x, y = [1], 2` stores a container global into an `i32` and `llc` rejects the module) and **Gap R.525**
+  (`except … as x` leaves `x` bound where the reference unbinds it). Corpus 279 → **280** programs with
+  `membership_promised_kind.gy` as a `match` row (matrix 265 → **266**, parity-asserted 229 → **230**, oracle `match`
+  215 → **216**), and **35 record entries (10317 → 10352)** from `tools/recmerge`, reference-answered and compiled-leg
+  cross-checked — three candidate control rows were REMOVED rather than recorded, because the reference does not print
+  what the table had claimed for them.
+
 - **Membership asked of a value that has NO members raises (**Gap R.521**, **ADR 0452**)** — `print(1 in 5)` printed
   **`False`** at the exit code that means the program ran, where CPython ends it with
   `TypeError: argument of type 'int' is not iterable`; and so did `print(1 in None)` (`'NoneType'`),

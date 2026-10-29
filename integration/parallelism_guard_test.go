@@ -93,6 +93,11 @@ var artifactWritingVars = []string{
 	"GUSTY_GOLDEN_MISSING=",
 	"GUSTY_GOLDEN_REPORT=",
 	"GUSTY_DEBT_UPDATE=",
+	// The membership row's own recorder (`pkg/lang/membership_name_test.go::TestTheRecordSourcesThisRowAsksFor`)
+	// writes the source list its tables ask, in the shape `tools/recmerge` reads. It is the same class: a
+	// subprocess of the suite inheriting it would have N processes each overwrite the file with their own
+	// subset, and the recorder is worth nothing if the list it writes is whichever shard finished last.
+	"GUSTY_RECORD_MEMBERSHIP=",
 }
 
 func parifyEnv() []string {
@@ -137,6 +142,7 @@ func TestTheGuardsSubprocessCarriesNoArtifactWritingMode(t *testing.T) {
 	synth := append([]string{
 		"GOFLAGS=-tags=slow",
 		"GUSTY_GOLDEN_UPDATE=1",
+		"GUSTY_RECORD_MEMBERSHIP=/tmp/ledger-from-a-subprocess.json",
 		"GUSTY_GOLDEN_MISSING=/tmp/missing.json",
 		"GUSTY_GOLDEN_REPORT=/tmp/report.json",
 		"GUSTY_DEBT_UPDATE=1",

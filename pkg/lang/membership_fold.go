@@ -38,41 +38,51 @@ var notIterableKinds = []struct {
 	{int32(TagNone), "NoneType"},
 }
 
-// notIterableHaystackKind asks whether a membership haystack is a value whose kind the PROGRAM spells, so that
-// no run-time question can change the answer. The second result is false for every shape whose kind the run
-// time owns — a name (which some other statement binds, possibly to a container), a call, an attribute, a
-// subscript, a container literal — and for a text, whose membership is substring membership and is answered.
-// Those all keep the roads that ask the object.
-func (g *irGen) notIterableHaystackKind(e Expr) (string, bool) {
-	var tag int32
-	switch e.(type) {
-	case *IntLit:
-		tag = int32(TagInt)
-	case *FloatLit:
-		tag = int32(TagFloat)
-	case *BoolLit:
-		tag = int32(TagBool)
-	case *NoneLit:
-		tag = int32(TagNone)
-	default:
+// notIterableHaystackKind asks whether a membership haystack is a value whose kind the PROGRAM settles, so
+// that no run-time question can change the answer. Three spellings settle it, and they are asked in the
+// order the source shows them:
+//
+//   - a literal of one of the four kinds — `print(1 in 5)` — which is what **ADR 0452** paid;
+//   - a NAME whose one and only binder is a top-level assignment of such a literal (`x = 5` /
+//     `print(1 in x)`), which is **Gap R.522**'s first pair of rows and the reading `membership_kind.go`
+//     states, name by name, in the frame that owns the name;
+//   - a CALL every road of whose body answers such a literal (`print(1 in f())`), asked of the same body
+//     walk the answer direction asks.
+//
+// Every other shape — a name some other road also writes, a parameter, a subscript, an attribute, a
+// container literal, a text, whose membership is substring membership and is ANSWERED — returns false and
+// keeps the roads that ask the object. The second answer is never "I do not know, guess": a door that
+// raises at an operand whose kind is a run-time fact turns `1 in xs` into a trap, which is the trade this
+// row is not allowed to make.
+func (g *irGen) notIterableHaystackKind(e Expr, readLine int) (string, bool) {
+	if e == nil {
 		return "", false
 	}
-	for _, k := range notIterableKinds {
-		if k.Tag == tag {
-			return k.Name, true
-		}
+	if tag, spelled := spelledNoMemberKindLiteral(e); spelled {
+		return notIterableKindName(tag)
+	}
+	switch n := e.(type) {
+	case *Name:
+		return g.spelledScalarKindName(n.Value, readLine)
+	case *Call:
+		return g.callAnswersOnlyNoMemberKind(n)
 	}
 	return "", false
 }
 
-// membershipOfAValueWithNoMembers lowers `x in HAY` / `x not in HAY` where HAY is a literal of a kind the
-// reference refuses membership for, and returns the second result false for every other shape so the caller
-// falls through to the roads that answer them. The caller has already lowered BOTH operands, so an effect the
-// needle carries is in the program before the raise — which is the order the reference uses too. The raise is
-// the non-local kind and its block has no edge into whatever follows, so the word handed back here is never
-// read: the same convention the instance arm of this door already answers with (codegen_binop.go).
+// membershipOfAValueWithNoMembers lowers `x in HAY` / `x not in HAY` where HAY is a value whose kind the
+// program settles and that kind has no members, and returns the second result false for every other shape so
+// the caller falls through to the roads that answer them. The caller has already lowered BOTH operands, so an
+// effect the needle OR the haystack carries is in the program before the raise — a haystack's call still
+// prints, still appends, still runs, which is the order the reference uses too. The raise is the non-local
+// kind and its block has no edge into whatever follows, so the word handed back here is never read: the same
+// convention the instance arm of this door already answers with (codegen_binop.go).
 func (g *irGen) membershipOfAValueWithNoMembers(b *strings.Builder, n *BinOp) (string, bool, error) {
-	kind, ok := g.notIterableHaystackKind(n.R)
+	line := 0
+	if sp := n.Span(); !sp.IsZero() {
+		line = sp.Line
+	}
+	kind, ok := g.notIterableHaystackKind(n.R, line)
 	if !ok {
 		return "", false, nil
 	}

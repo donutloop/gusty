@@ -151,10 +151,7 @@ func TestTheFoldLeavesNoContainerCallInTheModule(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("--emit-llvm exited %d: %s", code, out)
 	}
-	main := out[strings.Index(out, "define i32 @main("):]
-	if end := strings.Index(main, "\n}"); end >= 0 {
-		main = main[:end]
-	}
+	main := inCLIMain(t, out)
 	if strings.Contains(main, "@rt_contains(") {
 		t.Errorf("@main still asks the runtime container door about an int:\n%s", main)
 	}

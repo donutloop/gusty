@@ -1,5 +1,198 @@
 {
  "entries": {
+"# Membership asked of a kind the SOURCE promises raises — roadmap Gap R.522 (ADR 0453).\n#\n# ADR 0452 paid the haystack the source spells — `1 in 5`. This program is the haystack the source only\n# PROMISES: a NAME whose one and only binder is a top-level assignment of a literal with no members, and a\n# CALL every `return` road of which answers such a literal. Both used to print `False` at the exit code that\n# means the program ran, where the reference ends it with `argument of type 'int' is not iterable`:\n#\n#   x = 5            def f():\n#   print(1 in x)        return 5\n#   False, at exit 0     print(1 in f())\n#                        False, at exit 0\n#\n# A promise is the whole gate: where the program writes the name again, binds it in a loop, hands it a\n# parameter, or lets one road of a body answer a different kind, the door has nothing to read and asks the\n# object instead. The raises below are catchable, the call under a raise still runs, and every haystack with\n# members — including the ones below that a body, an arm or a loop also writes — keeps its answer.\n\n# A name whose one binder is a spelled literal.\nnum = 5\ntry:\n    print(1 in num)\nexcept TypeError as e:\n    print(str(e))\n\nvoid = None\ntry:\n    print(1 in void)\nexcept TypeError as e:\n    print(str(e))\n\ndbl = 1.5\ntry:\n    print(\"a\" in dbl)\nexcept TypeError as e:\n    print(str(e))\n\nverdict = True\ntry:\n    print(1 in verdict)\nexcept TypeError as e:\n    print(str(e))\n\n# The negated question asks the same door.\ntry:\n    print(1 not in num)\nexcept TypeError as e:\n    print(str(e))\n\n# A call whose every road answers the same kind.\ndef answer():\n    return 5\n\ntry:\n    print(1 in answer())\nexcept TypeError as e:\n    print(str(e))\n\ndef both_arms(chosen):\n    if chosen:\n        return 1\n\n    return 2\n\ntry:\n    print(1 in both_arms(1))\nexcept TypeError as e:\n    print(str(e))\n\n# A body that writes no `return` answers the void, and the side effect it performs still happens.\ndef quiet():\n    print(\"quiet ran\")\n\ntry:\n    print(1 in quiet())\nexcept TypeError:\n    print(\"caught after the call ran\")\n\n# A name bound from such a call is the same promise, read a step later.\nfrom_call = answer()\ntry:\n    print(1 in from_call)\nexcept TypeError as e:\n    print(str(e))\n\n# A builtin's answer, and a conversion's.\nitems = [1, 2]\ntry:\n    print(1 in len(items))\nexcept TypeError as e:\n    print(str(e))\n\ntry:\n    print(1 in int(\"5\"))\nexcept TypeError as e:\n    print(str(e))\n\n# A module name read from inside a body is read in the frame that owns it.\nshared = 5\n\ndef reader():\n    try:\n        print(1 in shared)\n    except TypeError as e:\n        print(str(e))\n\nreader()\n\n# Where the program writes the name again, the promise is gone and the answer comes back.\nrebound = 5\nrebound = [1, 2]\nprint(1 in rebound)\n\nmaybe = [1]\nif 1 \u003e 2:\n    maybe = 5\n\nprint(1 in maybe)\n\n# A body that answers two different kinds settles nothing: the door has no promise to read, and the object\n# answers. The reference raises here (`mixed(1)` hands back a number), which is the residue this row leaves to\n# L11.1's tagged word — pinned with today's bytes in `TestWhatTheMembershipDoorStillDeclines`, not in this\n# program, because a conformance row may only carry a line both legs give the same way.\n\n# The ordinary answers, untouched by the door.\nwords = \"hello\"\nprint(\"ell\" in words)\nprint(\"zz\" in words)\nprint(\"a\" in {\"a\": 1})\nprint(1 in {1, 2})\nprint(1 in (1, 2))\nbuilt = []\nbuilt.append(3)\nprint(3 in built)\nprint(5 in [5])\n# A chain link asks the same door through the ordinary comparison road (ADR 0288), and a name whose promise\n# the program retired keeps its answer.\nones = [1]\nprint(1 == 1 in ones)\n\nprint(\"done\")\n": {
+    "stdout": "argument of type 'int' is not iterable\nargument of type 'NoneType' is not iterable\nargument of type 'float' is not iterable\nargument of type 'bool' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nquiet ran\ncaught after the call ran\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nTrue\nTrue\nTrue\nFalse\nTrue\nTrue\nTrue\nTrue\nTrue\nTrue\ndone\n",
+    "hasStdout": true
+   },
+"def f():\n    print(\"side\")\n\nprint(1 in f())\n": {
+    "err": "TypeError: argument of type 'NoneType' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'NoneType' is not iterable"
+   },
+
+"def f():\n    return 1.5\n\nprint(\"a\" in f())\n": {
+    "err": "TypeError: argument of type 'float' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'float' is not iterable"
+   },
+
+"def f():\n    return 5\n\nprint(1 in f())\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"def f():\n    return 5\n\ntry:\n    print(1 in f())\nexcept TypeError as e:\n    print(str(e))\n": {
+    "stdout": "argument of type 'int' is not iterable\n",
+    "hasStdout": true
+   },
+
+"def f():\n    return 5\n\nx = f()\nprint(1 in x)\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"def f():\n    return None\n\nprint(1 in f())\n": {
+    "err": "TypeError: argument of type 'NoneType' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'NoneType' is not iterable"
+   },
+
+"def f(c):\n    if c:\n        return 1\n\n    return 2\n\nprint(1 in f(1))\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"def g():\n    x = 5\n    print(1 in x)\n\ng()\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"def g():\n    x = [1]\n\n    return x\n\nprint(1 in g())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"hits = 0\nx = 5\nfor k in [1, 2]:\n    try:\n        if 1 in x:\n            hits = hits + 1\n\n    except TypeError:\n        hits = hits + 1\n\nprint(hits)\n": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(1 in int(\"5\"))\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"t = (1, 2)\nprint(1 in t)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"x = \"hello\"\nprint(\"ell\" in x)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"x = \"hello\"\nprint(\"zz\" in x)\n": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"x = 1.5\nprint(\"a\" in x)\n": {
+    "err": "TypeError: argument of type 'float' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'float' is not iterable"
+   },
+
+"x = 1.5\ntry:\n    print(\"a\" in x)\nexcept TypeError as e:\n    print(str(e))\n": {
+    "stdout": "argument of type 'float' is not iterable\n",
+    "hasStdout": true
+   },
+
+"x = 5\ndef g():\n    print(1 in x)\n\ng()\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"x = 5\ndef g():\n    x = [1, 2]\n\n    return 1 in x\n\nprint(g())\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"x = 5\ndef outer():\n    def inner():\n        print(1 in x)\n\n    inner()\n\nouter()\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"x = 5\nfor i in range(2):\n    print(i in x)\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"x = 5\nprint(1 == 1 in x)\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"x = 5\nprint(1 in x)\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"x = 5\nprint(1 not in x)\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"x = 5\nprint(x in [5])\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"x = 5\ntry:\n    print(1 in x)\nexcept TypeError:\n    print(\"caught\")\n": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"x = 5\nx = [1]\nprint(1 in x)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"x = False\nprint(1 in x)\n": {
+    "err": "TypeError: argument of type 'bool' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'bool' is not iterable"
+   },
+
+"x = None\nprint(1 in x)\n": {
+    "err": "TypeError: argument of type 'NoneType' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'NoneType' is not iterable"
+   },
+
+"x = True\nprint(1 in x)\n": {
+    "err": "TypeError: argument of type 'bool' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'bool' is not iterable"
+   },
+
+"x = [1, 2]\nprint(1 in x)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"x = [1]\nif 1 \u003e 2:\n    x = 5\n\nprint(1 in x)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nprint(1 in len(xs))\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"xs = [1]\nprint(1 in xs[0])\n": {
+    "err": "TypeError: argument of type 'int' is not iterable",
+    "exnType": "TypeError",
+    "exnMsg": "argument of type 'int' is not iterable"
+   },
+
+"xs = []\nxs.append(3)\nprint(3 in xs)\n": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
 "# Membership asked of a value that has no members raises — roadmap Gap R.521 (ADR 0452).\n#\n# `x in y` is a question about `y`. When the SOURCE says `y` is a number, a verdict or the void, there is no\n# answer to print: the reference ends the program with `argument of type 'int' is not iterable` (and the\n# `NoneType`, `float`, `bool` versions of the same sentence). The compiled backend used to fold the question\n# to `False` and exit 0 — while the runtime door one step away, `1 in xs[0]`, already raised the reference's\n# own words. The fold now raises through the same non-local road, so the four spellings below are catchable\n# by the program's own `except TypeError:`, the needle still runs first, and every haystack that DOES have\n# members keeps its answer.\n\ntry:\n    print(1 in 5)\nexcept TypeError as e:\n    print(str(e))\n\ntry:\n    print(1 in None)\nexcept TypeError as e:\n    print(str(e))\n\ntry:\n    print(\"a\" in 1.5)\nexcept TypeError as e:\n    print(str(e))\n\ntry:\n    print(1 in True)\nexcept TypeError as e:\n    print(str(e))\n\ntry:\n    print(1 not in 5)\nexcept TypeError as e:\n    print(str(e))\n\n# A chain link asks the same door, through the ordinary comparison road (ADR 0288).\ntry:\n    print(1 == 1 in 5)\nexcept TypeError as e:\n    print(str(e))\n\n# The needle is evaluated first: an effect the reference performs is in the program.\ndef probe():\n    print(\"needle ran\")\n\n    return 1\n\ntry:\n    print(probe() in 5)\nexcept TypeError:\n    print(\"caught after the needle ran\")\n\n# What HAS members keeps its answer, at the exit code of success.\nprint(1 in [1, 2])\nprint(3 not in [1, 2])\nprint(\"b\" in \"abc\")\nprint(\"z\" in \"abc\")\nprint(1 in {1, 2})\nprint(\"k\" in {\"k\": 1})\nxs = [10, 20]\nprint(20 in xs)\nprint(10 in (10, 20))\nnested = [[1], [2]]\nprint([2] in nested)\ns = {None, 1}\nprint(None in s)\n\n# The run-time door and the fold name the same sentence, because they read one table.\nslot = [1]\ntry:\n    print(1 in slot[0])\nexcept TypeError as e:\n    print(str(e))\n\nprint(\"done\")\n": {
     "stdout": "argument of type 'int' is not iterable\nargument of type 'NoneType' is not iterable\nargument of type 'float' is not iterable\nargument of type 'bool' is not iterable\nargument of type 'int' is not iterable\nargument of type 'int' is not iterable\nneedle ran\ncaught after the needle ran\nTrue\nTrue\nTrue\nFalse\nTrue\nTrue\nTrue\nTrue\nTrue\nTrue\nargument of type 'int' is not iterable\ndone\n",
     "hasStdout": true
