@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -44,12 +45,43 @@ func stubTool(t *testing.T, name, body string) string {
 	return path
 }
 
+// runStub calls a stub tool through the same `runTool` the toolchain uses, retrying the one answer that
+// belongs to the harness rather than to the toolchain: a file that was 0755 for a few milliseconds can
+// still be answered `fork/exec …: text file busy` (`ETXTBSY`) by a loaded kernel, and on a suite running
+// twenty cases deep that few milliseconds is exactly when the call below happens. `stubTool` already does
+// the atomic publish (write, then rename), which removes the window on most filesystems; on an overlayfs
+// the rename and the exec can still overlap, and the run that hit it reported `text file busy` where it
+// should have reported a `*ToolTimeoutError` — a budget test that fails for a reason other than the budget
+// is the failure mode the comment above warns about, and worse than no budget test at all.
+//
+// The retry is bounded and the budget is NOT consumed by it: an `ETXTBSY` returns before the child starts,
+// so a run that needs all twenty attempts costs half a second, not twenty times the budget. A tool that
+// keeps refusing to start fails on the last attempt with the error it kept giving, which is the honest
+// answer to a real problem — and `t.Logf` says how many attempts it took, so a harness that starts to rot
+// is visible rather than merely green.
+func runStub(t *testing.T, budget time.Duration, path string) ([]byte, error) {
+	t.Helper()
+	var out []byte
+	var err error
+	for attempt := 0; attempt < 20; attempt++ {
+		out, err = runTool(budget, path)
+		if err == nil || !errors.Is(err, syscall.ETXTBSY) {
+			if attempt > 0 {
+				t.Logf("%s needed %d attempts to start (%v on the first)", filepath.Base(path), attempt+1, err)
+			}
+			return out, err
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return out, err
+}
+
 func TestAToolThatNeverReturnsIsKilledAtItsBudget(t *testing.T) {
 	t.Parallel()
 	stub := stubTool(t, "stub-never-answers", `echo "thinking"; while true; do :; done`)
 	const budget = 300 * time.Millisecond
 	start := time.Now()
-	out, err := runTool(budget, stub)
+	out, err := runStub(t, budget, stub)
 	elapsed := time.Since(start)
 	if err == nil {
 		t.Fatalf("a call that never returned came back ok: %q", out)
@@ -83,7 +115,7 @@ func TestTheKillTakesTheToolsChildrenWithIt(t *testing.T) {
 	stub := stubTool(t, "stub-with-children", `sleep 120 & echo started; while true; do :; done`)
 	const budget = 300 * time.Millisecond
 	start := time.Now()
-	_, err := runTool(budget, stub)
+	_, err := runStub(t, budget, stub)
 	elapsed := time.Since(start)
 	if err == nil {
 		t.Fatal("expected the call to fail")
@@ -121,7 +153,7 @@ func TestASlowToolThatAnswersIsUntouched(t *testing.T) {
 	// moment and exits 0 is the ordinary case — every single case in this suite — and a budget that
 	// turned those into failures would be worse than no budget at all.
 	stub := stubTool(t, "stub-answers", `echo answer; exit 0`)
-	out, err := runTool(ToolBudget, stub)
+	out, err := runStub(t, ToolBudget, stub)
 	if err != nil {
 		t.Fatalf("a call that answered within its budget failed: %v (%s)", err, out)
 	}

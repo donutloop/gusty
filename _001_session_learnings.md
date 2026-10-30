@@ -18219,3 +18219,35 @@ then verify that the OTHER side's text is untouched — one of my renumbering pa
 because `git` had lifted a common `<a id=…>` line out of the conflict region, and I only caught it by re-grepping for
 headings I had not written. Rebuilding that file from `origin/main` and re-applying my own blocks was faster and
 safer than repairing it in place.
+
+## Cycle: a budget test that fails for a reason other than the budget (the `ETXTBSY` flake in `pkg/lang/tool_budget_test.go`)
+
+`make testparallel` came back with exactly one red case out of the whole suite, and it was not a language case:
+`TestAToolThatNeverReturnsIsKilledAtItsBudget` failed with `fork/exec /tmp/…/stub-never-answers: text file busy`
+and the assertion `want a *ToolTimeoutError, got *fs.PathError`. The test re-ran clean three times in a row on the
+same tree, which is the signature of a harness race rather than a defect — and a flaky budget test is the worst
+kind of flake, because the case exists to catch a hang, and a case that fails for unrelated reasons teaches the
+reader to ignore it when it fails for the real one.
+
+The harness already knew about `ETXTBSY`: `stubTool` writes the stub under a `.writing` name and renames it into
+place, with a comment explaining that a fresh 0755 file can answer `text file busy` on a machine running twenty
+cases deep. The rename closes the window on a plain filesystem — the bytes are published atomically and no writer
+holds the inode — but not on this container's overlayfs, where the rename and the first `execve` can still
+overlap. The atomic-publish idiom is necessary and not sufficient, and the comment promised more than the
+mechanism delivers.
+
+The fix is a bounded retry **in the harness, not in `runTool`**: `runStub` re-issues the call while the error
+unwraps to `syscall.ETXTBSY`, and gives up on the first answer that is anything else. Two things make the retry
+safe rather than a way to hide the flake. First, it cannot consume the budget it is testing — an `ETXTBSY` is
+answered before the child starts, so twenty attempts cost half a second and the 300 ms budget is still measured
+against a call that really ran. Second, it does not swallow the error: the last attempt's error is what the test
+sees, so a tool that keeps refusing to start still fails the case, with the reason it kept giving, and
+`t.Logf` records how many attempts a passing run needed — a harness that starts to rot shows up in the log
+instead of merely going green. Putting the same retry inside `runTool` was rejected: in production a
+`text file busy` from `llc-20` would be a real problem worth seeing, and a toolchain that quietly retries its
+own tools is how a compiler starts to have mysteries.
+
+Process lesson: a one-line diff to a test harness needs the same witness discipline as a language change. The
+three stub-backed cases now all go through the one helper, and the retry is written so that the shape it tolerates
+is named by an error constant (`syscall.ETXTBSY`) rather than by a substring of a message — a flake fix keyed on
+`strings.Contains(err, "busy")` would have tolerated an unrelated failure with the same word in it.
