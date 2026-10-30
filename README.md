@@ -600,10 +600,13 @@ after an operator, after `,` `:` `(` `[` `{` `=`, after `return`/`in`/`else` —
 `xs[-1]`, `{-1: "neg"}`, `f(-1)`, `2 ** -1` and `def f(a=-1)` answer exactly as they did, and `x -= 1` is still the
 longest match. The token stream is pinned both ways, the parse is pinned as *one* statement and not two, and the
 module is pinned to contain the `sub i32` the program asked for (`programs/minus_operator.gy`, `match` on both
-legs, 22 lines of CPython beside it). What the row leaves standing is filed, not folded in: **`+` before an
-operand is refused** (`print(+1)` is `unexpected token` where CPython prints `1`) — the grammar has no unary-plus
-rule at all (**Gap R.244**, filed by this row) — and a comprehension whose iterable is a list the compiler kept as
-a compile-time constant still refuses (roadmap **L11.1**, the tagged value word, whose refusal carries ADR 0192's own sentence).
+legs, 22 lines of CPython beside it). What the row leaves standing is filed, not folded in: a comprehension
+whose iterable is a list the compiler kept as a compile-time constant still refuses (roadmap **L11.1**, the tagged
+value word, whose refusal carries ADR 0192's own sentence). The other shape this row filed — **`+` before an
+operand**, `print(+1)` dying with `unexpected token` where CPython prints `1` (**Gap R.244**) — is answered now:
+the prefix rule landed beside the minus, and `+x` is its own door rather than `x + 0`, because the identity the
+first attempt used is a guess about the domain and the domain is what the operator asks (**ADR 0469**; the surface
+is *Unary plus is the operand, or the `TypeError`* in `docs/language.md`).
 
 **A `for` loop asks its iterable what it is, and ADR 0339 pays Gap R.246** — the loop had three roads and no
 question in front of them, so anything the compiler could not name fell through to the numeric counter road and

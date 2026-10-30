@@ -160,10 +160,9 @@ func TestWhatTheMinusRowLeavesStandingIsFiledNotFixed(t *testing.T) {
 		want   string // the shape the refusal must name
 		filing string
 	}{
-		{
-			// Gap R.244: `+` before an operand is Python's grammar, and the parser has no rule for it.
-			"print(+1)", "unexpected token", "Gap R.244",
-		},
+		// (`print(+1)` sat here as the parser's missing prefix rule and is answered now — roadmap
+		// Gap R.244, ADR 0469 — with its rows in `unary_plus_test.go`, both legs and the reference's
+		// sentences included. It failed first, which is how a filed row closes instead of vanishing.)
 		// (A second row sat here demanding that a comprehension over a list the compiler kept static
 		// refuse with `compile-time constant`. It was right when written and wrong afterwards: the
 		// sentence was emitted because the escape analysis could not see the comprehension's iterable

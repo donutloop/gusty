@@ -854,6 +854,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// `5--1`/`5- -1` spellings, the bool and float answers, the loop heads and a method's `self.n-1` are
 		// in this one program, whose expectation is what CPython printed for it (roadmap Gap R.242, ADR 0338).
 		"minus_operator",
+		// The prefix `+` is the reference's `__pos__`, not a zero added to the operand. The grammar had no
+		// prefix `+` rule at all, so `print(+1)`, `print(+1.5)`, `print(+True)` and `print(x-+1)` were parse
+		// errors while `print(-1)` had always answered; and the obvious lowering (`x + 0`) printed `1` for
+		// `+1.5`, `0` for `+None` at exit 0, and a concatenation sentence for `+[1, 2]`. The literal, name,
+		// slot, callee-answer and verdict shapes, the prefix spellings (`-+1`, `+-1`, `1 ++ 2`), the
+		// augmented `+= +1`, and the two caught raises are in this one program, whose expectation is what
+		// CPython printed for it (roadmap Gap R.244, ADR 0469).
+		"unary_plus",
 		// A `for` loop asks its ITERABLE what it is before choosing a road for it. The loop had three
 		// ways to step over an iterable and no question to choose between them, so a container the
 		// compiler could write down but could not NAME — `sorted([3, 1, 2])`, `reversed([1, 2, 3])`,

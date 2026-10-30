@@ -12109,10 +12109,13 @@ answer, and no conformance program spelled a subtraction without its space. That
 defect sit in the most ordinary arithmetic in the language, and it is why the closure records 56 newly answered
 programs rather than editing one.
 
-**What the row leaves standing, filed.** `print(+1)` is refused where CPython prints `1` — the grammar has no unary
-plus — filed as [Gap R.244](#gap-r-244); and a comprehension whose iterable is a list the compiler kept as a
-compile-time constant still refuses, which is **L11.1**'s own road (the tagged value word; the refusal's own text points at `L11.2, ADR 0192`, and ADR 0192 is the comprehension's record). Both are pinned in
-`TestWhatTheMinusRowStillCannotAnswerThroughTheCLI` with today's answer and the reference's beside them.
+**What the row leaves standing, filed.** A comprehension whose iterable is a list the compiler kept as a
+compile-time constant still refuses, which is **L11.1**'s own road (the tagged value word; the refusal's own text points at `L11.2, ADR 0192`, and ADR 0192 is the comprehension's record). It was pinned in
+`TestWhatTheMinusRowStillCannotAnswerThroughTheCLI` with today's answer and the reference's beside it, and so was
+`print(+1)` — the missing unary plus — which is answered now: the prefix rule landed beside this row's minus and the
+road is its own door rather than `x + 0` (**ADR 0469**). The filed rows failed first, which is how a filed row
+closes; they moved to `unary_plus_test.go` with the reference's answers, and the story is in
+[Gap R.244](#gap-r-244) below.
 
 <a id="gap-r-243"></a>
 
@@ -12156,7 +12159,7 @@ line ADR 0229 recorded.
 
 <a id="gap-r-244"></a>
 
-### Gap R.244 — unary plus is not in the grammar (OPEN, found by ADR 0338)
+### Gap R.244 — unary plus is not in the grammar (CLOSED by ADR 0469)
 
 ```python
 print(+1)             # 1 in the reference;   this backend: parse error at 1:7: unexpected token  (exit 1)
@@ -12183,8 +12186,62 @@ write instead (ADR 0249's complaint).
 untouched, and `+` between two operands is still the addition it is today.
 
 Two rows in `TestWhatTheMinusRowStillCannotAnswerThroughTheCLI` (and their `pkg/lang` twin in
-`TestWhatTheMinusRowLeavesStandingIsFiledNotFixed`) pin today's answer beside the reference's, so the day the rule
-grows, the rows fail and the row moves — a filed row is closed by that failure, not by deleting a table.
+`TestWhatTheMinusRowLeavesStandingIsFiledNotFixed`) pinned today's answer beside the reference's, so the day the rule
+grew, the rows failed and the row moved — a filed row is closed by that failure, not by deleting a table. That is what
+happened: the three rows failed on the fix, and moved to `unary_plus_test.go` on both legs.
+
+**The closing, and the lowering that was tried first.** The prefix rule landed where the row said it belonged, in
+`parsePrefix` beside the `-`. The lowering was *not* guessed at: the desugaring everyone reaches for — `+x` as
+`x + 0`, reusing the additive identity — was built, measured against CPython, and rejected on three programs:
+
+| program | CPython | `+x` as `x + 0` |
+|---|---|---|
+| `print(+1)` | `1` | `1` |
+| `print(+1.5)` | `1.5` | **`1`** |
+| `x = 5.5` / `print(+x)` | `5.5` | **`0`** |
+| `print(+None)` | `TypeError: bad operand type for unary +: 'NoneType'` | **`0` at exit 0** |
+| `print(+"a")` | `TypeError: … 'str'` | refusal: *can only concatenate str (not "int" to str)* |
+| `print(+[1, 2])` | `TypeError: … 'list'` | `TypeError: can only concatenate list (not "int" to list)` |
+
+The float pair is the one that settles it: the `0` handed to the binary road is an INT literal, and that road picks
+its domain from the operand spellings, so the answer is an int whatever the operand was. The container sentences are
+the other half — they blame a literal the author never wrote, and a diagnostic that blames the wrong token is a
+diagnostic an agent acts on wrongly. An identity element is a guess about the domain; `__pos__` exists in the
+reference because the domain is the question, and the compiled backend now has a door because the same is true here.
+
+The door is `pkg/lang/unary_plus.go`, shaped exactly like `pkg/lang/negation.go`: it asks **ADR 0266**'s
+`negationOperandKind` (a literal's spelling, a name's last-binding records, the class table, `callReturnsStr`) and
+emits through `emitBadSignless`/`emitBadSignlessOfSlot`, one branch per tag where the object reports more than one
+kind, so every path out of a slot read raises. The wording comes from the one sentence table's new `pos` key —
+`bad operand type for unary +: '%s'` — because **ADR 0271**'s rule is one table and one wording per operation, and
+the reference really does write a different sentence for `+"a"`, `abs("a")` and `"a" + 0`. The value leg is the
+operand's own word, `g.value` in the integer domain and `g.floatValue` in the double one under an `isFloat` arm that
+is transparent to the prefix; **no instruction is emitted**, which the IR rows pin with counter-rows so the absence
+is not earned by deleting the negation (**ADR 0337**).
+
+**Why the proof is positive.** `-x` may hand its operand to the numeric road and trust that road's refusals, because
+a subtraction of a handle still prints as a number. `+x` hands the operand back *as the answer*, so an operand whose
+kind is unknown prints a text, a container or an exception message at exit 0 — the family this loop has never been
+able to close. So the road answers only what a record can state is a number: a literal; a verdict (`<`, `==`, `in`, a
+chain, `not`), which the reference's `__pos__` answers as an int and the int printer must therefore print where the
+bare expression prints `True`; an arithmetic tree of proven arms; a name every non-number record is silent about and
+whose binding the walk recorded; a slot the literal describes as numbers (`slotNumberFamily`, **ADR 0265**'s proof,
+borrowed rather than rewritten) or a folded element **ADR 0420**'s `constantSubscriptKind` names; a builtin whose
+contract is "a number or a stop" (`int`, `float`, `len`, `ord`, `abs`, `round`, `pow`, `sum` — and deliberately not
+`min`/`max`, which answer whichever operand wins, and none of them when the program shadowed the name); or a callee
+every `return` of whose body the same walk proves, with a body that can fall off its end answering `None` and not
+proven. Everything else refuses in words naming the operand, the question and the row.
+
+**What the closure records.** 54 answered rows, 14 raise rows and 4 handler rows in `pkg/lang/unary_plus_test.go`
+(each answered and raise row also read out of the record — a missing entry fails the case, **ADR 0302**), the proof
+table with its nil-generator soundness row, the IR absence with its counter-rows, a 16-row neighbour table (the
+negation's answers and its sentence, `abs`'s sentence, `-=`, `*=`, the infix `+`, a list concatenation, `2 ** -1`,
+`xs[-1]`), and the filed table; 41 CLI answers, 14 CLI raises with the traceback's last line read from a live
+`python3`, 3 handler rows, the corpus program's line-for-line witness and 6 filed rows in
+`integration/unary_plus_test.go`; and `integration/programs/unary_plus.gy` in the conformance corpus with CPython's
+bytes in `integration/testdata/unary_plus.expected`. **72 record entries** came in from the reference with the
+compiled leg cross-checked (10786 → 10858). The refusals the row leaves are [Gap R.564](#gap-r-564),
+[Gap R.565](#gap-r-565) and [Gap R.566](#gap-r-566).
 
 <a id="gap-r-245"></a>
 
@@ -24269,3 +24326,98 @@ sibling that already renders source text where it knows the node and a neutral p
 doors should not disagree about one construct (**ADR 0232**).
 
 Measured 2026-10-31 landing **ADR 0468**.
+
+
+<a id="gap-r-564"></a>
+
+### Gap R.564 — the unary plus declines an operand no record names a number (OPEN, found by ADR 0469)
+
+```
+$ gustyc --eval 'def f(a):
+    return +a
+print(f(3))'
+gustyc: jit: codegen: cannot answer +a: the operand's kind is not a number this backend can name, and unary +
+hands the operand back unchanged (roadmap Gap R.564)                                            # exit 1
+$ gustyc --eval 'xs = [[1], [2]]
+print(+xs[0][0])'      # refuses; the reference answers 1                                        # exit 1
+$ gustyc --eval 'print(+min([3, 1]))'        # refuses; the reference answers 1                   # exit 1
+$ gustyc --eval 'def h():
+    return [1]
+print(+h())'           # refuses; the reference raises `bad operand type for unary +: 'list'      # exit 1
+```
+
+`+x` hands the operand back as the answer, so the road requires a *positive* proof of number-ness (the reason is
+**ADR 0469**'s: the silence of the raise door is the wrong shape of answer for a road with no instruction in it).
+Five shapes have no record to read, and each is refused rather than answered from the wire:
+
+- **a parameter** — `def f(a): return +a` — whose kind is whatever the call sites hand it; the road would have to
+  read the call sites, which is **L11.1**'s tagged value word arriving at a parameter, not a fact about the body;
+- **a slot two levels deep** — `xs[0][0]` — where `slotNumberFamily` describes one level and the second is the
+  object's business;
+- **a name the body does not own** — `x = 5` / `def g(): return +x` / `print(g())` — where the binding the
+  notebooks hold is the module's and the function's own records never saw it, so one spelling of `+x` answers at
+  top level and declines inside a `def`;
+- **the winner of a `min`/`max`**, which answers whichever operand wins and so inherits the container's kind (this
+  is why the builtin list in `unaryPosCallIsANumber` is deliberately short);
+- **a callee's container or `None` answer** — `def h(): return [1]` and `def h(): pass` — where the reference raises
+  and this backend declines: the raise door names a `None` *literal*, not a body that fell off its end, and a
+  container answer is still **Gap R.229**'s silence.
+
+The measurement of each is pinned in `TestTheUnaryPlusProofIsAskedOfARecordNotASpelling` (the declined half, asked
+of the parsed node rather than inferred from emitted IR) and in `TestWhatTheUnaryPlusRowStillCannotAnswerThroughTheCLI`
+(with the reference's answer beside each). The fix is the same road every other decline in this directory is on: a
+tag that says what the object holds (**L11.1**), which would turn all four from refusals into either the reference's
+answer or the reference's raise.
+
+Measured 2026-10-31 landing **ADR 0469**.
+
+<a id="gap-r-565"></a>
+
+### Gap R.565 — a door that declines its argument never asks the operand's own raise (OPEN, found by ADR 0469)
+
+```
+$ gustyc --eval 'print(len(+"ab"))'
+gustyc: jit: codegen: len requires an inline list/dict/set literal                               # exit 1
+$ python3 -c 'print(len(+"ab"))'
+TypeError: bad operand type for unary +: 'str'                                                   # exit 1, catchably exit 3
+```
+
+`+"ab"` raises — the prefix's door names the text and writes the reference's sentence. It never gets the chance,
+because `len` declines the *call* before lowering its argument at all, so no road is ever entered for the operand.
+The class of verdict is wrong rather than its wording: the reference stops the program with a catchable
+`TypeError`, and this backend stops the *build*.
+
+This is **Gap R.240**'s door seen from the other side: that row asks for the answer `len(s[1:3])` should give,
+this one asks that an argument which the reference would stop on be lowered far enough to raise before the caller
+decides it cannot answer. The shape is not `len`'s alone — every door whose first act is `requires an inline …
+literal` declines before it asks, so the fix is one question ("would this operand raise?") asked at the top of
+those arms, with the raise emitted through the ordinary `raiseTo` so the handler still runs. Measured while
+listing what **ADR 0469** leaves standing; the prefix row pins the behaviour rather than papering over it in
+`TestWhatTheUnaryPlusRowStillCannotAnswerThroughTheCLI` and its CLI twin.
+
+Measured 2026-10-31 landing **ADR 0469**.
+
+<a id="gap-r-566"></a>
+
+### Gap R.566 — the prefix rule accepts `<prefix> not`, where Python's grammar stops (OPEN, found by ADR 0469)
+
+```
+$ gustyc --eval 'print(+not 1)'      # 0   — this backend runs it
+$ python3 -c 'print(+not 1)'
+  File "<string>", line 1
+    print(+not 1)
+          ^^^
+SyntaxError: invalid syntax                                                          # exit 1
+```
+
+The reference's grammar gives `not` a precedence below the prefix operators and then refuses to put a prefix in
+front of it, so `+not 1` and its older sibling `-not 1` are syntax errors there and answers here (`0` and `0`,
+and `-not 0` answers `-1`). The `+` row inherited this rather than introduced it: `print(-not 1)` was measured on
+the same binary and answered `0` long before the prefix `+` existed, so the over-acceptance belongs to the prefix
+rule **ADR 0338** landed, not to **ADR 0469** — which is why it is a row and not a fix in this commit: changing it
+would move a parse verdict that no program in the corpus or the record depends on, and the row that owns the prefix
+rule is the one that should decide.
+
+The action is one precedence check in `parsePrefix` (a prefix may not be followed by `not`), pinned by a parse-leg
+row for each of `+not`, `-not` and `not -` (the last is legal and answers `False`), and by the record leg for the
+two that stop parsing. Measured 2026-10-31 landing **ADR 0469**.

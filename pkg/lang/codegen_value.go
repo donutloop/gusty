@@ -154,6 +154,11 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 	case *BinOp:
 		return g.valueBinOp(b, e, n)
 	case *UnOp:
+		if unaryPosIsTheRoad(n) {
+			// `+x` is `__pos__`, not `x + 0`: the operand's own word, or the reference's TypeError.
+			// The road is pkg/lang/unary_plus.go (roadmap Gap R.244, ADR 0469).
+			return g.valueUnaryPos(b, n)
+		}
 		// `not build()` asks the same question `if build():` asks, of the container the callee built: the
 		// operand is materialised to a name and the operator asked again, so the truth road below — the one
 		// a container variable already goes through — answers the answer (roadmap Gap R.67, ADR 0333).

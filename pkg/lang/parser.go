@@ -1671,6 +1671,14 @@ func (p *parser) parsePrefix() (Expr, error) {
 		}
 		return &UnOp{Op: "-", X: x, Src: t.Span}, nil
 	}
+	if t.IsOp("+") {
+		p.next()
+		x, err := p.parseExprPrec(precUnary)
+		if err != nil {
+			return nil, err
+		}
+		return &UnOp{Op: "+", X: x, Src: t.Span}, nil
+	}
 	return p.parseAtom()
 }
 

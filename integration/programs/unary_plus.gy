@@ -1,0 +1,63 @@
+# The plus before an operand is the reference's `__pos__`, and it is not a zero
+# added to the operand (roadmap Gap R.244, ADR 0469).
+#
+#   print(+1)      # 1        this toolchain: parse error at 1:7: unexpected token
+#   print(+1.5)    # 1.5      — the grammar had no prefix `+` rule at all, while
+#   print(+True)   # 1          `print(-1)` had always answered.
+#   x = 5
+#   print(x-+1)    # 4
+#
+# The lowering that was tried first was `x + 0`, and it is wrong three ways the
+# reference is not: `print(+1.5)` printed `1` (the neutral element was an INT
+# literal and the binary road picks its domain from the operands), `print(+None)`
+# printed `0` at exit 0, and `+[1, 2]` complained about concatenating an `int`
+# that nobody wrote. So `+x` is its own door, with the unary minus's shape and
+# its own sentence.
+#
+# This file's expectation is what CPython printed for it, line for line.
+
+print(+1, +0, +True, +False)
+print(+1.5, +1.0, -1.5)
+
+print(-+1, -+-1, + +1, +-1, + + -1)
+print(1-+1, 5-+1, 2*+3, +1+1, 1 ++ 2)
+
+x = 5
+print(+x, x-+1, +x == x)
+ratio = 5.5
+print(+ratio, +ratio + 0.5)
+
+print(+1 if True else 2, +1 == 1, +1 > 0, +1 in [1, 2])
+
+print([+1], (+1, +2), {"a": +1})
+for v in [+1, +2]:
+    print(v)
+
+xs = [7]
+print(+xs[0], +xs[0] + 1)
+d = {"a": 1}
+print(+d["a"])
+
+print(+len("abc"), +ord("a"), +int("2"), +float("1.5"), +sum([1, 2]), +abs(-3))
+
+def value():
+    return 1
+
+def half():
+    return 1.5
+
+print(+value(), +half(), str(+1), f"{+1}")
+
+k = 1
+k += +1
+print(k)
+
+try:
+    print(+"a")
+except TypeError as e:
+    print(e)
+
+try:
+    print(+None)
+except TypeError:
+    print("caught the signless operand")

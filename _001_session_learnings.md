@@ -17866,3 +17866,67 @@ quote the record's size (`roadmap.md`, `docs/operations.md`, `AGENTS.md`,
 `pkg/lang/leading_dot_float_test.go`) and `TestTheRoadmapSnapshotIsMeasuredNotRemembered` recomputes all of them from
 the artifacts — it named eight stale numbers in one run, which is the cheapest possible way to learn that a snapshot
 is a file's, not an author's.
+
+## Cycle: the prefix the grammar never had (**roadmap Gap R.244** closed; **Gap R.564**, **Gap R.565**, **Gap R.566** filed; **ADR 0469**)
+
+**The obvious lowering was built, measured, and thrown away — and the measurement is the ADR.** `+x` is `x + 0`,
+everyone's first instinct, five lines of parser and no new road. It compiled, most of the table went green, and
+`print(+1.5)` printed `1`. The neutral element was an INT literal, and the binary road chooses its domain from the
+operand spellings, so every float operand came back an int (`x = 5.5` / `print(+x)` printed `0`), `print(+None)`
+printed `0` at exit 0 where the reference raises, and every container raised a *concatenation* sentence about a `0`
+the author never wrote. An identity element is a guess about the domain, and the domain is exactly what `__pos__`
+exists to ask; the door in `pkg/lang/unary_plus.go` costs more code and buys three correct programs and four
+sentences that blame the right token. The lesson generalises past this row: when the tempting lowering is "rewrite
+it as something that already works", measure the *boundaries* of that something — a float, a None, a container —
+before the middle.
+
+**A road that hands back the operand needs a positive proof, not the neighbour's silence.** The unary minus can
+lower its operand through the numeric road and trust that road's refusals, because the instruction it writes makes
+a number-shaped word either way. `+x` returns the operand *as the answer*, so every shape the raise door cannot name
+would print a text's interned index, a heap handle, or a caught exception message as the value of a program the
+reference stops on. So the road asks a different question than the raise does — `unaryPosOperandIsANumber`, answered
+from a literal, a verdict, a proven arithmetic tree, the binding records, `slotNumberFamily`,
+`constantSubscriptKind`, a builtin contract, or a callee's every `return` — and refuses whatever it cannot state.
+Fourteen of the raise rows in the table are the same programs the desugaring answered at exit 0; four refusals are
+filed (**Gap R.564**) rather than guessed at. The rule to keep: when two doors ask about one operand, check whether
+the second door needs the answer the first door's *absence* would give it.
+
+**Verdicts are numbers to `__pos__`, and the printer must be told twice.** `+(1 < 2)` is `1`, not `True`, because
+the reference's `__pos__` of a bool is an int — and here whether a word prints `1` or `True` is decided by the
+expression node the print dispatch is standing on, not by the word. A `+` node whose operand is a `BoolLit` or a
+comparison therefore prints the int because the node is a prefix rather than a literal, which is correct and
+accidental at once; the answered table pins `+True`, `+False`, `+(1 < 2)` and `x = True` / `print(+x)` explicitly so
+the accident cannot quietly become a policy.
+
+**The filed rows failed first, which is the only way a filed row is allowed to close.** `print(+1)` sat in
+`TestWhatTheMinusRowLeavesStandingIsFiledNotFixed` and in its CLI twin, pinned to the parse error with the
+reference's answer beside it. After the fix those rows failed — and moving them into the answered tables was the
+commit, not deleting them. The same discipline put the six declines into a table with CPython's answer in the row
+(`TestWhatTheUnaryPlusRowStillCannotAnswerThroughTheCLI`), so a road that grows one of those answers fails a test
+rather than shipping a silent improvement.
+
+**An absence assertion without its counter-row is a checkbox.** The IR witness says the program's own functions
+contain no `sub i32 0,` for a `+`; that is satisfied just as well by a compiler that lost the negation. The
+counter-rows (`x = 5` / `print(-x)`, `x = 1.5` / `print(-x)`) have to be *non-constant* expressions too — a folded
+`print(-1)` emits no subtraction at all, so the counter-row passed for the wrong reason until it was rewritten.
+A negative control is only a control if the thing it controls could still fail it.
+
+**The reference leg has to be asked, not cited.** Half the raise rows began as `pythonOutput(...)`, which returns
+stdout; for a program that dies in a traceback that is `""`, and my first draft asserted `"" == "TypeError: …"` and
+failed loudly rather than quietly — the good outcome. The rows now call `lang.PythonRun` and compare
+`lastTracebackLine(refErr)`, so the sentence in the table is re-read from CPython inside the case. A reference
+column that nobody re-runs is a quotation, and quotations rot.
+
+**A concurrent session had already started a different row in this tree, so I worked in a worktree of HEAD.**
+`pkg/lang/codegen_ir_utf8.go` was mid-edit for **Gap R.243** (untracked `strided_text_slice.go`, a `rt_str_strided`
+helper that did not compile), which made the main checkout unbuildable and the row visibly taken. `git worktree add
+/tmp/gusty-r244 HEAD` cost one command and removed both problems: my measurements were of the committed compiler,
+my `make testparallel` was mine, and the other session's files never entered my `git status`. When two cycles share
+a roadmap, the cheapest conflict avoidance is a checkout, and the queue is the coordination mechanism — I skipped
+R.243 because its `Blocked on` cell was paid and someone else was already there.
+
+**The counts moved as one set again.** 76 sources through `tools/recmerge` (record **10786 → 10862**), one corpus
+program (**289 → 290** programs, matrix **275 → 276**, parity-asserted **239 → 240**, oracle `match` **225 → 226**,
+drift 0), three queue rows added and one closed (**467 → 470** rows, owed **274 → 276**), and **ADR 0469** as the
+457th record. Four documents quote the record's size and `TestTheRoadmapSnapshotIsMeasuredNotRemembered` recomputes
+them all; the correct move is to let the guard name the stale ones rather than to remember.

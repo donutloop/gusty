@@ -191,6 +191,12 @@ func (g *irGen) isFloat(e Expr) bool {
 	case *FloatLit:
 		return true
 	case *UnOp:
+		if unaryPosIsTheRoad(n) {
+			// A `+` is transparent to the domain: `+1.5` is a float because what stands behind the
+			// prefix is one, and print has to choose the float formatter for it exactly as it does for
+			// a negation (roadmap Gap R.244, ADR 0469).
+			return g.isFloat(unaryPosOperandOf(n))
+		}
 		if n.Op == "-" {
 			// A negated slot read whose kind the object carries is answered by the float arms, so its
 			// result *is* a float and print has to choose the float formatter for it (Gap R.88).
@@ -542,6 +548,11 @@ func (g *irGen) floatValue(b *strings.Builder, e Expr) string {
 		fmt.Fprintf(b, "  %s = sitofp i32 %s to double\n", t, g.valueText(b, n))
 		return t
 	case *UnOp:
+		if unaryPosIsTheRoad(n) {
+			// `+x` in the double domain is the operand's own double — no `fsub`, no lift of a word that
+			// is not a double, and the same raise door the i32 leg asks first (roadmap Gap R.244).
+			return g.unaryPosDouble(b, n)
+		}
 		if n.Op == "-" {
 			// The double domain asks the same question the i32 road asks before it writes an instruction:
 			// what kind is the operand? Lifting a text through `sitofp` here printed 1.5 for `-"hi" + 1.5`,

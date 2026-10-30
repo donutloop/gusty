@@ -607,11 +607,12 @@ and `integration/minus_operator_test.go` asserts the arithmetic is in the module
 `@main` or a `@gy_*` function) — before the row, the module for `y = x-1` contained no
 subtraction at all.
 
-Two shapes stand outside the row, both filed rather than smuggled in: **`+` before an operand is
-refused** (`print(+1)` is `parse error: unexpected token` where CPython prints `1`) because the
-grammar has no unary-plus rule at all — roadmap **Gap R.244** — and a comprehension whose
-iterable is a list the compiler kept as a compile-time constant still refuses (roadmap
-**L11.1**, the tagged value word, and ADR 0192 is that refusal's own record).
+One shape stands outside the row, filed rather than smuggled in: a comprehension whose iterable is a
+list the compiler kept as a compile-time constant still refuses (roadmap **L11.1**, the tagged value
+word, and ADR 0192 is that refusal's own record). The prefix `+` that used to stand beside it is answered
+now — `print(+1)`, `print(+1.5)`, `print(+True)` and `print(x-+1)` are the reference's `1`, `1.5`, `1` and
+`4`, and `+x` is its own door rather than `x + 0` (**Gap R.244**, **ADR 0469**; the section is
+*Unary plus is the operand, or the `TypeError`* below).
 
 ## Statements
 
@@ -4281,6 +4282,49 @@ Two rules keep the door honest rather than merely loud:
 
 What the compiler cannot see it does not claim: a parameter the caller fills with a text on one path and a
 number on another keeps the road it had, which is the tagged-value-word clause of roadmap L11.1.
+
+### Unary plus is the operand, or the `TypeError` (`+x`)
+
+`+` before an operand is the reference's `__pos__`, and it was missing from the **grammar**: `print(+1)`,
+`print(+1.5)`, `print(+True)`, `print(-+1)` and `x = 5` / `print(x-+1)` were all `parse error: unexpected
+token` at exit 1 while `print(-1)` had always answered (roadmap **Gap R.244**, **ADR 0469**). The prefix now
+sits beside the unary minus in the same rule, and `+x` is its own door — not `x + 0`:
+
+```python
+print(+7)          # 7         — an int is itself
+print(+1.5)        # 1.5       — a float is itself, and keeps the float printer
+print(+True)       # 1         — a bool is a number; the answer is an INT, not True
+print(-+1)         # -1        — the prefixes compose; `+-1` is -1, `1 ++ 2` is 3
+x = 5
+print(x-+1)        # 4         — a binary `-` followed by a prefix `+`
+k = 1
+k += +1            # …and `+=` is still the augmented assignment, not a `+` and an empty operand
+
+print(+"hi")       # TypeError: bad operand type for unary +: 'str'
+print(+None)       # TypeError: bad operand type for unary +: 'NoneType'
+print(+[1, 2])     # TypeError: bad operand type for unary +: 'list'
+print(+{1: 2})     # TypeError: bad operand type for unary +: 'dict'
+print(+(1, 2))     # TypeError: bad operand type for unary +: 'tuple'
+print(+Token())    # TypeError: bad operand type for unary +: 'Token'   — an instance names its class
+```
+
+Why a door and not the additive identity: `+x` as `x + 0` was built and measured, and it printed `1` for
+`+1.5`, `0` for `x = 5.5` / `print(+x)`, and `0` at **exit 0** for `+None`, and it complained about
+concatenating an `int` that the source never mentions for every container. A neutral element is a guess
+about the domain, and the domain is exactly what this operator asks (**ADR 0469**). The shape is therefore
+the unary minus's, sharing its kind door and its sentence table and differing in the wording — the table
+owns `bad operand type for unary +: '…'` as its own entry, exactly as it owns the negation's and `abs`'s
+(**ADR 0271**) — so `except TypeError:` takes the raise and an uncaught one leaves at the runtime-error exit
+class.
+
+What the road answers is what a record can **state** is a number: a literal, a verdict (`+(1 < 2)` is `1`,
+because the reference's `__pos__` of a bool is an int, and `not` answers a verdict whatever stands behind
+it), an arithmetic tree of proven arms, a name the binding records describe, a slot whose literal says
+numbers and nothing else, and a callee whose every `return` the same walk proves (or a builtin whose
+contract is a number or a stop — `min`/`max` are not, because they answer whichever operand wins). What it
+cannot state it refuses in words, naming the operand and the row that owes the work, rather than handing
+back a text's interned index as a number — a parameter (`def f(a): return +a`), a slot two levels deep, and
+a callee's container answer are roadmap **Gap R.564**.
 
 ### `abs` asks the same question (`abs(x)`)
 

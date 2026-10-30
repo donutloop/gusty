@@ -6635,6 +6635,12 @@ func unsupportedNumberOp(op, kind, other string) (string, string) {
 		// `-xs[i]` is its own operator to CPython, with its own sentence. Spelling the negation as
 		// `0 - xs[i]` would have raised the binary one, which is a different program's error.
 		return "TypeError", fmt.Sprintf("bad operand type for unary -: '%s'", kind)
+	case "pos":
+		// `+"hi"` is the reference's `__pos__`, and like the negation it is its own operator with its own
+		// sentence: `bad operand type for unary +: 'str'`. The `+` is not the binary one, and a road that
+		// reached for the binary wording would blame an `int` the source never mentions (roadmap
+		// Gap R.244, ADR 0469; the table rule is ADR 0271's).
+		return "TypeError", fmt.Sprintf("bad operand type for unary +: '%s'", kind)
 	case "abs":
 		// `abs("hi")` is CPython's own sentence, and it is *not* the negation's: the reference names the
 		// call, not an operator. One table, one wording per operation, so the interpreter, the emitted

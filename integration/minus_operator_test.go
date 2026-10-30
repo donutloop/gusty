@@ -209,16 +209,10 @@ func TestWhatTheMinusRowStillCannotAnswerThroughTheCLI(t *testing.T) {
 		oracle   string // what the reference answers
 		gap      string
 	}{
-		{
-			"a text answer", "print(+1)",
-			"unexpected token", "1",
-			"roadmap Gap R.244 (the grammar has no unary plus; `print(-1)` works and `print(+1)` does not)",
-		},
-		{
-			"a text answer beside an operator", "x = 5\nprint(x-+1)",
-			"unexpected token", "4",
-			"roadmap Gap R.244 (the same missing rule, reached from the operator side)",
-		},
+		// (`print(+1)` and `x-+1` sat here as the grammar's missing prefix rule. They are answered now —
+		// roadmap Gap R.244, ADR 0469 — and moved, with the reference's answers beside them, to
+		// `TestTheUnaryPlusAnswersWhatTheReferenceAnswersThroughTheCLI` in `unary_plus_test.go`. A filed
+		// row that becomes an answer has to fail something first, and it did.)
 		{
 			"a comprehension over a constant list", "xs = [1, 2, 3]\nys = [x*2 for x in xs]\nprint(ys)",
 			"", "[2, 4, 6]",
