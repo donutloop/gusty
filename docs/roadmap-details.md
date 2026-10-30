@@ -24905,3 +24905,52 @@ its `@.lst`) and the subscript reads it without the element kind, exactly the fa
 `sorted` binding by writing the three claims (`listElemStr`/`listElemInt`/`mixedLists`). Filed apart from
 **Gap R.579** because a wrong answer at exit 0 and an invalid module are different classes on the ladder and get
 different definitions of done, and they may have different owners in the decorator road.
+
+<a id="gap-r-581"></a>
+
+### Gap R.581 — a call whose answer carries a kind loses the tag in the call-argument position, and one shape of it reaches exit 2 (OPEN, found the day after ADR 0473's sweep)
+
+The body is a mixed-return function — one arm a text, one arm something else — and the question is where its
+answer goes. Read plain or bound, it is right. Put it in an argument and the tag is gone:
+
+```gy
+def f(x):
+    if x:
+        return "x"        # or True, or None, or 1.5, or a text to be walked
+    return 0
+
+def g(v):
+    return v              # or v + "!", or [v], or a `for` over v
+```
+
+| the program | this backend, exit | the reference |
+|---|---|---|
+| `print(g(f(1)))` (text arm) | `0` at exit 0 | `x` |
+| `print(g(f(1)))` (bool arm) | `1` at exit 0 | `True` |
+| `print(g(f(1)))` (`None` arm) | `0` at exit 0 | `None` |
+| `print(g(f(1)))` with `def g(v): return [v]` | `0` at exit 0 | `['x']` |
+| `for c in g(f(1)): print(c)` (text arm `"abc"`) | prints NOTHING at exit 0 | `a`, `b`, `c` |
+| `print(g(f(1)))` with `def g(v): return v + "!"` | refusal: `concatenating a string with a value that is not a string` | `x!` |
+| `print(g(f(1), "z"))` with `def g(a, b): return a + b` | the same refusal | `xz` |
+| `print(h(f(1)))` through a second forwarding `def` | `0` at exit 0 | `x` |
+| `print(g(f(1)))` (float arm `1.5` / `2`) | **exit 2**: `%t16 = call i32 @gy_g(i32 %t13)` — `%t13` defined as a `double` | `1.5` |
+
+Nine shapes, one door. The last is the one that makes this a row of its own rather than a note under
+**Gap R.324**: the answer direction has no word for a double, and the call-argument road asks for one `i32`, so
+a `double` arrives at a parameter slot and `llc` is the one that says so — **exit 2**, the code the contract
+reserves for a compiler bug (**ADR 0166**), on a program the reference prints.
+
+The refusal rows are the second reason. `concatenating a string with a value that is not a string` is false of
+the program: the value IS a string, and the road cannot see it because the tag stayed behind (**ADR 0249** ranks
+a refusal that misdescribes the shape right below the wrong answer it replaces).
+
+`print(f(1))` and `v = f(1)` / `print(v)` answer correctly on all of these bodies, measured on the same build,
+which is what points at the position rather than at the answer: the doors that already ask `answerCallPair` for
+both words are the print, the binding and the container-element roads (**ADR 0368**'s opt-in), and the call
+argument is the position that never joined them — **Gap R.220**'s twin, and the same missing pair
+**Gap R.324** counts at six other positions. Fixing the pair here answers seven of the nine and turns the two
+refusals into questions of the tag they can now read; the float arm needs the word **Gap R.324** already names
+as its third sub-action, and the two belong in the same commit because they are the same sentence at the same
+door. Not closed by a refusal: six of the nine compile today, and **ADR 0273** forbids a gate that costs a
+program which answers. Measured 2026-10-30, the day after **ADR 0473**'s differential sweep, with every shape
+re-run against `python3` 3.12.3 on the same machine as the compiled column.

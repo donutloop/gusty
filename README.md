@@ -676,7 +676,10 @@ error — nothing moved from an answer to a refusal, nothing newly reached **exi
 stdout. What the sweep found that this row does not own is filed with its bytes, not hushed: **Gap R.579**
 (a decorated function whose body binds a list emits an undefined `%f.raiseexit` — **exit 2**) and **Gap R.580**
 (the same body returning `[x][0]` prints `0` where the reference prints `3`), both identical on the parent and the
-grandparent builds.
+grandparent builds. A third follow-up got its own row the next day — **Gap R.581**: a call
+whose answer carries a kind loses its tag in the CALL-ARGUMENT position (a text arm prints `0`, a bool arm `1`, a
+`None` arm `0`, a `for` over the answer prints nothing) and the float arm of the same door hands `llc` a `double`
+in an `i32` parameter slot — **exit 2**, measured nine ways with `python3` beside it.
 
 **Membership, equality, an element slot and a comparison chain ask a `sorted`/`reversed` what it IS, and ADR 0472
 pays Gap R.253** — the row **ADR 0339** measured, withdrew its own arms for, and left standing with the measurement

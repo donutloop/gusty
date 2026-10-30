@@ -18138,7 +18138,13 @@ behaviour twice, and the only reason a diff must compare exit code and stdout be
 of the 48 were defects this row does not own: a decorated function whose body binds a list emits an undefined
 `%f.raiseexit` and dies at exit 2, and its twin that returns `[x][0]` prints `0` where the reference prints `3`.
 Both reproduce on the parent AND the grandparent, so they are filed — **Gap R.579**, **Gap R.580** — rather than
-fixed here, because a cycle that fixes what it did not measure has no witness for the fix.
+fixed here, because a cycle that fixes what it did not measure has no witness for the fix. A third shape found the same way the next day became its own row (**Gap
+R.581**): `print(g(f(1)))` over a mixed-return `f` loses the answer's TAG — a text arm prints `0`, a bool arm `1`, a
+`None` arm `0`, a `for` over the answer prints nothing, and the float arm reaches `llc` with a `double` in an `i32`
+parameter slot and dies at **exit 2**. Nine shapes, one door, and `print(f(1))` / `v = f(1)` answering correctly the
+whole time — which is the measurement that says WHERE the bug is rather than that it exists. Filing nine measured
+shapes is worth more than half-fixing them: the bytes pin the door, and the row cannot be closed by editing a
+sentence.
 
 **Counts move as one set or they lie.** record **10977 → 11031** (54 entries — the 54th added by the corpus recorder after `TestEveryAssertedCorpusProgramIsOnTheRecord` named the new program missing), corpus **292 → 293**, matrix **278 → 279**
 (**243** asserted, oracle `match` **229**), ADRs **459 → 460** (highest **0473**), queue **479 → 482** rows with
