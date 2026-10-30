@@ -1,0 +1,46 @@
+True
+True
+True
+False
+True
+True
+True
+True
+True
+False
+True
+True
+True
+True
+True
+True
+True
+False
+[1, 2, 3]
+False
+True
+False
+False
+[[1, 2, 3]]
+[[1, 2, 3], 1]
+{'k': [1, 2, 3]}
+([1, 2, 3],)
+[[1, 2, 3]]
+[[1, 2, 3], 0]
+[1, 2, 3]
+[1, 2, 3]
+1
+True
+[1, 2, 3, 9]
+True
+3
+1
+2
+3
+3
+2
+1
+[1, 2, 3]
+['a', 'b']
+ordered
+True

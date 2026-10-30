@@ -293,6 +293,12 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// lists, and ADR 0188's rule — the object has to be a heap object because its OWN bits answer — applies to
 		// a bit the list never had (roadmap L11.3, ADR 0361).
 		if g.literalNeedsHeap(n) || g.literalNeedsTags(n) || g.literalHasPairElement(n) || n.IsTuple() {
+			// The literal's first question, asked before this road's own gates: a slot holding an ordering
+			// call the container doors refuse speaks the DOOR's sentence rather than the mixed-kind gate's
+			// (roadmap **Gap R.253**, **ADR 0472**, **ADR 0249**).
+			if err := g.sortedReversedRefusalInside(n); err != nil {
+				return "", err
+			}
 			// A literal that mixes kinds is not a refusal when every slot can be tagged: the tags
 			// carry the meaning the container-wide kind used to. The list branch asked this later
 			// than the dict and set branches did, so `f([1, "a"])` was refused where `f({1: "a"})`
@@ -313,6 +319,9 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// A dict that mixes kinds is not a refusal when every slot can be tagged: it is a
 		// dict with no kind, and the tags carry the meaning (ADR 0232).
 		if g.literalNeedsHeap(n) || g.literalNeedsTags(n) || g.literalHasPairElement(n) {
+			if err := g.sortedReversedRefusalInside(n); err != nil {
+				return "", err
+			}
 			if literalMixedKinds(n) && !g.taggableMixedDict(n) {
 				return "", mixedKindErr("dict")
 			}
@@ -328,6 +337,9 @@ func (g *irGen) value(b *strings.Builder, e Expr) (string, error) {
 		// to say what it is, so the static global path has to hand it to the tagged builder.
 		// Asking literalNeedsHeap alone refused {True, 1} as "either strings or numbers".
 		if g.literalNeedsHeap(n) || g.literalNeedsTags(n) || g.literalHasPairElement(n) {
+			if err := g.sortedReversedRefusalInside(n); err != nil {
+				return "", err
+			}
 			if literalMixedKinds(n) && !g.taggableMixedSet(n) {
 				return "", mixedKindErr("set")
 			}

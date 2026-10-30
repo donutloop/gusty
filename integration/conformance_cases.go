@@ -873,6 +873,17 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// `ValueError`, the set's and the dict's own complaints) are in this one program, whose expectation is
 		// what CPython printed for it (roadmap Gap R.240, ADR 0470).
 		"len_text_slice",
+		// A door BESIDE the loop asks a `sorted`/`reversed` what its answer IS. ADR 0339 gave the `for` loop
+		// the two questions — write the container down, or name it — and the membership, equality and element
+		// doors asked neither, so they read the builtin's word: the fold's `@.lstN` container constant, handed
+		// to `rt_contains`/`rt_container_eq`/`rt_append_tagged` in an i32 parameter, which `llc` refuses at
+		// exit 2 for `print(1 in sorted([3, 1, 2]))`, `print(sorted([3,1,2]) == sorted([1,2,3]))` and
+		// `xs.append(sorted([3, 1, 2]))`. The membership and equality answer in both directions, the container
+		// needle, the reachable argument (a variable, a slice, a call's answer, a keyed copy), the slot that
+		// stores the handle with its tag, the four positions a container travels in, and the iterator rule
+		// (`reversed(...) == [...]` is the reference's False, and an iterator is a member of nothing) are in
+		// this one program, whose expectation is what CPython printed for it (roadmap Gap R.253, ADR 0472).
+		"sorted_container",
 		// A `for` loop asks its ITERABLE what it is before choosing a road for it. The loop had three
 		// ways to step over an iterable and no question to choose between them, so a container the
 		// compiler could write down but could not NAME — `sorted([3, 1, 2])`, `reversed([1, 2, 3])`,

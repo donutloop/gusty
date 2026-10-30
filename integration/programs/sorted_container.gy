@@ -1,0 +1,59 @@
+print(1 in sorted([3, 1, 2]))
+print(5 not in sorted([3, 1, 2]))
+print(2 in reversed([1, 2, 3]))
+print(1 in sorted([]))
+print(3 in sorted([1, 2, 3], reverse=True))
+print(sorted([3, 1, 2]) == [1, 2, 3])
+print([1, 2] == sorted([2, 1]))
+print(sorted([3, 1, 2]) == sorted([1, 2, 3]))
+print(sorted([]) == [])
+print(sorted([3, 1, 2]) != [1, 2, 3])
+xs = [3, 1, 2]
+print(sorted(xs) == [1, 2, 3])
+print(1 in sorted(xs))
+print(sorted(xs) == sorted(xs))
+def b():
+    return [3, 1, 2]
+print(1 in sorted(b()))
+print("a" in sorted(["b", "a"]))
+print(sorted(["b", "a"]) == ["a", "b"])
+print(sorted([3, 1, 2]) in [[1, 2, 3]])
+print(sorted([3, 1, 2]) in [[1, 2, 4]])
+print(sorted(sorted([3, 1, 2])))
+print(reversed([1, 2]) == [2, 1])
+print(reversed([1, 2]) != [2, 1])
+print(reversed([1, 2]) == reversed([1, 2]))
+print(reversed([1, 2]) in [[2, 1]])
+print([sorted([3, 1, 2])])
+print([sorted([3, 1, 2]), 1])
+print({"k": sorted([3, 1, 2])})
+print((sorted([3, 1, 2]),))
+ys = []
+ys.append(sorted([3, 1, 2]))
+print(ys)
+zs = [0, 0]
+zs[0] = sorted([3, 1, 2])
+print(zs)
+d = {}
+d["k"] = sorted([3, 1, 2])
+print(d["k"])
+ws = [sorted([3, 1, 2])]
+print(ws[0])
+print(ws[0][0])
+print(ws == [[1, 2, 3]])
+qs = sorted([3, 1, 2])
+qs.append(9)
+print(qs)
+print(2 in sorted(reversed([3, 1, 2])))
+print(len(sorted([3, 1, 2])))
+for v in sorted([3, 1, 2]):
+    print(v)
+for v in reversed([1, 2, 3]):
+    print(v)
+print(sorted([3, 1, 2]))
+print(sorted(["b", "a"]))
+if sorted([3, 1, 2]) == [1, 2, 3]:
+    print("ordered")
+def f(vals):
+    return sorted(vals) == [1, 2, 3]
+print(f([3, 1, 2]))

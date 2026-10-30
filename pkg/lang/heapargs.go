@@ -593,6 +593,16 @@ func (g *irGen) heapArg(b *strings.Builder, e Expr) (handle string, ok bool, err
 // compiler bug (roadmap Gap I.2). A string the backend cannot resolve to text still refuses
 // with the actionable diagnostic rather than emitting bad IR (ADR 0166).
 func (g *irGen) heapElemKind(b *strings.Builder, e Expr) (string, bool, error) {
+	// A `sorted`/`reversed` the container doors must REFUSE speaks here, at the first door that would have
+	// stored its word: the element is not a number, not interned text, and not a container the build half
+	// can make, and the value road's answer is the name of a compile-time GLOBAL. Reading that word into a
+	// slot is the instruction `llc` rejects with "global variable reference must have pointer type" — the
+	// **exit 2** this row exists to remove — so the slot refuses in the door's own sentence instead of
+	// letting a later, unrelated door (the mixed-element-kind gate, Gap J.6) describe the shape wrongly.
+	// (roadmap **Gap R.253**, **ADR 0472**, **ADR 0166**)
+	if g.sortedReversedIsBeyondTheDoor(e) {
+		return "", false, g.sortedReversedDoorRefusal(e)
+	}
 	if g.nestedContainerElem(e) {
 		// An element that is itself a container is stored as the inner object's handle, tagged so
 		// that the printer and the comparison can find their way back to it at run time. The
@@ -1048,6 +1058,15 @@ func (g *irGen) nestedContainerElem(e Expr) bool {
 		// container road to the ordinary value road, which for a literal hands back the name of a
 		// compile-time GLOBAL — and the global emitter is the door that refused, in a sentence about an
 		// element kind the program had already proven (roadmap **Gap R.530**, **ADR 0457**).
+		//
+		// The two builtins whose whole job is to hand back a list answer the same object a call's answer is:
+		// the fold's ordered elements, or the copy the runtime built, and the slot stores the handle of it.
+		// Without this arm `xs.append(sorted([3, 1, 2]))`, `xs[0] = sorted([...])`, `d["k"] = sorted([...])`
+		// and `[sorted([3, 1, 2])]` each put that `@.lstN` global in an i32 parameter, which `llc` refuses at
+		// **exit 2** (roadmap **Gap R.253**, **ADR 0472**).
+		if g.sortedReversedSlotsAreTaggable(e) {
+			return true
+		}
 		return g.containerAnswerIsContainerSlotExpr(n)
 	case *Name:
 		return g.listVars[n.Value] || g.mixedLists[n.Value] || g.runtimeDicts[n.Value] || g.runtimeSets[n.Value]
@@ -1255,6 +1274,10 @@ func (g *irGen) literalNeedsTags(e Expr) bool {
 			// the membership test below it died reporting an element kind the program had already proven
 			// (roadmap **Gap R.530**, **ADR 0457**; **ADR 0333**'s scan is the table this asks).
 			g.containerAnswerIsContainerSlotExpr(x) ||
+			// The list a `sorted`/`reversed` hands back is a handle too: `[sorted([3, 1, 2])]` claimed one
+			// element kind, printed the handle as the number `1`, and the reference prints `[[1, 2, 3]]`
+			// (roadmap **Gap R.253**, **ADR 0472**; the reading beside this is **Gap R.530**'s, **ADR 0457**).
+			g.sortedReversedSlotsAreTaggable(x) ||
 			// The answer of a hand-off call — `def g(v): return v` — wears its argument's kind, and when that
 			// kind is a float box, the void, a verdict or another container the payload means nothing on its
 			// own: `[g(None), 1]` printed `[0, 1]` because the object claimed one element kind and the number
@@ -1895,6 +1918,14 @@ func (g *irGen) elemKindTag(e Expr) (int32, bool) {
 	// answer comes from the same door the gates ask, and a program that defines its own `set` keeps its
 	// answer too (roadmap Gap R.360, beside ADR 0232's tag-and-store pair and Gap K.3's empty-set spelling).
 	if c, isCall := e.(*Call); isCall && g != nil {
+		// The list a `sorted`/`reversed` hands back is a container, and a slot that stores its answer stores
+		// the handle the builders made — labelled TagList, so the tag-reading printer asks the object. Asked
+		// as an integer before this arm existed, the answer reached `taggedOperand` with tag 0 and its payload
+		// still the fold's `@.lstN` global, which is the global-in-an-i32-parameter shape ADR 0166 counts as a
+		// compiler bug (roadmap **Gap R.253**, **ADR 0472**; the tag-and-store pair is **ADR 0233**'s rule).
+		if g.sortedReversedIsAContainer(c) {
+			return int32(TagList), true
+		}
 		if lit, isEmpty := g.emptyContainerCall(c); isEmpty {
 			switch lit.(type) {
 			case *SetLit:
@@ -2350,6 +2381,11 @@ func (g *irGen) taggableNestedElem(e Expr) bool {
 		// gate-and-door pair again, roadmap **Gap R.530**, **ADR 0457**). A function the scan could not
 		// describe falls through to the empty-container question below, exactly as it did before this arm.
 		if g.containerAnswerIsContainerSlotExpr(n) {
+			return true
+		}
+		// The same question of the object a `sorted`/`reversed` builds: the fold's literal elements, or the
+		// one kind the sort's own gate named (**Gap R.253**, **ADR 0472**).
+		if g.sortedReversedSlotsAreTaggable(n) {
 			return true
 		}
 	}
@@ -3263,6 +3299,14 @@ func (g *irGen) isContainerExpr(e Expr) bool {
 		if _, isEmpty := g.emptyContainerCall(n); isEmpty {
 			return true
 		}
+		// The two builtins whose whole job is to hand back a list ARE that list (roadmap **Gap R.253**,
+		// **ADR 0472**). Without this arm the membership, equality and length doors read the builtin's
+		// word — the fold's `@.lstN` global — as a handle and handed it to `rt_contains`/`icmp eq` in an
+		// i32 parameter, which `llc` refuses at **exit 2** for three programs CPython answers `True`.
+		// Ask it with `containerOperand`, never alone: the pair is ADR 0333's rule.
+		if g.sortedReversedIsAContainer(n) {
+			return true
+		}
 		if nm, isName := n.Fn.(*Name); isName {
 			_, ok := g.containerAnswerOf(nm.Value)
 			return ok && g.containerAnswerCallIsCarriable(n)
@@ -3529,6 +3573,17 @@ func (g *irGen) containerHandleOf(b *strings.Builder, e Expr) (h, kind string, o
 		}
 		return val, inner, true
 	case *Call:
+		// `sorted`/`reversed` hand back the very object the builtin builds, and the door that reads it as a
+		// container builds it rather than reading the builtin's word (roadmap **Gap R.253**, **ADR 0472**).
+		// This is the arm `isContainerExpr` gained beside it, kept in step by asking one function both
+		// questions (**ADR 0333**'s decide-and-build pair, **ADR 0234**'s materialise-the-fold rule).
+		if h, ok, err := g.sortedReversedContainerOf(b, e); ok || err != nil {
+			// A refusal is NOT a named container: the handle road that accepted it would walk an empty
+			// register (the loop beside this door took the counter road and compared against the fold's
+			// global, which is the exit-2 shape again). ok stays false, and the road that asked declines
+			// with ITS OWN sentence — for the `for` loop, **ADR 0339**'s, pinned by **Gap R.249**.
+			return h, "list", ok && err == nil
+		}
 		// A call that hands back a container named it as surely as a variable does: the callee's `ret`
 		// carries the handle its builders made (Gap R.67), so the doors that read a container — the
 		// comparison, the membership test, the loop, the element road — read this answer too. The scan, not
@@ -5430,6 +5485,13 @@ func (g *irGen) containerOperand(b *strings.Builder, e Expr) (string, error) {
 		}
 		return h, nil
 	case *Call:
+		// The builtin's answer is a container too: `1 in sorted([3, 1, 2])`, `sorted([1, 2]) == [1, 2]` and
+		// `len(reversed([1, 2, 3]))` read this word as a handle while the value road was folding the
+		// elements into a global, and the module died in `llc` (roadmap **Gap R.253**, **ADR 0472**). The
+		// build is the same function `isContainerExpr`'s new arm asked, so a shape decided is a shape built.
+		if h, ok, err := g.sortedReversedContainerOf(b, e); ok || err != nil {
+			return h, err
+		}
 		// `return build()` forwards a container a second function built. That function's own `ret` is
 		// already the handle its builders made (Gap R.67), so this body hands the word on; the scan proved
 		// the callee answers a container, and the permission below is what lets the ordinary call road
@@ -7236,6 +7298,15 @@ func (g *irGen) isProvenScalarExpr(e Expr) bool {
 
 // containerEquality lowers == and != when at least one side is a container (ADR 0189).
 func (g *irGen) containerEquality(b *strings.Builder, n *BinOp) (string, error) {
+	// An ordering call the doors must REFUSE speaks its own sentence here rather than falling through to
+	// the generic "needs a tagged value" message, which would describe the operand as a mystery when the
+	// compiler knows exactly what it is and exactly why it cannot be built (**ADR 0249**'s rule that a
+	// refusal names the missing half; **ADR 0166**; roadmap **Gap R.253**, **ADR 0472**).
+	for _, side := range []Expr{n.L, n.R} {
+		if g.sortedReversedIsBeyondTheDoor(side) {
+			return "", g.sortedReversedDoorRefusal(side)
+		}
+	}
 	lc, rc := g.isContainerExpr(n.L), g.isContainerExpr(n.R)
 	// Each side lowers by what it is: a container becomes a handle, anything else keeps the
 	// ordinary value path (and its side effects — deciding an answer statically must not
@@ -7263,6 +7334,19 @@ func (g *irGen) containerEquality(b *strings.Builder, n *BinOp) (string, error) 
 			return "1", nil
 		}
 		return "0", nil
+	}
+	// An iterator beside a container is the reference's False, and the copy this door could build is not
+	// the answer: `reversed` hands back an ITERATOR, which has no `__eq__` and compares by identity, so it
+	// equals no list — not even the flipped copy of the one it was handed — and two calls are two objects.
+	// Comparing the built copy with the container beside it, which is what this door did before the question
+	// was asked, printed True for `print(reversed([1, 2]) == [2, 1])` and for
+	// `print(reversed([1, 2]) == reversed([1, 2]))` at the exit code of success, where the reference prints
+	// False (**Gap R.251**, **Gap R.195**, **ADR 0472**). Both operands were lowered above, so an element
+	// that acts has still acted; only the verdict is decided here. A name the program bound to a `reversed`
+	// keeps the ordinary content path beside this — `r = reversed([1, 2])` / `print(r == r)` is the
+	// reference's True, one object on both sides — and stays that row's to fix.
+	if lRev, rRev := g.reversedIsAnIterator(n.L), g.reversedIsAnIterator(n.R); lRev || rRev {
+		return g.iteratorEqualsAContainer(n.Op), nil
 	}
 	raw := g.newTmp()
 	fmt.Fprintf(b, "  %s = call i32 @rt_container_eq(i32 %s, i32 %s)\n", raw, lhs, rhs)

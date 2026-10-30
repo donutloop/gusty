@@ -217,7 +217,9 @@ func (g *irGen) valueBinOp(b *strings.Builder, e Expr, n *BinOp) (string, error)
 	// static @.lstN global in an icmp). rt_container_eq walks the (payload, tag) pairs
 	// the way Python's __eq__ walks elements (roadmap L11.1, ADR 0189). `is` stays
 	// identity, which is what Python's `is` is for containers.
-	if (n.Op == "==" || n.Op == "!=") && (g.isContainerExpr(n.L) || g.isContainerExpr(n.R)) {
+	if (n.Op == "==" || n.Op == "!=") &&
+		(g.isContainerExpr(n.L) || g.isContainerExpr(n.R) ||
+			g.sortedReversedDoorIsAskedOf(n.L) || g.sortedReversedDoorIsAskedOf(n.R)) {
 		return g.containerEquality(b, n)
 	}
 	// `2 in xs[0]`: the haystack is a read that names a container, so its handle comes out of
@@ -710,7 +712,10 @@ func (g *irGen) valueBinOp(b *strings.Builder, e Expr, n *BinOp) (string, error)
 		// in an i32 slot, the module llc refuses, so it is materialised into the heap first
 		// (ADR 0166's rule one construct on; roadmap Gap J.2, ADR 0234).
 		haystackIsHeap := false
-		if _, isComp := n.R.(*Comp); isComp || g.isContainerExpr(n.R) {
+		// A `sorted`/`reversed` standing where the haystack goes is asked the container question TOO:
+		// either the doors build the object (the row's answers) or they refuse it in words, and in
+		// neither case does the fold's global reach `rt_contains` (**Gap R.253**, **ADR 0472**).
+		if _, isComp := n.R.(*Comp); isComp || g.isContainerExpr(n.R) || g.sortedReversedDoorIsAskedOf(n.R) {
 			ch, chErr := g.containerOperand(b, n.R)
 			if chErr != nil {
 				return "", chErr
@@ -750,12 +755,20 @@ func (g *irGen) valueBinOp(b *strings.Builder, e Expr, n *BinOp) (string, error)
 		// untagged i32 compare of two slots against a handle would never notice that two
 		// literals holding the same elements denote the same value, so [1, 2] in [[1, 2], 3]
 		// would answer False forever (roadmap L11.1, ADR 0189).
-		if g.isContainerExpr(n.L) {
+		if g.isContainerExpr(n.L) || g.sortedReversedDoorIsAskedOf(n.L) {
 			nh, nErr := g.containerOperand(b, n.L)
 			if nErr != nil {
 				return "", nErr
 			}
 			l = nh
+			// The needle is the iterator `reversed` returned, and the reference matches an iterator by
+			// identity: it is a member of no container — not even the one holding the elements it yields — so
+			// the verdict is decided here rather than by comparing the copy the door just built, which answered
+			// True for `print(reversed([1, 2]) in [[2, 1]])` where the reference prints False. Both operands are
+			// built above, so an operand that acts still acts (**Gap R.251**, **ADR 0472**).
+			if g.reversedIsAnIterator(n.L) {
+				return g.iteratorIsNoMember(n.Op), nil
+			}
 			nt, _ := g.elemKindTag(n.L)
 			t := g.newTmp()
 			b.WriteString(fmt.Sprintf("\t%s = call i32 @rt_contains_tagged(i32 %s, i32 %s, i32 %d)\n", t, r, l, nt))

@@ -4104,6 +4104,27 @@
     },
     {
       "case": {
+        "id": "programs/sorted_container",
+        "name": "sorted_container.gy",
+        "source": "print(1 in sorted([3, 1, 2]))\nprint(5 not in sorted([3, 1, 2]))\nprint(2 in reversed([1, 2, 3]))\nprint(1 in sorted([]))\nprint(3 in sorted([1, 2, 3], reverse=True))\nprint(sorted([3, 1, 2]) == [1, 2, 3])\nprint([1, 2] == sorted([2, 1]))\nprint(sorted([3, 1, 2]) == sorted([1, 2, 3]))\nprint(sorted([]) == [])\nprint(sorted([3, 1, 2]) != [1, 2, 3])\nxs = [3, 1, 2]\nprint(sorted(xs) == [1, 2, 3])\nprint(1 in sorted(xs))\nprint(sorted(xs) == sorted(xs))\ndef b():\n    return [3, 1, 2]\nprint(1 in sorted(b()))\nprint(\"a\" in sorted([\"b\", \"a\"]))\nprint(sorted([\"b\", \"a\"]) == [\"a\", \"b\"])\nprint(sorted([3, 1, 2]) in [[1, 2, 3]])\nprint(sorted([3, 1, 2]) in [[1, 2, 4]])\nprint(sorted(sorted([3, 1, 2])))\nprint(reversed([1, 2]) == [2, 1])\nprint(reversed([1, 2]) != [2, 1])\nprint(reversed([1, 2]) == reversed([1, 2]))\nprint(reversed([1, 2]) in [[2, 1]])\nprint([sorted([3, 1, 2])])\nprint([sorted([3, 1, 2]), 1])\nprint({\"k\": sorted([3, 1, 2])})\nprint((sorted([3, 1, 2]),))\nys = []\nys.append(sorted([3, 1, 2]))\nprint(ys)\nzs = [0, 0]\nzs[0] = sorted([3, 1, 2])\nprint(zs)\nd = {}\nd[\"k\"] = sorted([3, 1, 2])\nprint(d[\"k\"])\nws = [sorted([3, 1, 2])]\nprint(ws[0])\nprint(ws[0][0])\nprint(ws == [[1, 2, 3]])\nqs = sorted([3, 1, 2])\nqs.append(9)\nprint(qs)\nprint(2 in sorted(reversed([3, 1, 2])))\nprint(len(sorted([3, 1, 2])))\nfor v in sorted([3, 1, 2]):\n    print(v)\nfor v in reversed([1, 2, 3]):\n    print(v)\nprint(sorted([3, 1, 2]))\nprint(sorted([\"b\", \"a\"]))\nif sorted([3, 1, 2]) == [1, 2, 3]:\n    print(\"ordered\")\ndef f(vals):\n    return sorted(vals) == [1, 2, 3]\nprint(f([3, 1, 2]))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "True\nTrue\nTrue\nFalse\nTrue\nTrue\nTrue\nTrue\nTrue\nFalse\nTrue\nTrue\nTrue\nTrue\nTrue\nTrue\nTrue\nFalse\n[1, 2, 3]\nFalse\nTrue\nFalse\nFalse\n[[1, 2, 3]]\n[[1, 2, 3], 1]\n{'k': [1, 2, 3]}\n([1, 2, 3],)\n[[1, 2, 3]]\n[[1, 2, 3], 0]\n[1, 2, 3]\n[1, 2, 3]\n1\nTrue\n[1, 2, 3, 9]\nTrue\n3\n1\n2\n3\n3\n2\n1\n[1, 2, 3]\n['a', 'b']\nordered\nTrue\n",
+      "python_ok": true,
+      "python_stdout": "True\nTrue\nTrue\nFalse\nTrue\nTrue\nTrue\nTrue\nTrue\nFalse\nTrue\nTrue\nTrue\nTrue\nTrue\nTrue\nTrue\nFalse\n[1, 2, 3]\nFalse\nTrue\nFalse\nFalse\n[[1, 2, 3]]\n[[1, 2, 3], 1]\n{'k': [1, 2, 3]}\n([1, 2, 3],)\n[[1, 2, 3]]\n[[1, 2, 3], 0]\n[1, 2, 3]\n[1, 2, 3]\n1\nTrue\n[1, 2, 3, 9]\nTrue\n3\n1\n2\n3\n3\n2\n1\n[1, 2, 3]\n['a', 'b']\nordered\nTrue\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/for_iterables",
         "name": "for_iterables.gy",
         "source": "# A `for` loop asks its iterable what it is (Gap R.246, ADR 0339).\n# Every answer here is the reference's; the compiled backend is judged against it.\n\ndef b():\n    return [3, 1, 2]\n\nxs = [3, 1, 2]\nys = [1, 2, 3]\nwords = [\"b\", \"a\"]\nempty = []\n\n# the containers the compiler can write down, which it used to step over as a repeat count\nfor v in sorted([3, 1, 2]):\n    print(v)\nfor v in reversed([1, 2, 3]):\n    print(v)\nfor v in sorted([3, 1, 2], reverse=True):\n    print(v)\nfor v in sorted([3, 1, 2], reverse=False):\n    print(v)\nfor v in sorted([]):\n    print(v)\nfor v in reversed([]):\n    print(v)\nfor v in reversed(\"abc\"):\n    print(v)\nfor v in sorted([2, 2, 1]):\n    print(v)\n\n# the operations nest, and apply in the order the reference applies them\nfor v in sorted(reversed([3, 1, 2])):\n    print(v)\nfor v in reversed(sorted([1, 3, 2])):\n    print(v)\n\n# the containers the runtime measures, which the container pair now hands the loop\nfor v in sorted(xs):\n    print(v)\nfor v in reversed(ys):\n    print(v)\nfor v in sorted(words):\n    print(v)\nfor v in reversed(words):\n    print(v)\nfor v in sorted(b()):\n    print(v)\nfor v in reversed(b()):\n    print(v)\nfor v in sorted([3, 1, 2][0:2]):\n    print(v)\nfor v in sorted(empty):\n    print(v)\n\n# one ordering, written once: what the program prints and what it steps over are the same sequence\nprint(sorted([3, 1, 2]), sorted(xs), sorted([3, 1, 2], reverse=True), sorted(xs, reverse=True))\n\n# the loop's own semantics survive the fold\nfor v in sorted([3, 1, 2]):\n    if v == 2:\n        break\n    print(v)\nfor v in sorted([3, 1, 2]):\n    if v == 2:\n        continue\n    print(v)\nfor v in sorted([3, 1]):\n    print(v)\nelse:\n    print(\"done\")\nfor v in reversed([7, 8]):\n    print(v * 10)\n\n# the roads the row is not allowed to disturb\nfor v in [1, 2, 3]:\n    print(v)\nfor c in \"abc\":\n    print(c)\nfor i in range(3):\n    print(i)\nfor v in xs:\n    print(v)\nfor v in [1, 2, 3][0:2]:\n    print(v)\nfor k in {1: 2}:\n    print(k)\nfor v in {1, 2}:\n    print(v)\nfor v in b():\n    print(v)\n",
@@ -6553,11 +6574,11 @@
       ]
     }
   ],
-  "rows": 277,
+  "rows": 278,
   "skipped": 36,
-  "pass": 241,
+  "pass": 242,
   "fail": 0,
-  "oracle_match": 227,
+  "oracle_match": 228,
   "oracle_debt": 24,
   "oracle_not_applicable": 26,
   "oracle_drift": 0

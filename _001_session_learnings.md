@@ -17987,3 +17987,101 @@ one ADR (**458**, highest **0470**), one queue row closed and one filed (**277 o
 publish the record count are guarded by `pkg/lang/golden_artifact_counts_test.go`, and the row that pinned
 `len(s[1:3])` as refused moved out of two filed tables by deletion — a filed row closes by failing, not by being
 edited.
+
+## Cycle: the membership, equality, element and chain doors ask a `sorted`/`reversed` what it IS (**roadmap Gap R.253** closed; **Gaps R.568–R.575** filed; **ADR 0472**)
+
+**A withdrawn measurement is a claim about a shape, not about a road, and re-reading it is a whole cycle.**
+`print(1 in sorted([3, 1, 2]))` had been dying at **exit 2** since **ADR 0339** — `rt_contains(i32 @.lst1, i32 1)`,
+the list's module constant in a register slot, `llc` refusing the module. **ADR 0339** had tried the obvious repair,
+found that `print(1 in sorted(xs))` — a program that answers `True` — turned into a refusal, withdrew the arms and
+filed the row with that measurement as its evidence. Nineteen ADRs later the row's own "what is owed" cell said the
+answer out loud: *give `containerOperand` the arm `containerHandleOf` has*. The withdrawn attempt had widened
+**two of the pair's three roads** — decide and name — and a door that decides yes while the builder has no arm does
+not fall back to the fold, it refuses. Teaching the third road in the same commit is what turned the row from
+unfixable into three clauses. The lesson is not "try harder next time": when a row records that change X broke
+program P, check which roads X actually touched, because the measurement is about the roads that were touched and
+the missing road is often the one nobody tried.
+
+**A wrong answer found beside a repair is a row; a refusal is a decision.** The sweep of container doors found
+eight programs whose compiled verdict differs from the reference's: `"a" in reversed("abc")`, `sa.add(sorted(…))`,
+`len(reversed([1,2,3])) == 3`, `None in sorted([1, None])`, `1 in reversed([1, "a"])`, `sorted([2.0, 1.0]) ==
+sorted([1.0, 2.0])`, `"a" in sorted({"a": 1})`, `1 in sorted(["b", "a"])`. Every one needs a word the backend does
+not have — a float comparator (**Gap R.248**), a text/tag-aware flip (**Gap R.563**'s word), an iterator's kind
+(**Gap R.251**). It would have been easy to widen the fold until each of them printed something, and each "something"
+would have been a wrong answer at **exit 0** with no row and no test, which **ADR 0166** ranks below a refusal. They
+are **Gaps R.568–R.575**, each pinned with its compiled value beside the reference's in the same table row, so a
+future cycle that moves one without moving the row fails. What the row *did* refuse, it refused with the door's own
+existing sentence: a mixed list is refused by the builtin because @rt_reverse moves words; a chain operand is refused
+by the chain road because a container does not fit in an `i32` slot; an element tag is refused naming **Gap R.248**
+because the door will not claim a kind it cannot see.
+
+**Seven deletions, not one, because the row added seven clauses.** The whole point of the cycle was that the pair is
+a *triad* — decide, name, build — so the falsifiable gate is a deletion per clause, and I measured seven of them
+before believing the row: the decider (**64** sub-cases red — 38 answered, 13 guard, 6 pair, 3 ordering, 3 refusals,
+1 filed), the fold clause (10), the nameable gate (11), the refusal clause (12 — 6 refusals, 5 guard, 1 pair), the
+build door (14 — 12 answered, one NEIGHBOUR, one FILED), the iterator rule (exactly **4** rows moving `False` →
+`True`, nothing else), and the guard's own soundness table. Seven different red sets is the evidence that the clauses
+are clauses. Two things in that table are worth keeping as process: the build door's fingerprint — that disabling it
+takes down one *neighbour* row and one *filed* row beside the answered ones — is what proves the roads are shared and
+not new; and a deletion that reddens the SAME rows as another deletion has proven nothing about either, which is the
+case for the nameable gate's two conjoined clauses (both deletions redden the same 11).
+
+**The reference decides an answer, not just a shape: `reversed` is an iterator.** `reversed([1,2]) == [2,1]` had been
+printing `True` — the pair, applied "consistently", comparing the flipped copy the loop walks. CPython prints `False`
+for that, for `reversed([1,2]) == reversed([1,2])`, and for `reversed([1,2]) in [[2,1]]`, because a
+`list_reverseiterator` has no list equality and is a member of nothing. The loop and the membership haystack may walk
+the copy; a comparison may not compare it. That is **Gap R.195**/'**Gap R.251**'s word ("an iterator is not a list")
+applied where it had never been applied, and it is the second time this loop has taught me that "ask the construct
+what it IS" is not a codegen instruction but a question about the reference's ontology. The IR test for those three
+rows asserts that NO container is built for them: the right answer is also the cheap one.
+
+**When two deletions cannot be told apart, write the test that catches the door LYING.** The nameable gate conjoins
+"can the walk name a payload road" with "can a tag road name the element's kind", so deleting either clause makes the
+gate answer `no` and reddens the same 11 sub-cases — the program rows witness the conjunction, not the second clause,
+and saying "the tag half is tested" would have been a claim no measurement supported. The fix was not a stronger
+deletion but a different kind of one: leave the boolean correct and lie about the KIND the door returns (`number` for
+everything, nameable for the mixed and float lists too). Not one program row moves — the comparator is chosen by
+`@rt_sort` from the argument's own spelling, so the string is not consumed by any compiled leg today — and nine of the
+kind door's own fourteen rows go red. That is the honest form of the claim: pin the answer where the door produces it,
+say out loud in the ADR that no caller reads it yet, and the day one does there is a row that knows what it was
+supposed to say. A gate tested only as a boolean is a gate whose payload is untested, and "nothing reads it yet" is a
+fact worth writing down rather than a fact that makes the test unnecessary.
+
+**An IR claim without a counter-row is an absence of evidence.** The guard forbids `@.lst`/`@.set`/`@.dict` in a
+helper's `i32` slot, and the cheapest way to pass it is to stop emitting the global at all — which would silently
+delete the fold that the value road has always answered with. So the fold counter-row is load-bearing: `xs =
+sorted([3, 1, 2])` / `print(xs[0])` must still emit `@.lst`, and the same file's membership spelling of the same
+call must ask `@rt_contains` a REGISTER. Same shape in the element-slot rows: the constant must be absent AND
+`rt_alloc` present. A "must never contain" test that is satisfiable by deleting the feature is a test of the test.
+
+**Measure the corpus both ways before believing a green suite.** The differential sweep re-ran **12712** golden
+sources through a parent-commit build and this one, comparing stdout, exit code and trap class: **0 moved**. That is
+the number that says four doors were widened without any other program changing its answer — not the pass/fail of a
+suite that had no case for these shapes (which is exactly why they survived nineteen ADRs). The 44 answered rows read
+out of the record AND ran on the compiled leg AND checked their IR, and a missing record entry fails a row, so the
+coverage cannot rot afterwards.
+
+**A sweep over answering sources cannot see a refusal fall over.** The differential sweep said 0 of 12712 sources
+moved, and the suite then said otherwise: `for v in sorted([3, 1, 2], True):` had started ANSWERING `3 2 1` at
+**exit 0**, where **Gap R.249** has that program pinned as a refusal, and `print([sorted([3, 1, 2], True)])` had
+started emitting `rt_set_elem(i32 %t, i32 0, i32 @.lst1)` — the exit-2 shape the cycle existed to remove, back
+through a door the cycle widened. Neither is a source the sweep could have caught: a refusal has no stdout to
+compare, and a program that used to die in `llc` dies just as loudly in the sweep as it does in the fix. What caught
+both were the tables that pin SENTENCES — `*StillCannotAnswer*`, the refusal tables, the IR guard — run by
+`make testparallel` and not by my own new file. The lesson is that a witness leg is not a corpus: the record leg's
+value is in what it pins about REFUSALS and TRAPS as much as about values, and a change whose whole risk is "did I
+cost someone their refusal" is measured by the tables that assert refusals, in the full suite, before the commit.
+The repair is in the file where the question already lives — `reverseFlagIsSpellable`, **ADR 0339**'s gate for what
+a `sorted` argument may be, read rather than restated — and the second regression was the same lesson twice: making
+the doors REFUSE that shape was not enough, because the loop's own handle road then walked past the refusal and
+named a container anyway. A refusal has to be asked for by every door that could speak, which is why the door is now
+one function (`sortedReversedDoorIsAskedOf`) rather than a clause at each call site.
+
+**Counts moved as one set, and the guard named the ones I forgot.** 46 record entries from the reference
+cross-checked (**10931 → 10977**, `tools/recmerge`, which refuses an entry the compiled leg will not agree to), one
+corpus program (**291 → 292**, matrix **277 → 278**, parity-asserted **242**, oracle `match` **228**), one ADR
+(**459**, highest **0472** — deliberately not **0471**, which is what the code comments across the four touched
+files already name, and the numbering has gaps by design), eight queue rows filed and one closed (**283 of 479**).
+`TestTheRoadmapSnapshotIsMeasuredNotRemembered` failed first on the matrix and oracle cells I had not touched, which
+is the guard doing its job: the four documents that publish the record's size are recomputed, not remembered, and a
+cycle that adds a corpus program owes the artifact's numbers to the tracker in the same commit.

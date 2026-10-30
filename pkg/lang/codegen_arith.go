@@ -651,6 +651,14 @@ func (g *irGen) nameHoldsContainer(nm string) bool {
 // chainOperandIsContainer recognises the operand shapes whose compiled value is a container GLOBAL
 // rather than a word: the literals themselves, and a name the program bound to one of those kinds.
 func (g *irGen) chainOperandIsContainer(e Expr) bool {
+	// The two builtins whose whole job is to hand back a list answer the SAME word a literal answers: the
+	// value road folds their elements into a compile-time global, so binding one as a chain operand is the
+	// `store i32 @.lst1, i32* %_chain1` shape below that `llc` refuses at exit 2. Asked of the container
+	// door rather than of a name list, because a call the door names is exactly a call whose answer is that
+	// global (roadmap **Gap R.253**, **ADR 0472**; the refusal is Gap R.53's, ADR 0288's ladder).
+	if g.sortedReversedDoorIsAskedOf(e) {
+		return true
+	}
 	switch e.(type) {
 	case *ListLit, *DictLit, *SetLit, *Tuple:
 		return true

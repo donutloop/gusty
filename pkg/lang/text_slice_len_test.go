@@ -34,6 +34,11 @@ var textSliceLenAnswered = []struct {
 }{
 	// ---- the row's own definition of done ----
 	{"s = \"abcd\"\nprint(len(s[1:3]))", "2"},
+	// The same door, one shape further: `len` of a slot of the list an ORDERING BUILTIN answered. The
+	// slot holds a real interned text once the container door builds the list (**ADR 0472**'s build),
+	// and `len` asks that object — which is **Gap R.567**'s claim half-paid: the METHOD's list is still
+	// owed there, and stays pinned in the table below.
+	{"print(len(sorted([\"b\", \"a\"])[0]))", "1"},
 	{"print(len(\"abcd\"[1:3]))", "2"},
 	{"s = \"abcd\"\nprint(len(s[::-1]))", "4"},
 
@@ -210,10 +215,6 @@ var textSliceLenFiledNotFixed = []struct {
 		// A slot of the list a METHOD answered: the object is on the heap and walkable, and what is missing
 		// is the (payload, tag) pair coming back out of the road that built it — the tagged word, L11.1.
 		"s = \"hello world\"\nprint(len(s.split(\" \")[1]))", "5", "len requires",
-	},
-	{
-		// The same shape spelled with a builtin call instead of a method call.
-		"print(len(sorted([\"b\", \"a\"])[0]))", "1", "len requires",
 	},
 }
 

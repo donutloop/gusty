@@ -1,5 +1,231 @@
 {
  "entries": {
+"def b():\n    return [3, 1, 2]\nprint([sorted(b())])": {
+    "stdout": "[[1, 2, 3]]\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 1, 2]\nprint([sorted(xs)])": {
+    "stdout": "[[1, 2, 3]]\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 1, 2]\nprint({\"k\": sorted(xs)})": {
+    "stdout": "{'k': [1, 2, 3]}\n",
+    "hasStdout": true
+   },
+"print(len(sorted([\"b\", \"a\"])[0]))": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+"print(1 in sorted([3, 1, 2]))\nprint(5 not in sorted([3, 1, 2]))\nprint(2 in reversed([1, 2, 3]))\nprint(1 in sorted([]))\nprint(3 in sorted([1, 2, 3], reverse=True))\nprint(sorted([3, 1, 2]) == [1, 2, 3])\nprint([1, 2] == sorted([2, 1]))\nprint(sorted([3, 1, 2]) == sorted([1, 2, 3]))\nprint(sorted([]) == [])\nprint(sorted([3, 1, 2]) != [1, 2, 3])\nxs = [3, 1, 2]\nprint(sorted(xs) == [1, 2, 3])\nprint(1 in sorted(xs))\nprint(sorted(xs) == sorted(xs))\ndef b():\n    return [3, 1, 2]\nprint(1 in sorted(b()))\nprint(\"a\" in sorted([\"b\", \"a\"]))\nprint(sorted([\"b\", \"a\"]) == [\"a\", \"b\"])\nprint(sorted([3, 1, 2]) in [[1, 2, 3]])\nprint(sorted([3, 1, 2]) in [[1, 2, 4]])\nprint(sorted(sorted([3, 1, 2])))\nprint(reversed([1, 2]) == [2, 1])\nprint(reversed([1, 2]) != [2, 1])\nprint(reversed([1, 2]) == reversed([1, 2]))\nprint(reversed([1, 2]) in [[2, 1]])\nprint([sorted([3, 1, 2])])\nprint([sorted([3, 1, 2]), 1])\nprint({\"k\": sorted([3, 1, 2])})\nprint((sorted([3, 1, 2]),))\nys = []\nys.append(sorted([3, 1, 2]))\nprint(ys)\nzs = [0, 0]\nzs[0] = sorted([3, 1, 2])\nprint(zs)\nd = {}\nd[\"k\"] = sorted([3, 1, 2])\nprint(d[\"k\"])\nws = [sorted([3, 1, 2])]\nprint(ws[0])\nprint(ws[0][0])\nprint(ws == [[1, 2, 3]])\nqs = sorted([3, 1, 2])\nqs.append(9)\nprint(qs)\nprint(2 in sorted(reversed([3, 1, 2])))\nprint(len(sorted([3, 1, 2])))\nfor v in sorted([3, 1, 2]):\n    print(v)\nfor v in reversed([1, 2, 3]):\n    print(v)\nprint(sorted([3, 1, 2]))\nprint(sorted([\"b\", \"a\"]))\nif sorted([3, 1, 2]) == [1, 2, 3]:\n    print(\"ordered\")\ndef f(vals):\n    return sorted(vals) == [1, 2, 3]\nprint(f([3, 1, 2]))\n": {
+    "stdout": "True\nTrue\nTrue\nFalse\nTrue\nTrue\nTrue\nTrue\nTrue\nFalse\nTrue\nTrue\nTrue\nTrue\nTrue\nTrue\nTrue\nFalse\n[1, 2, 3]\nFalse\nTrue\nFalse\nFalse\n[[1, 2, 3]]\n[[1, 2, 3], 1]\n{'k': [1, 2, 3]}\n([1, 2, 3],)\n[[1, 2, 3]]\n[[1, 2, 3], 0]\n[1, 2, 3]\n[1, 2, 3]\n1\nTrue\n[1, 2, 3, 9]\nTrue\n3\n1\n2\n3\n3\n2\n1\n[1, 2, 3]\n['a', 'b']\nordered\nTrue\n",
+    "hasStdout": true
+   },
+"d = {}\nd[\"k\"] = sorted([3, 1, 2])\nprint(d[\"k\"])": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"def b():\n    return [3, 1, 2]\nprint(1 in sorted(b()))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def f(xs):\n    return sorted(xs) == [1, 2, 3]\nprint(f([3, 1, 2]))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(\"a\" in sorted([\"b\", \"a\"]))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print((sorted([3, 1, 2]),))": {
+    "stdout": "([1, 2, 3],)\n",
+    "hasStdout": true
+   },
+
+"print(1 in reversed([]))": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(1 in sorted([1, 2]) and 2 in sorted([1, 2]))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(1 in sorted([3, 1, 2]))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(1 in sorted([3, 1, 2], key=abs))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(1 in sorted([3, 1, 2][0:2]))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(1 in sorted([]))": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(2 in reversed([1, 2, 3]))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(2 in sorted(reversed([3, 1, 2])))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(3 in sorted([1, 2, 3], reverse=True))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(5 not in sorted([3, 1, 2]))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print([1, 2] == sorted([2, 1]))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print([sorted([3, 1, 2]), 1])": {
+    "stdout": "[[1, 2, 3], 1]\n",
+    "hasStdout": true
+   },
+
+"print([sorted([3, 1, 2])])": {
+    "stdout": "[[1, 2, 3]]\n",
+    "hasStdout": true
+   },
+
+"print(reversed([1, 2, 3]) == [1, 2, 3])": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(reversed([1, 2]) != [2, 1])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(reversed([1, 2]) == [2, 1])": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(reversed([1, 2]) == reversed([1, 2]))": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(reversed([1, 2]) in [[2, 1]])": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(sorted([\"b\", \"a\"]) == [\"a\", \"b\"])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(sorted([1, 2, 3], reverse=True) == [3, 2, 1])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(sorted([3, 1, 2]) != [1, 2, 3])": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(sorted([3, 1, 2]) == [1, 2, 3])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(sorted([3, 1, 2]) == [1, 2, 4])": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(sorted([3, 1, 2]) == sorted([1, 2, 3]))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(sorted([3, 1, 2]) in [[1, 2, 3]])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(sorted([3, 1, 2]) in [[1, 2, 4]])": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(sorted([]) == [])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(sorted(sorted([3, 1, 2])))": {
+    "stdout": "[1, 2, 3]\n",
+    "hasStdout": true
+   },
+
+"print({\"k\": sorted([3, 1, 2])})": {
+    "stdout": "{'k': [1, 2, 3]}\n",
+    "hasStdout": true
+   },
+
+"xs = [0, 0]\nxs[0] = sorted([3, 1, 2])\nprint(xs)": {
+    "stdout": "[[1, 2, 3], 0]\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 1, 2]\nprint(1 in sorted(xs))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 1, 2]\nprint(sorted(xs) == [1, 2, 3])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 1, 2]\nprint(sorted(xs) == sorted(xs))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append(sorted([3, 1, 2]))\nprint(xs)": {
+    "stdout": "[[1, 2, 3]]\n",
+    "hasStdout": true
+   },
+
+"xs = [sorted([3, 1, 2])]\nprint(xs[0])\nprint(xs[0][0])\nprint(xs == [[1, 2, 3]])": {
+    "stdout": "[1, 2, 3]\n1\nTrue\n",
+    "hasStdout": true
+   },
+
+"xs = sorted([3, 1, 2])\nxs.append(9)\nprint(xs)": {
+    "stdout": "[1, 2, 3, 9]\n",
+    "hasStdout": true
+   },
 "s = \"abcd\"\nprint(len(s[1:3]))\nprint(len(s[::-1]))\nprint(len(\"abcd\"[1:3]))\nprint(len(\"abcd\"[1:3:2]))\nprint(len(s[1:]))\nprint(len(s[:]))\nprint(len(s[::2]))\nprint(len(s[::-2]))\nprint(len(s[-2:]))\nprint(len(s[-3:-1]))\nprint(len(s[10:20]))\nprint(len(s[3:1]))\nw = \"hello world\"\nprint(len(w[6:]))\nprint(len(w[:5]))\nu = \"café\"\nprint(len(u))\nprint(len(u[2:]))\nprint(len(u[1:3]))\ni = 1\nj = 3\nprint(len(s[i:j]))\nprint(len(s[i:j]) == len(s[1:3]))\nt = s[1:3]\nprint(len(t))\nprint(len(s[1:3][::-1]))\nprint(len(s[::-1][::-1]))\ndef edge(x):\n    return len(x[1:4])\nprint(edge(\"abcdef\"))\nprint(len(\"abcdef\".upper()[0:3]))\nprint(len(s.upper()[1:3]))\nprint(len(s[1:3].upper()))\nprint(len(s[1:3]) + len(s))\nprint([len(s[1:3]), len(s)])\nprint({\"n\": len(s[1:3])})\nprint(len(s[1:3]) == 2)\nprint(bool(len(s[0:0])))\ntry:\n    print(len(s[\"a\":\"b\"]))\nexcept TypeError as e:\n    print(\"caught\", e)\ntry:\n    print(len(s[::0]))\nexcept ValueError as e:\n    print(\"caught\", e)\nst = {1, 2}\ntry:\n    print(len(st[0:1]))\nexcept TypeError as e:\n    print(\"caught\", e)\nd = {\"a\": 1}\ntry:\n    print(len(d[0:1]))\nexcept KeyError as e:\n    print(\"miss\", e)\nxs = [1, 2, 3]\nprint(len(xs[0:2]))\nprint(len(xs[::2]))\nprint(s[1:3])\n": {
     "stdout": "2\n4\n2\n1\n3\n4\n2\n2\n2\n2\n0\n0\n5\n5\n4\n2\n2\n2\nTrue\n2\n2\n4\n3\n3\n2\n2\n6\n[2, 4]\n{'n': 2}\nTrue\nFalse\ncaught slice indices must be integers or None or have an __index__ method\ncaught slice step cannot be zero\ncaught 'set' object is not subscriptable\nmiss slice(0, 1, None)\n2\n2\nbc\n",
     "hasStdout": true

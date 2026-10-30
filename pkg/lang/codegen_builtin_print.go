@@ -746,6 +746,12 @@ func (g *irGen) builtinPrint(b *strings.Builder, c *Call, fnName string) (string
 				}
 			}
 			if isContainerLiteral(a) {
+				// The literal's own first question, before any of this door's gates get a chance to describe
+				// the shape: a slot holding an ordering call the container doors refuse speaks the DOOR's
+				// sentence, not the mixed-element-kind gate's (roadmap **Gap R.253**, **ADR 0472**, **ADR 0249**).
+				if err := g.sortedReversedRefusalInside(a); err != nil {
+					return "", err
+				}
 				if _, isLL := a.(*ListLit); isLL && (literalMixedKinds(a) || g.literalNeedsTags(a) || g.literalHasPairElement(a.(*ListLit))) && g.taggableMixedList(a.(*ListLit)) {
 					// Heterogeneous list of taggable elements: build it with per-element
 					// tags and print through the tag-aware printer, which is what the

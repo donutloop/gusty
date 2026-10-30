@@ -7242,6 +7242,67 @@ whatever they do, so the module that tried would be rejected by `llc` — an **e
 compiler bug. A `lambda` that is neither applied nor called — used as a *value*, returned from a function, stored in a
 container — remains **Gap R.266**'s refusal.
 
+### A `sorted` or `reversed` asks the membership, equality, element and chain doors what it IS (Gap R.253, ADR 0472)
+
+The ordering builtins answer the same way everywhere they are asked. `for` learned the question from **ADR 0339**;
+the doors beside it now ask it too, so `print`, `for`, `in`, `==`, an element slot and a comparison chain all read
+one list, built by one pair of roads, ordered by one table:
+
+```python
+print(1 in sorted([3, 1, 2]))                      # True    — was an exit 2: llc refused the module
+print(5 not in sorted([3, 1, 2]))                  # True
+print(2 in reversed([1, 2, 3]))                    # True    — the haystack is the flipped copy
+print(3 in sorted([1, 2, 3], reverse=True))        # True
+print(1 in sorted(sorted([3, 1, 2])))              # True    — a call whose answer is a list
+xs = [3, 1, 2]
+print(1 in sorted(xs))                             # True    — answered before this row too, and still is
+print(1 in sorted([3, 1, 2], key=abs))             # True    — the keyed answer is a list like any other
+
+print(sorted([3, 1, 2]) == [1, 2, 3])              # True    (and the same the other way round)
+print(sorted([3, 1, 2]) == sorted([3, 1, 2]))      # True
+print(sorted([]) == [])                            # True
+print(sorted([3, 1, 2]) in [[1, 2, 3]])             # True    — a container asked as a needle
+print([sorted([1])][0])                             # [[1]]
+print({1: sorted([2])})                             # {1: [2]}
+print((sorted([3, 2]),))                            # [[2, 3]]
+xs2 = []
+xs2.append(sorted([4, 5]))
+print(xs2)                                          # [[4, 5]]
+```
+
+A container the compiler can only build on the heap is BUILT there — `@rt_sort` for the order, `@rt_list_copy` +
+`@rt_reverse` for the flip — and never handed to a helper as the module constant the fold writes down. What made
+this safe is that nothing about the sort, the flip or the ORDER is written a second time: the ordering is
+`sortedLiteralElems`, the same function `print(sorted(…))` renders and the loop walks (**ADR 0258**'s one-table
+rule), so a program cannot see one order through `print` and another through `in`.
+
+**`reversed` answers as what the reference says it is: an iterator.** The loop and a membership haystack may walk
+the flipped copy, but a COMPARISON does not compare it, because the reference's iterator has no list equality and
+is not a member of anything:
+
+```python
+print(reversed([1, 2]) == [2, 1])                   # False   — NOT True: an iterator is not a list
+print(reversed([1, 2]) == reversed([1, 2]))         # False
+print(reversed([1, 2]) in [[2, 1]])                  # False
+print(2 in reversed([1, 2, 3]))                     # True    — the haystack road still walks the copy
+```
+
+Four refusals stay refusals, and they are the builtins' own or the doors' honest version of them — not inventions:
+a mixed list (`sorted([1, "a"])`), anything with a `key=` the compiler cannot call, a comparison CHAIN whose operand
+would be a container — `print(1 in sorted([3, 1, 2]) == True)` leaves the program at **exit 1** with the chain door's
+sentence naming **Gap R.53**, which is the answer **ADR 0166** asks for where `llc` used to refuse the module at
+**exit 2** — and a second POSITIONAL argument, which is the reference's `key`: `print(1 in sorted([3, 1, 2], True))`
+and every slot that could hold that call (`==`, a list or set literal's element, `append`, a dict value) leave at
+**exit 1** naming **Gap R.247**/**Gap R.249**, because CPython stops that program with `TypeError: sorted expected 1
+argument, got 2` and the doors will not answer a program the reference stops. The `for` loop keeps its own sentence
+for the same call (**ADR 0339**'s, pinned by **Gap R.249**), and the value road still folds it — `print(sorted([3, 1,
+2], True))` prints `[3, 2, 1]`, which is a wrong answer already on record and stays that way until the callable door
+opens. What
+these doors still get wrong is measured with the reference's value beside ours: a sorted TEXT haystack compares
+payloads (**Gap R.568**), a container stored in a set or a dict is hashed by its handle (**Gap R.569**), `len`
+measures an iterator the reference refuses to measure (**Gap R.570**), and an element list whose kind the compiler
+cannot name is refused by name (**Gap R.248**, seen at this door as **Gaps R.571–R.575**).
+
 ### An applied `lambda` answers a container the way a `def` does (L11.7, Gap R.382, ADR 0401)
 
 ```python

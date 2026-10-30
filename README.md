@@ -633,6 +633,64 @@ counting rules would part. 69 record entries came in from the reference cross-ch
 (**Gap R.402**), and `len` of a slot of the list a call answered still blames a literal for a text the program is
 holding — filed as **Gap R.567**, with **L11.1** named as the row that would make it unnecessary.
 
+**Membership, equality, an element slot and a comparison chain ask a `sorted`/`reversed` what it IS, and ADR 0472
+pays Gap R.253** — the row **ADR 0339** measured, withdrew its own arms for, and left standing with the measurement
+as its evidence. `print(1 in sorted([3, 1, 2]))` emitted
+`%t2 = call i32 @rt_contains(i32 @.lst1, i32 1)` — the list's **module constant** in a register slot — and `llc`
+refused the module, **exit 2**, ADR 0166's own code, on a program the reference answers `True`. Four doors had the
+same shape: `in` (both of its roads), `==` (`icmp eq i32 @.lst1, @.lst2`), an element slot
+(`rt_append_tagged`, `rt_put_elem`, `rt_dict_put`, `rt_set_elem`) and a comparison chain
+(`store i32 @.lst1, i32* %_chain1`). The withdrawn measurement said widening the container pair turned
+`print(1 in sorted(xs))` — which answers today — into a refusal, and it was right: the pair has **three** roads,
+decide, name and build, and teaching two of three is what breaks an answered program. The repair takes the pair
+whole. One predicate decides — `sortedReversedIsAContainer`, whose walkability clause is **ADR 0339**'s
+`sortedReversedOverWalkableList` verbatim, so a list the loop will walk is never refused here — and the build is
+the pair's two builders, `@rt_sort` for the order and `@rt_list_copy` + `@rt_reverse` for the flip. The fold is
+not deleted (`xs = sorted([3, 1, 2])` / `print(xs[0])` still emits `@.lst`, counter-rowed), and the order is asked
+of `sortedLiteralElems`, the function `print` renders and the loop walks, so **ADR 0258**'s one table is what makes
+six shared-ordering programs safe: `print`, `in` and `for` cannot disagree about which element is first.
+
+The row's one real decision is **`reversed`**: the loop may walk the flipped copy, but a comparison must not
+compare it, because the reference's `list_reverseiterator` has no list equality and is a member of nothing —
+`reversed([1, 2]) == [2, 1]`, `reversed([1, 2]) == reversed([1, 2])` and `reversed([1, 2]) in [[2, 1]]` were
+printing `True` and print `False` now, with the IR witness that no container is built for them at all
+(**Gap R.195**/**Gap R.251**'s iterator word, applied at the comparison doors for the first time). Two refusals
+landed with the answers, because a repair that trades a refusal for a wrong answer has not paid for anything: the
+comparison chain's operand goes through `chainOperandIsContainer` so `print(1 in sorted([3, 1, 2]) == True)` exits
+**1** with the chain door's sentence naming **Gap R.53** instead of reaching `llc`, and an element slot claims a tag
+only where `taggableNestedElem` can say what the slot holds (**ADR 0187**/**ADR 0233**/**ADR 0457**), refusing
+**Gap R.248** otherwise. Witnesses (`pkg/lang/sorted_container_operand_test.go`, 11 functions, and `integration/sorted_container_test.go`,
+4): **44** answered programs read out of the record AND run on the compiled leg AND checked for the instruction
+shape, **13** refused programs each asserting the sentence the door prints — including the ONE sentence the
+reference's `key` argument meets at all six roads that could store it (`in`, `==`, a list slot, a set literal, an
+`append`, a dict value), so no door falls through to the mixed-kind gate that would describe the shape wrongly
+(**ADR 0249**), **10** untouched neighbours (`print(1 in [1, 2])`, `print(2 in [2, "a"])`,
+`print(len(sorted([3, 1, 2])))`, **ADR 0405**'s ternary arm), **3** ordering programs asked three ways (the fold's
+bytes, a membership probe of every position, the loop's output), **13** decide/build agreement rows asserting
+`container == (fold || name)` and `askedOf == (container || refuse)`, **14** rows for the element-kind door alone,
+**8** filed rows asked of both legs, **45** programs through the CLI against a live `python3` with the IR claim
+beside each, and the guard that no module hands a container global to `rt_contains`/`rt_container_eq`/a slot store
+or compares one with `icmp` — with its own soundness table, ten instruction lines of the shape the row closed.
+The non-vacuity measurement is taken SEVEN ways, because clauses that cannot be deleted separately have not been
+shown to be seven: the **decider** turns **64** sub-cases red (38 answered, 13 guard, 6 pair, 3 ordering, 3
+refusals, 1 filed); the **fold clause** 10; the **nameable gate** 11; the **refusal clause** 12 (6 refusals, 5
+guard, 1 pair); disabling the **build door** 14 — and it is the build door's own fingerprint that one NEIGHBOUR row
+and one FILED row fail with it, the evidence that these roads are shared rather than new; the **iterator rule**
+moves exactly 4 rows from `False` to `True` and nothing else; and because the two clauses of the nameable gate are
+conjoined and so cannot be separated by program rows, the **kind door is caught lying** (right answer, wrong kind
+named) by its own table, which reddens 9 of its rows while no program row moves. A differential sweep of **12712**
+corpus sources through a parent-commit build and this one moved **0** sources. **46** record entries came in from
+the reference cross-checked (**10931 → 10977**) and `programs/sorted_container.gy` joined the corpus as a
+`parity`/`match` row
+(corpus 291 → 292). What the sweep found and this row does not own is filed with its bytes beside the reference's,
+not hushed: **Gap R.568** (`print("a" in reversed("abc"))` — a text haystack compares payloads, so the reference's
+`True` comes back `False`), **Gap R.569** (`sa.add(sorted([3, 1, 2]))` answers `1`; the reference raises
+`TypeError: unhashable type: 'list'`), **Gap R.570** (`len(reversed([1, 2, 3])) == 3` answers `True`; the reference
+refuses to measure an iterator), **Gap R.571** (`None in sorted([1, None])` answers `True`; the reference cannot
+sort those elements at all), **Gap R.572** (`1 in reversed([1, "a"])`), **Gap R.573** (three doors, three postures
+on `sorted([2.0, 1.0])`), **Gap R.574** (`"a" in sorted({"a": 1})` answers the key's payload) and **Gap R.575**
+(`1 in sorted(["b", "a"])` answers `True` where the reference says `False`).
+
 **A `for` loop asks its iterable what it is, and ADR 0339 pays Gap R.246** — the loop had three roads and no
 question in front of them, so anything the compiler could not name fell through to the numeric counter road and
 was read as a *repeat count*. `for v in sorted(xs)` over a heap list emitted `icmp slt i32 %_ctr1.ld1, @.lst1`

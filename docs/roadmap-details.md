@@ -12556,16 +12556,95 @@ stays open against L11.1.
 
 <a id="gap-r-253"></a>
 
-### Gap R.253 — membership over a sorted literal hands `llc` a global where a word belongs (PLANNED, found by ADR 0339)
+### Gap R.253 — the membership, equality, element-slot and chain doors ask a `sorted`/`reversed` what it IS (closed by ADR 0472)
 
 `print(1 in sorted([3,1,2]))` emits `%t2 = call i32 @rt_contains(i32 @.lst1, i32 1)` and `llc-20` refuses the
 module: *global variable reference must have pointer type*, exit 2, on a program the reference answers with
 `True`. It is the same instruction shape ADR 0339 removed from the loop road, at the membership door beside it,
-and it is the measurement that kept this row honest: the first attempt at the row widened
+and it is the measurement that kept this row honest for nineteen ADRs: the first attempt at the row widened
 `isContainerExpr`/`staticContainerKind`/`containerHandleOf` to cover these builtins, and `print(1 in sorted(xs))`
 — which answers `True` today — became a refusal, because the membership road asks the pair one question and then
 reaches for `containerOperand`, whose arm these builtins do not have. The arms were withdrawn from the row and
 filed here instead: the pair is only widen-able together with `containerOperand`, or not at all.
+
+**What closed it.** Reading the withdrawn measurement again: it proved that two of the three roads cannot carry
+these builtins, and the row's own "what is owed" cell had already said what to do about that — *give
+`containerOperand` the arm `containerHandleOf` has*. The repair is the pair taken whole, in ADR 0333's order.
+One question is asked — `sortedReversedIsAContainer`, in `pkg/lang/sorted_container_operand.go` — with exactly
+three clauses, and the third is **ADR 0339**'s own `sortedReversedOverWalkableList` verbatim, so a list the loop
+will walk is never refused at this door: a literal of one kind, `reversed`'s literal of integers or interned
+text (because `@rt_reverse` moves WORDS and does not consult a tag — the same reason the builtin itself refuses
+`sorted([1,"a"])`), or a list the pair can name. The build is the pair's two builders: `@rt_sort` over the copy
+for the order, `@rt_list_copy` + `@rt_reverse` for the flip, and the `reverse=` road reusing the sort's own arm
+rather than flipping twice. The fold is left exactly where it was — `xs = sorted([3,1,2])` / `print(xs[0])` still
+emits `@.lst`, a counter-row asserts it — and a door that needs a handle builds the same elements instead of
+reading the constant.
+
+**The one-ordering rule is what makes it safe, and it is asserted.** `sortedReversedContainerOf` asks
+`sortedLiteralElems` — the function `print(sorted(…))` renders and, through `foldedForIterable`, the function
+ADR 0339's loop walks. A table prints the fold's bytes, probes membership in each position of that same list and
+prints the loop's output, over lists whose first element is the last one sorted and whose last element is the
+first one sorted, so a door that ordered a copy its own way shows `1 in sorted([3,1,2]) == False` while `print`
+says `[1, 2, 3]` — and goes red (**ADR 0258**'s rule, the same one **ADR 0472** §3 restates).
+
+**Where the reference decides the answer rather than the shape: `reversed`.** The loop may walk the flipped copy;
+a comparison may not compare it. `reversed([1,2]) == [2,1]`, `reversed([1,2]) == reversed([1,2])` and
+`reversed([1,2]) in [[2,1]]` are the reference's `False` three times — an iterator has no list equality and is
+never a member of anything — and the door had been printing `True` for all three, because it compared the copy it
+had built. The needle roads now answer `False` before anything is built (`iteratorEqualsAContainer`,
+`iteratorIsNoMember`), which is also cheaper: the IR test asserts no container is built for those programs. The
+haystack roads still walk it, because `in` asks a sequence whether it holds the needle. That asymmetry is
+**Gap R.195**'s word applied at the comparison doors for the first time.
+
+**The two refusals the repair had to land with.** A comparison CHAIN operand is a `store` into an `i32` slot, and
+`1 in sorted([3,1,2]) == True` was the fifth exit-2 shape; `chainOperandIsContainer` now asks the container
+question and the chain's existing sentence fires — exit 1, naming L11.1 and **Gap R.53** — instead of `llc`
+refusing the module. And an element slot needs a tag: `[sorted(…)]`, `{k: sorted(…)}`, `(sorted(…))`, `append`,
+`xs[0] =`, `d["k"] =` ask `sortedReversedSlotsAreTaggable`, which claims `TagList` only where
+`taggableNestedElem` can say what the slot holds and otherwise refuses naming **Gap R.248**. A door that decided,
+a door that built and a door that tagged by three different rules is the failure mode **ADR 0187**/**ADR 0233**/
+**ADR 0457** keep filing; the agreement is asserted directly, per shape, `container == (fold || name)`.
+
+**Evidence.** `pkg/lang/sorted_container_operand_test.go` (11 functions) and `integration/sorted_container_test.go`
+(4). **44** answered programs read out of the record, run on the compiled leg and checked for the instruction shape;
+**13** refused programs each asserting the sentence the door prints — among them the ONE sentence the reference's
+`key` argument meets at all six roads that could store it (`in`, `==`, a list slot, a set literal, an `append`, a
+dict value), which is the shape whose value-position fold still prints `[3, 2, 1]`: a door that read that word would
+hand `@rt_contains` or `@rt_set_elem` a module global, the same exit-2 class on a program the reference STOPS, so the
+door refuses rather than multiply one documented wrong answer into four doors (**ADR 0166**, and **Gap R.247**/​**Gap
+R.249** own the option); **10** neighbour rows; **3** ordering programs asked three ways (the fold's bytes, a
+membership probe of every position, the loop's output); **13** decide/build agreement rows over the node the parser
+built, asserting `container == (fold || name)`, `askedOf == (container || refuse)` and that the tag the element road
+writes is the tag the container door named; **14** rows for the element-kind door alone; **8** filed-not-fixed rows
+asked of the compiled leg AND of a live `python3`; **45** programs through the CLI against `python3` with the IR claim
+compiled from the same file; and the guard that no module hands a container global to
+`rt_contains`/`rt_container_eq`/a slot store or compares one with `icmp`, carrying its own ten-line soundness table
+(the seven helpers, both orders, tagged and untagged spellings) so the guard cannot be satisfied by an absent helper.
+
+The non-vacuity measurement is taken **seven** ways, because clauses that cannot be deleted separately have not been
+shown to be clauses: deleting the DECIDER turns **64** sub-cases red (38 answered, 13 guard, 6 pair, 3 ordering, 3
+refusals, 1 filed); deleting the FOLD clause **10**; deleting the NAMEABLE gate **11**; deleting the REFUSAL clause
+**12** (6 refusals, 5 guard, 1 pair); disabling the BUILD door **14** — and the fingerprint that matters is that the
+build door takes down 12 answered rows AND one NEIGHBOUR row AND one FILED row, which is the evidence that these
+roads are shared rather than new; deleting the ITERATOR rule moves exactly **4** answered rows from `False` to `True`
+and nothing else. The nameable gate's two clauses are conjoined, so no program row can separate them and both
+deletions redden the same 11 — which is why the tag half has a witness of its own instead: making the kind door LIE
+(right boolean, `number` named for everything) reddens **9** of its own 14 rows while not one program row moves. That
+is the honest shape of the claim: the kind string is not consumed by any compiled leg today (the comparator is
+chosen by `@rt_sort` from the argument's own spelling, **ADR 0191**), so the door that names it is pinned where it
+answers rather than where it is read, and the day a caller starts reading it there is a row that says what it was
+supposed to say.
+
+`integration/programs/sorted_container.gy` joined the corpus as a `parity`/`match` row; **46 record entries** came in
+from the reference with the compiled leg cross-checked (**10931 → 10977**), none self-certifying; a differential sweep
+of **12712** corpus sources through a parent-commit build and this one moved **0** sources. What the sweep found and
+this row does not own is filed, not hushed: **Gap R.568** (a sorted TEXT haystack compares payloads, so
+`"a" in reversed("abc")` is `False`), **Gap R.569** (a sorted container reaching a hash door is stored as a handle —
+`sa.add(sorted(…))` answers `1`, the reference raises `unhashable type: 'list'`), **Gap R.570** (`len(reversed(…))`
+measures an iterator the reference refuses to measure), **Gap R.571** (`None in sorted([1, None])` answers `True`
+where the reference cannot sort at all), **Gap R.572** (`1 in reversed([1, "a"])`), **Gap R.573** (three doors, three
+postures on `sorted([2.0, 1.0])`), **Gap R.574** (`"a" in sorted({"a": 1})` answers the key's payload) and
+**Gap R.575** (`1 in sorted(["b", "a"])` answers `True`). Measured 2026-10-14 landing **ADR 0472**.
 
 <a id="gap-r-254"></a>
 
@@ -24515,3 +24594,178 @@ The action is the pair, handed back by the method-answer road, and the length do
 (`rt_heap_len` for a container slot, `rt_str_nchars` for a text slot) as it already does for a variable; the two
 rows move out of `textSliceLenFiledNotFixed` and its CLI twin by deletion, and `len(s.split(" ")[1])` joins the
 answered table with the reference's `5`. Measured 2026-10-31 landing **ADR 0470**.
+
+<a id="gap-r-568"></a>
+
+### Gap R.568 — a sorted TEXT haystack compares payloads, so `"a" in reversed("abc")` is `False` (OPEN, found by ADR 0472)
+
+```python
+$ python3 -c 'print("a" in reversed("abc"))'
+True
+$ gustyc --file probe.gy
+False                                                                            # exit 0
+```
+
+`sorted("bca")` answers its own membership correctly — `print("a" in sorted("bca"))` is `True` — because the sort
+builds a real list of one-character strings through **ADR 0335**'s interned-text arm, and `rt_contains` compares
+handles against handles. `reversed("abc")` flips WORDS. An interned text handle is not its payload, so the needle
+is compared against payloads and finds nothing, and the program exits 0 with the wrong verdict. This is
+**Gap R.563**'s missing word — *that @rt_reverse moves words and does not consult a tag* — wearing the membership
+door's hat: the sibling row measured the same helper at the builtin's own door (`sorted([1,"a","b"])`) and the
+sweep that closed **Gap R.253** met it one door away, on a text rather than a mixed list.
+
+The needle half of the door is already right and must stay that way: a TEXT needle is the substring question, and
+the door refuses it rather than guessing — `print("ab" in sorted("abc"))` names **Gap R.248** today. The haystack
+half is the row: an element of a text container is a one-character text, and asking it the element question needs
+its tag, which is **L11.1**'s word again. The action is @rt_reverse's tag-aware flip (or building the reversed
+list the way `sorted` does, **ADR 0258**'s heap-list shape) and the haystack road asking each element what it is.
+The row is pinned in `pkg/lang/sorted_container_operand_test.go`'s `membershipAndEqualityRefused` table, which asserts
+that this refusal is a refusal today; closing the row moves it, by deletion, into the answered table. Measured
+2026-10-14 landing **ADR 0472**.
+
+<a id="gap-r-569"></a>
+
+### Gap R.569 — a sorted container reaching a HASH door is stored as a handle and answers 1 (OPEN, found by ADR 0472)
+
+```python
+$ python3 -c 'sa = {1, 2}
+sa.add(sorted([3,1,2]))
+print(1 in sa)'
+Traceback (most recent call last):
+  ...
+TypeError: unhashable type: 'list'
+$ gustyc --file probe.gy
+1                                                                                # exit 0
+```
+
+`rt_set_elem` and `rt_dict_put_tagged` take their value in one `i32`, and after **ADR 0472** that word is a
+handle — a heap container, hashable only by accident. The slot holds the handle, the hash reads the payload, and
+`1 in sa` answers `1` for a set that the reference refuses to build at all. The twin shows the same missing
+question from the other side: `print({1: sorted([2])} == {1: [2]})` prints `False` where the reference prints
+`True`, because its dict comparison hashes the value and meets a handle where the literal side has a list.
+
+The container-EQUALITY door grew this question first — `print(sorted([3,1,2]) in [[1,2,3]])` refuses an unordered
+side in words (`comparing a container with *lang.ListLit needs a tagged value`, **ADR 0189**) — and the set-insert
+and dict-comparison doors have no such arm, so they store the handle and let the hash decide. The action is the
+question at those two positions and the reference's own `TypeError` raised from it, the shape **ADR 0329** and
+**ADR 0466** use for a key of the wrong kind: emitted, **exit 3**, catchable by `except TypeError:`. The rows are
+pinned compiled-against-reference in `filedNotFixed`; the fix deletes them. Measured 2026-10-14
+landing **ADR 0472**.
+
+<a id="gap-r-570"></a>
+
+### Gap R.570 — `len` measures an iterator the reference refuses to measure (OPEN, found by ADR 0472)
+
+`print(len(reversed([1,2,3])) == 3)` prints `True` at exit 0; the reference raises
+`TypeError: object of type 'list_reverseiterator' has no len()`. `print(len(sorted([3,1,2])) == 3)` prints the
+reference's `True`, so the length road has one arm for "a container the ordering builtin answered" and does not
+ask which of the two builtins it came from — although the two are different things in the reference, and **ADR
+0339**'s own §5 already had to say it out loud to the loop ("neither door claims an element kind it cannot see")
+and **Gap R.251**/**Gap R.195** say the value `reversed` returns is an iterator, not a list.
+
+The comparison half of this row is already decided: **ADR 0472** §4 gives the IDENTITY questions the reference's
+answer (`reversed([1,2]) == [2,1]` is `False`, asserted, with no container built). A length is not an identity: it
+is the door measuring something the reference says has no length, so the row's action is `len` asking the argument
+what it is before measuring it and raising the reference's sentence at **exit 3**, catchable — the same posture
+**ADR 0336** gives a zero step and **ADR 0466** gives a set. The sorted copy keeps its length; the iterator does
+not get one. The row is pinned beside its neighbours in `filedNotFixed` and the CLI table, and the
+fix moves it out by deletion. Measured 2026-10-14 landing **ADR 0472**.
+
+<a id="gap-r-571"></a>
+
+### Gap R.571 — membership over a sorted container of `None` answers `True` where the reference cannot compare at all (OPEN, found by ADR 0472)
+
+`print(None in sorted([1, None]))` prints `True` at exit 0. The reference never gets to the membership question:
+it sorts first, and sorting `None` against an `int` is the failure — `TypeError: '<' not supported between
+instances of 'NoneType' and 'int'`. `print(None in [1, None])` answers the reference's `True`, so this is not the
+membership door's defect; it is @rt_sort being handed elements it cannot order and answering anyway, which is
+**Gap R.248**'s missing comparator seen from a kind nobody has asked for yet (`None`, and by extension `bool` and
+anything else whose elements reach the fold).
+
+**ADR 0335**'s mixed-list guard is the precedent to follow: `sorted([1,"a"])` is refused rather than answered,
+because the sort would compare payloads. The guard's `mixedLists` test reads a list as mixed when it is anything
+but integers or interned text, which is why a homogeneous float list gets blamed for a mix it does not have
+(**Gap R.248**'s complaint verbatim) and why `None` slips through a different gap in the same test. The action is
+either the comparator or the guard — but not both at once, and not by widening the fold: a fold that starts
+accepting `None` elements prints the reference's `TypeError` as the payload `0`, which is **ADR 0166**'s worst
+outcome. Measured 2026-10-14 landing **ADR 0472**.
+
+<a id="gap-r-572"></a>
+
+### Gap R.572 — `reversed` flips the words of a mixed literal and calls the answer a list (OPEN, found by ADR 0472)
+
+`print(1 in reversed([1, "a"]))` prints `True`; the reference raises `TypeError: '<' not supported between
+instances of 'str' and 'int'` — from its own comparison walk, since `reversed` does not sort. Here the elements
+come from the fold's literal road, which flips WORDS, so the string slot is an interned-text handle and the int
+needle matches the payload that handle is built from. **Gap R.563** measured exactly this at the sibling builtin
+(`print(sorted([1, "a", "b"]))` → `['b', 'a']` where the reference raises `TypeError`) and filed the missing tag;
+this row is the same helper, reached through the membership door **ADR 0472** opened.
+
+The distinction worth keeping when the row is worked: `reversed([1, "a"])` is not a sort, so the answer is not
+"refuse like `sorted` does" — it is "ask each slot's tag before moving it", and a str against an int inside the
+membership walk is the reference's catchable `TypeError`, not a front-end refusal. Measured 2026-10-14 landing
+**ADR 0472**.
+
+<a id="gap-r-573"></a>
+
+### Gap R.573 — three doors, three postures, one list: `sorted([2.0, 1.0])` (OPEN, found by ADR 0472)
+
+```text
+print(sorted([2.0, 1.0]) == sorted([1.0, 2.0]))   →  True     (the reference's answer, arrived at wrongly)
+print(sorted([2.0, 1.0]) == [1.0, 2.0])           →  refusal: "comparing a container with *lang.ListLit
+                                                     needs a tagged value" (ADR 0189)
+print(1 in sorted([2.0, 1.0]))                    →  True     (the reference's answer)
+```
+
+One list, three doors, three answers, and the middle one is the only door that admits it cannot ask. The float
+elements reach the comparator and the printer as payloads, so `==` between two of them compares the payloads —
+which happen to be the same numbers here, which is why the row's first line is a correct answer the row still
+owns: a program whose verdict depends on two floats having the same payload bits is not a program this backend can
+explain. **ADR 0345** met the same shape in the keyed door (`sorted([2.5, 1.5], key=f)` printed `[0.0, 0.0]`) and
+refused it naming **Gap R.248**; **ADR 0472** refuses the tag claim at the element door the same way.
+
+The action is **ADR 0233**'s tagged copy, so the sort orders floats, the equality compares them, and the three
+doors stop disagreeing about one list. The counter-row that must survive is `print(1 in sorted([2.0, 1.0]))`,
+which answers today; a repair that turns it into a refusal has taught one door and not the other two. Measured
+2026-10-14 landing **ADR 0472**.
+
+<a id="gap-r-574"></a>
+
+### Gap R.574 — `"a" in sorted({"a": 1})` answers the key's payload (OPEN, found by ADR 0472)
+
+`sorted` over a DICT is refused twice over — at the loop door (**Gap R.247**: *its argument is a DICT, which the
+reference sorts by building a list of its keys in insertion order*) and at the print door — and the membership
+door reaches it through the DICT arm of `containerOperand`, which builds the dict container and hands its keys to
+@rt_sort. The keys are interned texts; the sort compares them as numbers; the needle is the key `1` and the answer
+comes back `True` where the reference raises `TypeError: '<' not supported between instances of 'str' and 'int'`.
+
+The row is **Gap R.247**'s neighbour rather than a duplicate of it: that row asks for the list of keys the
+reference builds, for the LOOP; this row asks the same list of the MEMBERSHIP door, and asks @rt_sort to refuse
+keys it cannot order rather than answer with them. The build already exists — **ADR 0189** builds a dict container
+with its keys as real interned texts — so the action is to build that list once and let both rows share it, the
+**ADR 0258** rule again: one table, several doors. Measured 2026-10-14 landing **ADR 0472**.
+
+<a id="gap-r-575"></a>
+
+### Gap R.575 — `1 in sorted(["b", "a"])` answers `True`: an untagged haystack of text matches an int needle (OPEN, found by ADR 0472)
+
+```python
+$ python3 -c 'print(1 in sorted(["b", "a"]))'
+False
+$ gustyc --file probe.gy
+True                                                                             # exit 0
+```
+
+The reference sorts the two strings and then reports the integer absent; it does not compare an `int` against a
+`str` to get there. Here the elements are interned texts and @rt_contains compares payloads: the handle for `"a"`
+is a string-table index, and the needle `1` matches it. `print("a" in sorted(["b", "a"]))` answers correctly, which
+localises the row precisely — the haystack's SLOTS need their kind, and `codegen_tagged_membership.go` already
+owns the door that asks for a tag on the haystack side of a literal (`print(2 in [2, "a"])` answers, and is
+asserted here as an untouched neighbour).
+
+The action is the same tag reaching the same door for a container the compiler BUILT rather than folded, which is
+the half **ADR 0472** opened and could not finish without a comparator: `sortedReversedSlotsAreTaggable` claims
+`TagList` for a literal container and refuses anything else naming **Gap R.248**, but the elements INSIDE the
+built container are still stored untagged. Closing this row and **Gap R.568** is the same change seen from the two
+sides of `rt_contains`, and the two pinned rows — here and in the refusal table — go red together with it. Measured
+2026-10-14 landing **ADR 0472**.

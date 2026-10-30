@@ -30,6 +30,10 @@ var lenTextSliceCLIRows = []struct {
 }{
 	// the row's own definition of done
 	{"s = \"abcd\"\nprint(len(s[1:3]))", "2"},
+	// A slot of the list an ORDERING BUILTIN answered now measures the text inside it: the container door
+	// builds the list and the slot carries its own kind (**ADR 0472**; **Gap R.567**'s builtin half, paid;
+	// the METHOD half below is still owed).
+	{"print(len(sorted([\"b\", \"a\"])[0]))", "1"},
 	{"print(len(\"abcd\"[1:3]))", "2"},
 	{"s = \"abcd\"\nprint(len(s[::-1]))", "4"},
 
@@ -146,12 +150,6 @@ var lenTextSliceCLIRefusals = []struct {
 		"s = \"hello world\"\nprint(len(s.split(\" \")[1]))",
 		"len requires", "5",
 		"roadmap L11.1 (the object is on the heap and walkable; what is missing is the (payload, tag) pair coming back out of the road that built it)",
-	},
-	{
-		"a slot of the list a BUILTIN answered",
-		"print(len(sorted([\"b\", \"a\"])[0]))",
-		"len requires", "1",
-		"roadmap L11.1 (the same pair, spelled with a builtin call)",
 	},
 }
 

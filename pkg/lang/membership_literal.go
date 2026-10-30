@@ -65,12 +65,27 @@ func (g *irGen) membershipOfLiteralContainer(b *strings.Builder, n *BinOp) (val 
 		// a vaguer one minted here.
 		return "", false, nil
 	}
+	// The needle is an ordering builtin the doors cannot build. Its value is the fold's GLOBAL, and
+	// `rt_contains_tagged` takes a word, so the module would be refused by `llc` — the answer ADR 0166
+	// ranks below a refusal, and the reason this door asks the question the equality door asks
+	// (**Gap R.253**, **ADR 0472**).
+	if g.sortedReversedDoorIsAskedOf(n.L) && !g.sortedReversedIsAContainer(n.L) {
+		return "", true, g.sortedReversedDoorRefusal(n.L)
+	}
 	needle, needleTag, okPair := g.taggedOperand(b, n.L)
 	if !okPair {
 		// The haystack has already been built, and getting here may have run the effects its elements
 		// performed: a declining door must not undo an effect an operand already had, and must not answer
 		// with a payload whose kind it cannot name (membershipOfBuiltSequence's rule for the same case).
 		return "", false, nil
+	}
+	// The needle is the ITERATOR `reversed` returned. The reference has no `__eq__` on an iterator, so it
+	// matches one by identity and it is therefore a member of no container — the content question the door
+	// is about to ask of the copy this call built would answer True for
+	// `print(reversed([1, 2]) in [[2, 1]])` where the reference prints False (**Gap R.251**, **ADR 0472**).
+	// Both operands are built by the lines above, so deciding here deletes no effect.
+	if g.reversedIsAnIterator(n.L) {
+		return g.iteratorIsNoMember(n.Op), true, nil
 	}
 	g.heapUsed = true
 	found := g.newTmp()
