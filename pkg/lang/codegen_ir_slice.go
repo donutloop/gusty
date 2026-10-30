@@ -24,6 +24,27 @@ bret:
   ret i32 %b
 }
 
+; rt_bound_is_position is the slice door's bound question asked of a TAG. A bound is either a position or
+; the default for that side, and the reference words both answers in one sentence — TypeError: slice indices
+; must be integers or None or have an __index__ method — so the door needs three verdicts, not a boolean:
+; 1 for a word that counts (an int, or a bool, which is an int), 0 for the absence of a bound (None), and -1
+; for anything else — the float whose word is a box handle, the text whose word is an @str_tab index, and
+; every container, whose word would reach rt_slice's i32 argument as a heap handle or a global address.
+; One helper holds the legal-tag set for all three bounds of both slice roads, because the compiler that
+; guesses it per road is the compiler that gets xs[ys[0]:2] over ys = ["a"] wrong at the exit code of
+; success (roadmap Gap R.237). Tag words are the tagged-value table in value.go: int 0, float 1, bool 2,
+; None 3, and every container and text above that.
+define internal i32 @rt_bound_is_position(i32 %tag) {
+entry:
+  %isInt = icmp eq i32 %tag, 0
+  %isBool = icmp eq i32 %tag, 2
+  %isPos = or i1 %isInt, %isBool
+  %isNone = icmp eq i32 %tag, 3
+  %asNone = select i1 %isNone, i32 0, i32 -1
+  %v = select i1 %isPos, i32 1, i32 %asNone
+  ret i32 %v
+}
+
 define internal i32 @rt_slice(i32 %h, i32 %low, i32 %high, i32 %step, i32 %hasLow, i32 %hasHigh, i32 %hasStep) {
 entry:
   %p = getelementptr [@HEAPSLOTS@ x {i32, i32, [256 x i32]}], [@HEAPSLOTS@ x {i32, i32, [256 x i32]}]* @heap, i32 0, i32 %h

@@ -346,7 +346,7 @@ func TestTheExponentMarkerIsStillTheNeighbouringRow(t *testing.T) {
 func TestWhatTheRecordSaysAboutTheFloatWithNoIntegerPart(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	if got, want := countArtifact(t, root, countedArtifacts[0]), 11117; got != want {
+	if got, want := countArtifact(t, root, countedArtifacts[0]), 11135; got != want {
 		t.Fatalf("the record holds %d sources and this row's guard quotes %d — one of the two is stale; the file"+
 			" is the authority, so the literal, AGENTS.md, docs/operations.md and roadmap.md's snapshot all move together",
 			got, want)

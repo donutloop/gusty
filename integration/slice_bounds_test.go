@@ -80,6 +80,19 @@ var sliceBoundsAnswered = []struct {
 	{"def build():\n    return [7, 8, 9]\n\ndef n():\n    return build()[0:2]\nprint(n())", "[7, 8]"},
 	{"def n():\n    xs = [[1, 2], [3, 4]]\n    return xs[0:1]\nprint(n())", "[[1, 2]]"},
 	{"def n(f):\n    if f:\n        return [9, 9]\n    xs = [1, 2, 3]\n    return xs[0:2]\nprint(n(False))\nprint(n(True))", "[1, 2]\n[9, 9]"},
+	// The bounds whose kind is a run-time fact — a slot's tag, a call's answer word, a dict's value, a class's
+	// field, a parameter the CALLER filled — answered by the tag beside the payload rather than by the payload
+	// alone (**roadmap Gap R.237**, **ADR 0477**). Each row is the raise family's own shape with the tag pointed at
+	// a legal kind, and the `None` row is the one an absence-of-a-bound answer: `xs[None:3]`, not `xs[0:3]`.
+	{"xs = [1, 2, 3]\nys = [None]\nprint(xs[ys[0]:3])", "[1, 2, 3]"},
+	{"xs = [1, 2, 3]\nys = [True]\nprint(xs[ys[0]:2])", "[2]"},
+	{"def g():\n    return None\nxs = [1, 2, 3]\nprint(xs[g():3])", "[1, 2, 3]"},
+	{"d = {\"k\": 2}\nxs = [1, 2, 3]\nprint(xs[0:d[\"k\"]])", "[1, 2]"},
+	{"class Box:\n    def __init__(self):\n        self.k = 1\nb = Box()\nxs = [1, 2, 3]\nprint(xs[0:b.k])", "[1]"},
+	{"def at(k):\n    xs = [1, 2, 3]\n    return xs[0:k]\nprint(at(2))", "[1, 2]"},
+	// The bound's own call runs first, so its output is on stdout ahead of the answer — the reference builds the
+	// slice from the values the expressions answer, and this row is the order seen from the answering side.
+	{"def g():\n    print(\"side\")\n    return 1\nxs = [1, 2, 3]\nprint(xs[g():3])", "side\n[2, 3]"},
 }
 
 // TestTheBoundsTheReferenceAnswersStillAnswerThroughTheCLI is the gate's negative control at this altitude:
@@ -138,6 +151,26 @@ func TestABoundThatIsNotAPositionRaisesThroughTheCLI(t *testing.T) {
 		{"of a call's answer", "def b():\n    return [1, 2, 3]\ntxt = \"a\"\nprint(b()[0:txt])"},
 		{"of a text", "s = \"abcd\"\ntxt = \"a\"\nprint(s[0:txt])"},
 		{"float bounds on a text", "s = \"abcd\"\nflt = 1.5\nprint(s[flt:3])"},
+		// --- the kinds only the run time names: a slot's tag, a dict's value, a tuple's element, a call's answer
+		// word, a caller-chosen parameter and a class's field. None of these has a kind in the SOURCE for the
+		// static gate to read, so each was lowered through the generic expression door and handed to the slice
+		// helper as a position — a text's `@str_tab` index, a float's box handle, at the exit code of a success
+		// (**roadmap Gap R.237**, **ADR 0477**).
+		{"slot text low", "xs = [1, 2, 3]\nys = [\"a\"]\nprint(xs[ys[0]:3])"},
+		{"slot text high", "xs = [1, 2, 3]\nys = [\"a\"]\nprint(xs[1:ys[0]])"},
+		{"slot text step", "xs = [1, 2, 3]\nys = [\"a\"]\nprint(xs[::ys[0]])"},
+		{"slot float low", "xs = [1, 2, 3]\nys = [1.5]\nprint(xs[ys[0]:3])"},
+		{"nested slot text", "xs = [1, 2]\nys = [[\"a\"]]\nprint(xs[ys[0][0]:2])"},
+		{"dict value text", "d = {\"k\": \"v\"}\nxs = [1, 2]\nprint(xs[d[\"k\"]:2])"},
+		{"tuple element text", "t = (1, \"x\")\nxs = [1, 2]\nprint(xs[t[1]:2])"},
+		{"call text low", "def g():\n    return \"a\"\nxs = [1, 2]\nprint(xs[g():2])"},
+		{"call float high", "def g():\n    return 1.5\nxs = [1, 2]\nprint(xs[0:g()])"},
+		{"call float step", "def g():\n    return 1.5\nxs = [1, 2]\nprint(xs[0::g()])"},
+		{"call container low", "def g():\n    return {\"a\": 1}\nxs = [1, 2]\nprint(xs[g():2])"},
+		{"float parameter", "def at(k):\n    xs = [1, 2, 3]\n    return xs[0:k]\nprint(at(1.5))"},
+		{"text parameter", "def at(k):\n    xs = [1, 2, 3]\n    return xs[k:2]\nprint(at(\"1\"))"},
+		{"class field text", "class Box:\n    def __init__(self):\n        self.k = \"x\"\nb = Box()\nxs = [1, 2, 3]\nprint(xs[0:b.k])"},
+		{"text base, slot bound", "s = \"abcdef\"\nys = [\"a\"]\nprint(s[ys[0]:3])"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -176,6 +209,13 @@ func TestABadBoundIsCatchableThroughTheCLI(t *testing.T) {
 		{"in a function", "def at(k):\n    xs = [1, 2, 3]\n    print(xs[0:k])\n\ntry:\n    at(\"a\")\nexcept TypeError:\n    print(\"caught\")"},
 		{"after output", "xs = [1, 2, 3]\ntxt = \"a\"\nprint(\"first\")\ntry:\n    print(xs[0:txt])\nexcept TypeError:\n    print(\"caught\")\nprint(\"last\")"},
 		{"the arm names what it took", "xs = [1, 2, 3]\ntxt = \"a\"\ntry:\n    print(xs[0:txt])\nexcept TypeError as err:\n    print(\"caught\", err)"},
+		// The raise the run-time tag emits is on the same road as the one the static gate emits, so the program's
+		// own handler takes a kind it could never have named — which is the difference between a program result
+		// and a build failure, asked of the half of the door that has no kind in the source
+		// (**roadmap Gap R.237**, **ADR 0477**, **ADR 0214**).
+		{"a slot's kind, caught", "xs = [1, 2, 3]\nys = [\"a\"]\ntry:\n    print(xs[ys[0]:3])\nexcept TypeError:\n    print(\"caught\")"},
+		{"a call's kind, caught", "def g():\n    return \"a\"\nxs = [1, 2, 3]\ntry:\n    print(xs[g():3])\nexcept TypeError:\n    print(\"caught\")"},
+		{"a caller's float, caught", "def at(k):\n    xs = [1, 2, 3]\n    return xs[0:k]\ntry:\n    print(at(1.5))\nexcept TypeError:\n    print(\"caught\")"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -189,6 +229,47 @@ func TestABadBoundIsCatchableThroughTheCLI(t *testing.T) {
 			}
 			if got := strings.TrimSpace(stdout); got != strings.TrimSpace(want) {
 				t.Fatalf("printed %q, the reference prints %q", got, strings.TrimSpace(want))
+			}
+		})
+	}
+}
+
+// TestABadBoundRunsTheBoundItRefusesFirstThroughTheCLI is the ORDER half of the door at the CLI altitude, and the
+// half a kind check gets wrong by itself: the reference builds the slice object from the values the bound
+// expressions ANSWER and only then refuses the slice it built, so a bound that is a call has already run — printed,
+// mutated — by the time the `TypeError` arrives. Refusing the shape at compile time, which is what the gate does for
+// a bound the program spelled, skips those effects and writes fewer bytes than the reference does; stdout is part of
+// the answer, and these rows are judged against `python3` and not against a remembered string
+// (**roadmap Gap R.237**, **ADR 0477**, **ADR 0336**'s order).
+func TestABadBoundRunsTheBoundItRefusesFirstThroughTheCLI(t *testing.T) {
+	t.Parallel()
+	const msg = "TypeError: slice indices must be integers or None or have an __index__ method"
+	for _, tt := range []struct {
+		name string
+		src  string
+	}{
+		{"a text answer", "def g():\n    print(\"side\")\n    return \"x\"\nxs = [1, 2, 3]\nprint(xs[g():3])"},
+		{"a float answer", "def g():\n    print(\"side\")\n    return 1.5\nxs = [1, 2, 3]\nprint(xs[0:g()])"},
+		{"a parameter passed through", "def shout(k):\n    print(\"bound\")\n    return k\nxs = [1, 2, 3]\nprint(xs[0:shout(\"a\")])"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			want := pythonOutput(t, tt.src+"\n")
+			stdout, stderr, code := cliStreams(t, "--eval", tt.src)
+			if code == 2 {
+				t.Fatalf("exit 2 on a program the reference raises (ADR 0166):\n%s", stderr)
+			}
+			if code == 0 {
+				t.Fatalf("answered %q at exit 0 where the reference raises\nstderr %q", stdout, stderr)
+			}
+			if strings.Contains(stderr, "codegen:") {
+				t.Fatalf("the program was refused by the compiler rather than raised by the runtime:\n%s", stderr)
+			}
+			if !strings.Contains(stderr, msg) {
+				t.Fatalf("the raise does not carry the reference's sentence %q:\n%s", msg, stderr)
+			}
+			if got := strings.TrimSpace(stdout); got != strings.TrimSpace(want) {
+				t.Fatalf("printed %q before the raise; the reference prints %q — the bound's own call was skipped", got, strings.TrimSpace(want))
 			}
 		})
 	}
@@ -341,9 +422,12 @@ func TestTheStepsTheReferenceAnswersStillAnswerThroughTheCLI(t *testing.T) {
 // (ADR 0166) — which is the claim that stopped being true the day the step of zero was filed: that shape used to
 // sit here, unwitnessable, until ADR 0337 made it a raise.
 //
-// The first three are the silent half of this row's own gate: it names a kind only where a record names one, and
-// a slot, a call's answer and a float-carrying parameter each hold theirs one word too far away (roadmap Gap
-// R.237). The rest are the neighbours this row measured and filed rather than fixed: `len` of a slice of a text
+// The first three rows this table carried — the silent half of the gate: a text in a slot, the same text handed
+// back by a call, and a float-carrying parameter — are DELETED by their own text. The bound door asks the pair
+// roads the question the print, comparison, binding and membership roads already ask, and one helper
+// (`rt_bound_is_position`) reads the tag for every bound of both slice roads; the shapes are raise rows and
+// answered rows above, and the record leg carries them (**roadmap Gap R.237**, **ADR 0477**). The rest are the
+// neighbours this row measured and filed rather than fixed: `len` of a slice of a text
 // (Gap R.240), a stepped slice of a text whose step is
 // a value (Gap R.243 — the fold answers a constant stride and refuses any other). The `except` arm that calls
 // a function used to be listed here too (Gap R.241): the arm ran with the exception flag still set, the call's
@@ -363,24 +447,6 @@ func TestWhatTheBoundDoorStillCannotAnswerThroughTheCLI(t *testing.T) {
 		oracle   string // what the reference answers
 		gap      string
 	}{
-		{
-			"a text hidden in a slot, used as a bound",
-			"xs = [1, 2, 3]\nys = [\"a\"]\nprint(xs[ys[0]:2])",
-			"[1, 2]", "TypeError: slice indices must be integers or None or have an __index__ method",
-			"roadmap Gap R.237 (the bound is a (payload, tag) pair the compiler holds one word of)",
-		},
-		{
-			"a text handed back by a call, used as a bound",
-			"def g():\n    return \"a\"\nxs = [1, 2, 3]\nprint(xs[g():2])",
-			"[1, 2]", "TypeError: slice indices must be integers or None or have an __index__ method",
-			"roadmap Gap R.237 (the same one-word position, reached through a call — a call handing back `1` answers `[2, 3]` for `xs[g():3]` for the same reason)",
-		},
-		{
-			"a float handed to a parameter that slices by it",
-			"def at(k):\n    xs = [1, 2, 3]\n    return xs[0:k]\nprint(at(1.5))",
-			"1", "TypeError: slice indices must be integers or None or have an __index__ method",
-			"roadmap Gap R.237 (a float parameter is the pair road's, so the body holds no static kind to ask; a text argument DOES raise — the gate reads that kind)",
-		},
 		// The length of a slice of a text is DELETED by its own text: `s = "abcd"` / `print(len(s[1:3]))` answers
 		// `2` through the CLI and against a live `python3` in `integration/len_text_slice_test.go`, together with
 		// the eleven shapes the door now inherits from the slice road's gates (`'set'`, `KeyError: slice(0, 1,

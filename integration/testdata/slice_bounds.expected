@@ -28,3 +28,18 @@ raised: zero step on a text
 raised: zero step in a name
 [1, 3] [3, 2, 1] [1, 3]
 [1, 3] ac
+[2, 3] [1, 2, 3] [2]
+[1] [1, 2, 3] [1, 2]
+[1, 2] [] cd
+raised: text in a slot
+raised: text in a slot, high
+raised: text in a slot, step
+raised: text handed back by a call
+raised: float handed back by a call
+raised: float handed to a parameter
+raised: text handed to a parameter
+raised: text in a dict's slot
+raised: text in a class's field
+side
+raised: a bound that spoke first
+after the spoke

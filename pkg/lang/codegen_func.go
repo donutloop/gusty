@@ -837,6 +837,14 @@ func (g *irGen) funcDef(b *strings.Builder, fd *FuncDef) error {
 			// the argument never was.
 			delete(g.boolVars, p.Name)
 		}
+		// And the float twin of both readings: the body's slice bounds ask this record whether a name the
+		// body never assigned is a position (roadmap Gap R.237, floatargs.go). Authoritative for the same
+		// reason the verdict arm above is — the callers are the only evidence about this name in this body.
+		if g.floatParamOf[g.fnName(fd)][i] {
+			g.floatParamNames[p.Name] = true
+		} else {
+			delete(g.floatParamNames, p.Name)
+		}
 	}
 	// The call sites decide a parameter's kind, so this is the first moment the body's own
 	// returns can be judged: `def f(s): return s[1]` called with a string hands back a string

@@ -99,7 +99,7 @@ func GenerateIRReport(prog *Program, opts *IRGenOptions) (string, *DebugInfo, er
 		listVars:     map[string]bool{},
 		runtimeDicts: map[string]bool{}, runtimeSets: map[string]bool{}, noneVars: map[string]bool{},
 		boolVars:    map[string]bool{},
-		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, strAttrs: map[string]bool{}, mixedLists: map[string]bool{}, mixedDicts: map[string]bool{}, mixedSets: map[string]bool{}, taggedVars: map[string]bool{}, strParamOf: strArgKinds(prog), boolParamOf: verdict.kinds, calleeBoolVars: verdict.of, strFuncs: strFuncTable, strMethodFuncs: strMethodTable, methodCensus: methodCensus(prog, verdict.kinds), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
+		listElemStr: map[string]bool{}, setElemStr: map[string]bool{}, dictKeyStr: map[string]bool{}, dictValStr: map[string]bool{}, listElemInt: map[string]bool{}, setElemInt: map[string]bool{}, dictKeyInt: map[string]bool{}, dictValInt: map[string]bool{}, internedVars: map[string]bool{}, strAttrs: map[string]bool{}, mixedLists: map[string]bool{}, mixedDicts: map[string]bool{}, mixedSets: map[string]bool{}, taggedVars: map[string]bool{}, strParamOf: strArgKinds(prog), boolParamOf: verdict.kinds, floatParamOf: floatArgKinds(prog), floatParamNames: map[string]bool{}, calleeBoolVars: verdict.of, strFuncs: strFuncTable, strMethodFuncs: strMethodTable, methodCensus: methodCensus(prog, verdict.kinds), strFillOf: stringFillingParams(prog), imports: imports, sym: map[string]string{}, allocd: map[string]bool{}, funcs: map[string]bool{}, funcBind: map[string]string{}, externs: map[string]*ExternDecl{}, genFuncs: map[string]bool{}, listOperands: map[string]bool{}, floatFuncs: map[string]bool{}, floatTemps: map[string]bool{}, fds: map[string]*FuncDef{}, params: map[string]string{}, fmtIdx: 0, strIdx: 0, tmp: 0, ldN: 0}
 	// What the defunctionalisation pass had to say about THIS program, taken from the same call that
 	// produced it: "" for a program the pass rewrote, and for one it found it had no work for at all.
 	// The door that refuses a call with no `define` behind it is the one that reads it, because that is
@@ -1004,6 +1004,14 @@ type irGen struct {
 	// any call site is absent, and the body then prints the number it always printed
 	// (roadmap Gap R.111, ADR 0257's unfinished edge, L11.1's remaining bool item).
 	boolParamOf map[string]map[int]bool
+	// floatParamOf is the float twin of strParamOf and boolParamOf: which parameters EVERY call site in the
+	// program fills with a float, read from the AST by floatArgKinds. A position any call site contradicted
+	// is absent, and the body keeps the road it always had (roadmap **Gap R.237**). `floatParamNames` is
+	// the same reading scoped to the body being emitted — a parameter named `k` in one function must not make
+	// an unrelated `k` a float in another, which is why the record is set authoritatively per parameter of
+	// the body in hand and not accumulated by name.
+	floatParamOf    map[string]map[int]bool
+	floatParamNames map[string]bool
 	// strFuncs names the functions that return a string, so `print(echo("yo"))` prints text
 	// and `xs.append(make_key())` stores an interned element rather than a raw index.
 	strFuncs map[string]bool

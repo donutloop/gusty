@@ -110,3 +110,92 @@ except ValueError:
 print(xs[::2], xs[::-1], xs[0:4:2])
 k2 = 2
 print(xs[::k2], s[::2])
+
+# The bounds whose kind the source does not spell: a slot's tag, a call's answer word, a dict's value, a
+# class's field, and the argument a CALLER chose. The tag beside the payload answers what the source would
+# have spelled, and a tag that says `None` is the side of the slice the program never wrote
+# (roadmap Gap R.237, ADR 0477).
+slots = ["a"]
+nums = [1, 2]
+nones = [None]
+oks = [True]
+bag = {"k": "v"}
+numbag = {"k": 2}
+
+def give_text():
+    return "a"
+
+def give_float():
+    return 1.5
+
+def give_int():
+    return 1
+
+def give_none():
+    return None
+
+def at(k):
+    local = [1, 2, 3]
+    return local[0:k]
+
+def at_by_number(k):
+    local = [1, 2, 3]
+    return local[0:k]
+
+def at_by_word(k):
+    local = [1, 2, 3]
+    return local[0:k]
+
+def speak():
+    print("side")
+    return "a"
+
+class Case:
+    def __init__(self):
+        self.k = "x"
+
+c = Case()
+print(xs[nums[0]:3], xs[nones[0]:3], xs[oks[0]:2])
+print(xs[0:give_int()], xs[0:give_none()], at(2))
+print(xs[0:numbag["k"]], xs[nums[0] + nums[1]:3], s[nums[1]:4])
+try:
+    print(xs[slots[0]:3])
+except TypeError:
+    print("raised: text in a slot")
+try:
+    print(xs[1:slots[0]])
+except TypeError:
+    print("raised: text in a slot, high")
+try:
+    print(xs[::slots[0]])
+except TypeError:
+    print("raised: text in a slot, step")
+try:
+    print(xs[give_text():3])
+except TypeError:
+    print("raised: text handed back by a call")
+try:
+    print(xs[0:give_float()])
+except TypeError:
+    print("raised: float handed back by a call")
+try:
+    print(at_by_number(1.5))
+except TypeError:
+    print("raised: float handed to a parameter")
+try:
+    print(at_by_word("1"))
+except TypeError:
+    print("raised: text handed to a parameter")
+try:
+    print(xs[0:bag["k"]])
+except TypeError:
+    print("raised: text in a dict's slot")
+try:
+    print(xs[0:c.k])
+except TypeError:
+    print("raised: text in a class's field")
+try:
+    print(xs[speak():3])
+except TypeError:
+    print("raised: a bound that spoke first")
+print("after the spoke")

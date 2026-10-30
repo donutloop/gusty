@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -111,6 +112,31 @@ var sliceBoundsAnswered = []struct {
 	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(bool(n()))", "True"},
 	{"def n():\n    xs = [1, 2, 3]\n    return xs[5:9]\nprint(bool(n()))", "False"},
 	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(bool(n()), str(n()), n() + [4])", "True [2, 3] [2, 3, 4]"},
+	// The bounds whose kind only the run time can name, and the tag is what answers them — **Gap R.237**'s half
+	// of the door. A slot's tag says `None`, which is the side the program did not write (not a position of 0),
+	// a call's answer carries its kind beside its payload, a bool is an int, and an arithmetic bound is the pair
+	// the arithmetic road already lifts. Each row is the same shape as the raise rows below with the tag pointed
+	// at a legal kind: the copy is what the reference copies, and the tag is what decided that.
+	{"xs = [1, 2]\nys = [None]\nprint(xs[ys[0]:2])", "[1, 2]"},
+	{"xs = [1, 2, 3]\nys = [None]\nprint(xs[0:ys[0]])", "[1, 2, 3]"},
+	{"xs = [1, 2, 3]\nys = [None]\nprint(xs[::ys[0]])", "[1, 2, 3]"},
+	{"xs = [1, 2, 3]\nys = [True]\nprint(xs[ys[0]:2])", "[2]"},
+	{"xs = [1, 2, 3]\nys = [\"a\"]\nprint(xs[ys[0] == \"a\":2])", "[2]"},
+	{"def g():\n    return None\n\nxs = [1, 2, 3]\nprint(xs[g():2])", "[1, 2]"},
+	{"def g():\n    return 1\n\nxs = [1, 2, 3]\nprint(xs[0:g()])", "[1]"},
+	{"xs = [1, 2, 3, 4]\nys = [1, 1, 1]\nprint(xs[ys[0] + ys[2]:4])", "[3, 4]"},
+	{"def g():\n    return 1\n\nxs = [1, 2, 3, 4]\nprint(xs[g() + 1:4])", "[3, 4]"},
+	{"xs = [1, 2, 3]\nprint(xs[0:3:len(xs)])", "[1]"},
+	{"d = {\"k\": 2}\nxs = [1, 2, 3]\nprint(xs[0:d[\"k\"]])", "[1, 2]"},
+	{"class Box:\n    def __init__(self):\n        self.k = 1\n\nb = Box()\nxs = [1, 2, 3]\nprint(xs[0:b.k])", "[1]"},
+	{"def at(k):\n    xs = [1, 2, 3]\n    return xs[0:k]\n\nprint(at(2))", "[1, 2]"},
+	{"def at(k):\n    return \"abcdef\"[k:4]\n\nprint(at(1))", "bcd"},
+	{"def pick(who):\n    if who:\n        return 1\n    return \"x\"\n\nxs = [1, 2, 3]\nprint(xs[0:pick(True)])", "[1]"},
+	{"s = \"abcdef\"\nys = [2]\nprint(s[ys[0]:4])", "cd"},
+	// A bound that is a call runs BEFORE the bound is refused: the reference builds the slice from the values the
+	// expressions answer, so the callee's own output is on stdout ahead of the complaint. This row is the answer
+	// half of that order (the raise half is `TestABadBoundRunsTheCallItRefusesFirst`).
+	{"def g():\n    print(\"side\")\n    return 1\n\nxs = [1, 2, 3]\nprint(xs[g():3])", "side\n[2, 3]"},
 }
 
 // TestABoundThatIsNotAPositionRaisesWhatTheReferenceRaises covers the bounds the compiler can name the kind of.
@@ -162,6 +188,35 @@ func TestABoundThatIsNotAPositionRaisesWhatTheReferenceRaises(t *testing.T) {
 		{"xs = [1, 2]\nys = xs[\"a\":2]\nprint(ys)"},
 		// A parameter is its argument's kind, and a body that slices by it raises when handed a text.
 		{"def f(a):\n    xs = [1, 2]\n    return xs[a:2]\nprint(f(\"a\"))"},
+		// --- the kinds only the run time names (roadmap **Gap R.237**): the same sentence, reached through a
+		// slot's tag, a call's answer word, a parameter the caller filled, and a class's field. None of these
+		// shapes has a kind in the SOURCE for the static gate to read, so each was answered by the word the
+		// pair road lifts — a text's `@str_tab` index or a float's box handle counted as a position, at the
+		// exit code of a success, and the float spelling reached `rt_slice`'s i32 argument as a `double`.
+		{"xs = [1, 2]\nys = [\"a\"]\nprint(xs[ys[0]:2])"},
+		{"xs = [1, 2, 3]\nys = [\"a\"]\nprint(xs[1:ys[0]])"},
+		{"xs = [1, 2, 3]\nys = [\"a\"]\nprint(xs[0:3:ys[0]])"},
+		{"xs = [1, 2, 3]\nys = [\"a\"]\nprint(xs[-1:ys[0]:1])"},
+		{"xs = [1, 2, 3]\nys = [1.5]\nprint(xs[ys[0]:2])"},
+		{"xs = [1, 2]\nys = [[\"a\"]]\nprint(xs[ys[0][0]:2])"},
+		{"d = {\"k\": \"v\"}\nxs = [1, 2]\nprint(xs[d[\"k\"]:2])"},
+		{"t = (1, \"x\")\nxs = [1, 2]\nprint(xs[t[1]:2])"},
+		{"def g():\n    return \"a\"\n\nxs = [1, 2]\nprint(xs[g():2])"},
+		{"def g():\n    return \"a\"\n\nxs = [1, 2]\nprint(xs[0:g()])"},
+		{"def g():\n    return 1.5\n\nxs = [1, 2]\nprint(xs[g():2])"},
+		{"def g():\n    return 1.5\n\nxs = [1, 2]\nprint(xs[0::g()])"},
+		{"def g():\n    return 1.5\n\ns = \"abcdef\"\nprint(s[0:g()])"},
+		{"def g():\n    return {\"a\": 1}\n\nxs = [1, 2]\nprint(xs[g():2])"},
+		{"def at(k):\n    xs = [1, 2, 3]\n    return xs[0:k]\nprint(at(1.5))"},
+		{"def at(k):\n    xs = [1, 2, 3]\n    return xs[k:2]\nprint(at(\"1\"))"},
+		{"def at(k):\n    return \"abcdef\"[k:4]\nprint(at(1.5))"},
+		{"def pick(who):\n    if who:\n        return 1\n    return \"x\"\n\nprint(\"abcdef\"[0:pick(False)])"},
+		{"s = \"abcdef\"\nys = [\"a\"]\nprint(s[ys[0]:3])"},
+		{"s = \"abcdef\"\nys = [\"a\"]\nprint(s[1:ys[0]])"},
+		{"class Box:\n    def __init__(self):\n        self.k = \"x\"\n\nb = Box()\nxs = [1, 2, 3]\nprint(xs[0:b.k])"},
+		// The step position asks the run-time question too, and a `None` in a slot is NOT a step of zero: it is
+		// the stride the program left out. The raise row is a slot holding a text where the stride belongs.
+		{"xs = [1, 2, 3]\nys = [\"a\"]\nprint(xs[::ys[0]])"},
 	} {
 		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
 			t.Parallel()
@@ -220,11 +275,69 @@ func TestABadBoundIsTheProgramsExceptionNotTheCompilers(t *testing.T) {
 			"def b():\n    return [1, 2, 3]\n\ntry:\n    print(b()[1.5:])\nexcept TypeError:\n    print(\"caught\")",
 			"caught",
 		},
+		// The raise the run-time tag emits is on the same road as the one the static gate emits, so the
+		// program's own handler takes it: the kind was only a run-time fact, but the exception is the program's.
+		{
+			"xs = [1, 2]\nys = [\"a\"]\ntry:\n    print(xs[ys[0]:2])\nexcept TypeError:\n    print(\"caught\")",
+			"caught",
+		},
+		{
+			"def g():\n    return \"a\"\n\nxs = [1, 2, 3]\ntry:\n    print(xs[g():2])\nexcept TypeError:\n    print(\"caught\")",
+			"caught",
+		},
+		{
+			"def at(k):\n    xs = [1, 2, 3]\n    return xs[0:k]\n\ntry:\n    print(at(1.5))\nexcept TypeError:\n    print(\"caught\")",
+			"caught",
+		},
+		{
+			"xs = [1, 2, 3]\nys = [\"a\"]\ntry:\n    print(xs[::ys[0]])\nexcept ValueError:\n    print(\"wrong class\")\nexcept TypeError:\n    print(\"caught\")",
+			"caught",
+		},
 	} {
 		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
 			t.Parallel()
 			if got := strings.TrimRight(compiledOut(t, tc.src), "\n"); got != tc.want {
 				t.Fatalf("%q printed %q, want the handler to have printed %q", tc.src, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestABadBoundRunsTheCallItRefusesFirst is the ORDER half of the door, and the half a kind check gets wrong by
+// itself: the reference builds the slice object from the values the bound expressions ANSWER, and only then
+// refuses the slice it built. A bound that is a call therefore runs — the callee's own `print` reaches stdout —
+// before the complaint. Refusing the shape statically, which is what the gate does for a bound the program
+// spelled (a literal, a slot, a container), skips those effects and prints less than the reference does; the
+// rows below are the same programs as the raise rows above with an effect in the callee, and each asserts the
+// stdout the reference writes AS WELL AS the class and the sentence (roadmap **Gap R.237**, **ADR 0336**'s order).
+func TestABadBoundRunsTheCallItRefusesFirst(t *testing.T) {
+	t.Parallel()
+	const message = "slice indices must be integers or None or have an __index__ method"
+	for _, tc := range []struct {
+		src  string
+		want string
+	}{
+		{
+			"def g():\n    print(\"side\")\n    return \"x\"\n\nxs = [1, 2, 3]\nprint(xs[g():3])",
+			"side",
+		},
+		{
+			"def g():\n    print(\"side\")\n    return 1.5\n\nxs = [1, 2, 3]\nprint(xs[0:g()])",
+			"side",
+		},
+		{
+			"def shout(k):\n    print(\"bound\")\n    return k\n\nxs = [1, 2, 3]\nprint(xs[0:shout(\"a\")])",
+			"bound",
+		},
+	} {
+		t.Run(strings.ReplaceAll(tc.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
+			out, trap := runForParity(t, tc.src)
+			if trap != "TypeError: "+message {
+				t.Fatalf("%q trapped %q; the reference traps TypeError: %s", tc.src, trap, message)
+			}
+			if out != tc.want {
+				t.Fatalf("%q printed %q before the raise; the reference prints %q — the bound's own call was skipped", tc.src, out, tc.want)
 			}
 		})
 	}
@@ -265,6 +378,42 @@ func TestTheBoundGateLeavesTheUntaggedCopyAlone(t *testing.T) {
 	}
 	if !strings.Contains(bad, "@rt_die(") && !strings.Contains(bad, "exn_msg") {
 		t.Fatalf("a bad-bound slice does not emit the program's raise:\n%s", bad)
+	}
+}
+
+// TestTheTagQuestionIsInTheModuleWhereTheBoundIs asserts the run-time half as IR, so a door that starts trusting the
+// payload again — or starts asking the tag of a bound whose kind the source already wrote — fails here and not only
+// in a printed list. A guarded bound carries the helper call, the verdict test and a presence flag DERIVED from the
+// verdict; a bound the source kinds carries none of it. That is the same rule **ADR 0337**'s zero-step guard
+// follows: the guard lives where the value is, and a program that wrote a constant pays for nothing.
+func TestTheTagQuestionIsInTheModuleWhereTheBoundIs(t *testing.T) {
+	t.Parallel()
+	// The presence flag is the fifth i32 of `rt_slice`, and for a bound whose tag decides it that argument is a
+	// register and never the constant 1 — a compiler that writes `1` there is a compiler that read the payload
+	// and never asked the tag, which is the whole of this row's defect.
+	hasLowIsARegister := regexp.MustCompile(`@rt_slice\(i32 [^,]+, i32 [^,]+, i32 3, i32 1, i32 %`)
+	slot := mainBodyOf(emittedModuleIR(t, "xs = [1, 2, 3]\nys = [1]\nprint(xs[ys[0]:3])"))
+	if !strings.Contains(slot, "@rt_bound_is_position(") {
+		t.Fatalf("a slot-read bound did not ask the tag:\n%s", slot)
+	}
+	if !strings.Contains(slot, "@rt_slice(") {
+		t.Fatalf("a legal slot-read bound stopped building the copy:\n%s", slot)
+	}
+	if !hasLowIsARegister.MatchString(slot) || !strings.Contains(slot, "zext i1") {
+		t.Fatalf("the copy's low bound is not the run-time verdict it was read from:\n%s", slot)
+	}
+	constant := mainBodyOf(emittedModuleIR(t, "xs = [1, 2, 3]\nk = 1\nprint(xs[0:k])"))
+	if !strings.Contains(constant, "@rt_slice(") {
+		t.Fatalf("the ordinary copy stopped being built by the ordinary road:\n%s", constant)
+	}
+	if strings.Contains(constant, "@rt_bound_is_position(") {
+		t.Fatalf("a bound the source kinds was asked the run-time question anyway:\n%s", constant)
+	}
+	// A step the program left out is not a step the run time has to ask about either: `xs[ys[0]:]` has no stride
+	// to kind, and a guard beside it would have **ADR 0337**'s zero-step question accusing a stride nobody wrote.
+	open := mainBodyOf(emittedModuleIR(t, "xs = [1, 2, 3]\nys = [1]\nprint(xs[ys[0]:])"))
+	if strings.Count(open, "@rt_bound_is_position(") > strings.Count(slot, "@rt_bound_is_position(") {
+		t.Fatalf("an open bound asked more tag questions than a written one:\nopen:\n%s\nwritten:\n%s", open, slot)
 	}
 }
 
@@ -465,18 +614,12 @@ func TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 		oracle   string // what the reference answers
 		gap      string
 	}{
-		{
-			"a text hidden in a slot, used as a bound",
-			"xs = [1, 2]\nys = [\"a\"]\nprint(xs[ys[0]:2])",
-			"[1, 2]", "TypeError: slice indices must be integers or None or have an __index__ method",
-			"roadmap Gap R.237 (the bound is a (payload, tag) pair the compiler holds one word of: the gate names a kind only where a record names it)",
-		},
-		{
-			"a text handed back by a call, used as a bound",
-			"def g():\n    return \"a\"\n\nxs = [1, 2]\nprint(xs[g():2])",
-			"[1, 2]", "TypeError: slice indices must be integers or None or have an __index__ method",
-			"roadmap Gap R.237 (the same one-word position, reached through a call: ADR 0333's answer carries its tags and this door asks for one static kind)",
-		},
+		// The two rows this table filed for **Gap R.237** — a text hidden in a slot, and the same text handed
+		// back by a call — are DELETED by their own text. The bound door now asks the pair roads the question the
+		// print, comparison, binding and membership doors already ask, and reads the tag beside the payload:
+		// `rt_bound_is_position` holds the legal-tag set for every bound of both slice roads, and a tag that says
+		// `None` is the side the program left out rather than a position of 0. They are witnessed as raise rows
+		// and as answered rows in this file (**roadmap Gap R.237**, **ADR 0336**'s order, one construct on).
 		// The two shapes this table filed for **Gap R.234** — a slice of a set literal and a slice of a dict kept
 		// in a name — are DELETED by their own text. The base question is now asked BEFORE the bounds question,
 		// which is the reference's order: a set complains about the object (`TypeError: 'set' object is not
@@ -494,12 +637,9 @@ func TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 		// `containerAnswerSlotReader.slot` asks the copy's base, so all five answer the reference now (**roadmap
 		// Gap R.238**, **ADR 0465**). They live in `sliceBoundsAnswered` beside the rest of the door, where every
 		// answered row is asked of the compiler, the reference, the module verifier AND the record.
-		{
-			"a float handed to a parameter that slices by it",
-			"def at(k):\n    xs = [1, 2, 3]\n    return xs[0:k]\nprint(at(1.5))",
-			"1", "TypeError: slice indices must be integers or None or have an __index__ method",
-			"roadmap Gap R.237 (a float parameter belongs to the pair road, so the body holds no static kind to ask — while the same body with a **text** argument does raise: `print(f(\"a\"))` is in the raise table above)",
-		},
+		// The row this table filed for a float handed to a parameter that slices by it is DELETED by the same
+		// text: a parameter is the binding that is never in the body, and the caller's kind now travels with the
+		// pair the callee was handed (`def at(k): return xs[0:k]` / `print(at(1.5))` raises, the reference raises).
 		{
 			"a comprehension over a copy",
 			"xs = [1, 2, 3]\nprint([x * 2 for x in xs[0:2]])",

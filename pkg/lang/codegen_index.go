@@ -1075,11 +1075,16 @@ func (g *irGen) valueSlice(b *strings.Builder, e Expr, n *Slice) (string, error)
 	// The base is a container the records describe; now the three bounds are asked the same question the
 	// subscript door asks its position (Gap R.222's gate, one construct over): an integer or a bool is a
 	// position, `None` is the absence of one, and anything else the compiler can name the kind of is the
-	// reference's `TypeError: slice indices must be integers or None or have an __index__ method`. Asked
-	// before any bound is lowered, so a text bound never becomes its `@str_tab` index and a position
-	// (`print(xs["a":"b"])` answered `[1]` at exit 0) and a list bound never reaches `rt_slice`'s i32
-	// arguments as a global address (exit 2, roadmap Gap R.233, ADR 0336).
-	if g.badSliceBoundGate(b, n) {
+	// reference's `TypeError: slice indices must be integers or None or have an __index__ method`. Asked before
+	// the copy is built, and before any bound that is a literal or a slot is lowered — so a text bound never
+	// becomes its `@str_tab` index and a position (`print(xs["a":"b"])` answered `[1]` at exit 0), and a list
+	// bound never reaches `rt_slice`'s i32 arguments as a global address (exit 2, roadmap Gap R.233, ADR 0336).
+	// The one bound the gate lowers first is a CALL, whose body the reference runs on its way to building the
+	// slice; the gate itself says why, and `Gap R.237`'s pair door below asks the same question of the kinds the
+	// source never spelled.
+	if raised, gerr := g.badSliceBoundGate(b, n); gerr != nil {
+		return "", gerr
+	} else if raised {
 		return "0", nil
 	}
 	objReg, err := g.value(b, n.Obj)
@@ -1121,25 +1126,59 @@ func (g *irGen) valueSlice(b *strings.Builder, e Expr, n *Slice) (string, error)
 	hasHigh := "0"
 	hasStep := "0"
 	if !g.sliceBoundIsAbsent(n.Low) {
-		lowReg, err = g.value(b, n.Low)
-		if err != nil {
-			return "", err
+		payload, verdict, guarded, gerr := g.guardedSliceBound(b, n.Low, n.Span())
+		if gerr != nil {
+			return "", gerr
 		}
-		hasLow = "1"
+		if guarded {
+			// The tag is what says whether this bound is a position at all; the presence flag becomes a
+			// run-time word because a tag that says `None` is the side the program left out (roadmap
+			// Gap R.237).
+			lowReg = payload
+			hasLow = g.sliceBoundPresence(b, verdict)
+		} else {
+			lowReg, err = g.value(b, n.Low)
+			if err != nil {
+				return "", err
+			}
+			hasLow = "1"
+		}
 	}
 	if !g.sliceBoundIsAbsent(n.High) {
-		highReg, err = g.value(b, n.High)
-		if err != nil {
-			return "", err
+		payload, verdict, guarded, gerr := g.guardedSliceBound(b, n.High, n.Span())
+		if gerr != nil {
+			return "", gerr
 		}
-		hasHigh = "1"
+		if guarded {
+			highReg = payload
+			hasHigh = g.sliceBoundPresence(b, verdict)
+		} else {
+			highReg, err = g.value(b, n.High)
+			if err != nil {
+				return "", err
+			}
+			hasHigh = "1"
+		}
 	}
 	if !g.sliceBoundIsAbsent(n.Step) {
-		stepReg, err = g.value(b, n.Step)
-		if err != nil {
-			return "", err
+		payload, verdict, guarded, gerr := g.guardedSliceBound(b, n.Step, n.Span())
+		if gerr != nil {
+			return "", gerr
 		}
-		hasStep = "1"
+		if guarded {
+			// A stride the program did not write is a stride of 1, and `rt_slice` has no presence flag for
+			// the step to lose: the default is selected where the tag says `None`. Without it, a `None` in a
+			// slot would reach ADR 0337's zero-step question as a 0 and the program would raise
+			// `ValueError: slice step cannot be zero` for a step it never wrote (roadmap Gap R.237).
+			stepReg = g.sliceBoundWord(b, payload, verdict, "1")
+			hasStep = "1"
+		} else {
+			stepReg, err = g.value(b, n.Step)
+			if err != nil {
+				return "", err
+			}
+			hasStep = "1"
+		}
 	}
 	if hasStep == "1" {
 		// The kind gate above could not ask this: `0` is a perfectly good integer. It is the one

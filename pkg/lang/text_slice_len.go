@@ -66,8 +66,28 @@ func (g *irGen) valueTextSlice(b *strings.Builder, n *Slice) (string, bool, erro
 	// bound that is neither an integer nor `None` is the same one a list's slice gets. Asked before the
 	// fold and before the helper, because both read a bound as a number without asking what it holds:
 	// `print(s["a":"b"])` over `s = "abcd"` answered `b` at exit 0 (roadmap Gap R.233, ADR 0336).
-	if g.badSliceBoundGate(b, n) {
+	if raised, gerr := g.badSliceBoundGate(b, n); gerr != nil {
+		return "", false, gerr
+	} else if raised {
 		return "0", true, nil
+	}
+	// The run-time half of the same question, asked where the kind actually is — in a slot's tag, in the
+	// word a callee stored beside its `ret`, in a pair-bound parameter (roadmap **Gap R.237**, the door in
+	// `slice_bound_pair.go`). `rt_str_slice` counts CODE POINTS from whatever word arrives, so a text bound
+	// would slice from its `@str_tab` index and `print(s[ys[0]:2])` over `ys = ["a"]` answered `ab` at the
+	// exit code of a success where the reference raises. Asked before the fold and before the helper, and
+	// before the step's own value question, because the reference builds the slice — and refuses a bound it
+	// cannot read — before the container is consulted about anything (**ADR 0336**'s order, one construct on).
+	lowWord, lowVerdict, lowGuarded, lerr := g.guardedSliceBound(b, n.Low, n.Span())
+	if lerr != nil {
+		return "", false, lerr
+	}
+	highWord, highVerdict, highGuarded, herr := g.guardedSliceBound(b, n.High, n.Span())
+	if herr != nil {
+		return "", false, herr
+	}
+	if _, _, _, sterr := g.guardedSliceBound(b, n.Step, n.Span()); sterr != nil {
+		return "", false, sterr
 	}
 	// A step of zero is the reference's `ValueError: slice step cannot be zero`, and the fold reads a
 	// step as a stride without asking whether it strides at all — asked here, before the fold and
@@ -92,18 +112,28 @@ func (g *irGen) valueTextSlice(b *strings.Builder, n *Slice) (string, bool, erro
 			lo := "-2147483648"
 			hi := "2147483647"
 			if !g.sliceBoundIsAbsent(n.Low) {
-				v, lerr := g.strPosReg(b, n.Low)
-				if lerr != nil {
-					return "", false, lerr
+				if lowGuarded {
+					// The helper has no presence flag to carry an absent bound, so the tag's `None` is
+					// selected back into the helper's own sentinel.
+					lo = g.sliceBoundWord(b, lowWord, lowVerdict, "-2147483648")
+				} else {
+					v, lerr := g.strPosReg(b, n.Low)
+					if lerr != nil {
+						return "", false, lerr
+					}
+					lo = v
 				}
-				lo = v
 			}
 			if !g.sliceBoundIsAbsent(n.High) {
-				v, herr := g.strPosReg(b, n.High)
-				if herr != nil {
-					return "", false, herr
+				if highGuarded {
+					hi = g.sliceBoundWord(b, highWord, highVerdict, "2147483647")
+				} else {
+					v, herr := g.strPosReg(b, n.High)
+					if herr != nil {
+						return "", false, herr
+					}
+					hi = v
 				}
-				hi = v
 			}
 			r := g.rtStrCall(b, "rt_str_slice", "i32 "+sreg, "i32 "+lo, "i32 "+hi)
 			g.checkStrSentinels(b, r, "IndexError", "string slice out of range", n.Span(), "stslice")

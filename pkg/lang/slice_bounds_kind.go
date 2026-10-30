@@ -67,42 +67,128 @@ func sliceBoundsMessage() string {
 // `None` is a legal bound (it means "absent"), and an absent bound is not a claim about a kind at all.
 // Everything else the index classifier names — a text, a float, a list, a dict, a set, a tuple, or a name the
 // records last filled with one of them — is a bound the reference refuses.
+//
+// The three rulings **Gap R.237** adds are the three kinds that are not facts about the SOURCE: the kind a CALL
+// answers, the kind a CALLER hands a parameter, and the kind a CLASS writes into a field. `nonIntIndexTypeName`
+// reads what the source spelled and what the records last bound a NAME to, and none of those is either — so
+// `xs[g():2]` over `def g(): return "a"` reached `rt_slice` with the text's `@str_tab` index as its high bound and
+// answered `[1, 2]` at the exit code of a success, `def at(k): return xs[0:k]` / `print(at(1.5))` answered `1`, the
+// copy's heap handle, and the float spellings reached `rt_slice`'s `i32` argument as a `double`, which is `llc`
+// refusing the module (**exit 2**, **ADR 0166**). The tables these three ask are the ones the print, container and
+// truth roads already decide with — `staticContainerKind`, `strFuncs`, `floatFuncs`, `floatArgKinds`, `strAttrs` —
+// and not a fourth list of callables or a per-door copy of any of them (**ADR 0232**).
 func (g *irGen) nonIntBoundTypeName(e Expr) (string, bool) {
 	if g.sliceBoundIsAbsent(e) {
 		return "", false
 	}
 	typeName, bad := g.nonIntIndexTypeName(e)
-	if !bad || typeName == "NoneType" {
+	if bad && typeName != "NoneType" {
+		return typeName, true
+	}
+	// The first kind the index classifier cannot see: the kind the CALLERS hand a parameter (floatargs.go, the
+	// float twin of the text and verdict censuses). A parameter is the binding that is never in the body, so
+	// `def at(k): return xs[0:k]` called with `at(1.5)` had no record to ask and answered `1` — the copy's heap
+	// handle as a number — where the reference raises (roadmap **Gap R.237**).
+	if nm, isName := e.(*Name); isName && g.floatParamNames[nm.Value] {
+		return kindFloat, true
+	}
+	// The second kind is the one a CLASS writes: `self.k = "x"` stores an `@str_tab` index in the slot, and
+	// reading `b.k` back hands that index to `rt_slice` as a position. The census is the one the truth road
+	// already asks it from (**Gap R.42**, **ADR 0224**'s slot-is-the-truth, `negation.go`'s arm), so a field
+	// the class filled with a text is a text here and nowhere else (`xs[0:b.k]` answered `[]` at exit 0).
+	if at, isAttr := e.(*Attr); isAttr {
+		if cls := g.receiverClass(at.Obj); cls != "" && g.strAttrs[cls+"."+at.Name.Value] {
+			return kindStr, true
+		}
+	}
+	// The third is the kind a call's ANSWER carries. Where one of the tables names it the gate raises below —
+	// running the call first, which is the order the reference keeps — and where none does, the bound is a run-
+	// time pair and the door in `slice_bound_pair.go` asks its tag instead.
+	if tn, isKind := g.sliceBoundCallNames(e); isKind {
+		return tn, true
+	}
+	return "", false
+}
+
+// sliceBoundCallNames names the kind a call answers, for the bounds the static gate can settle without
+// running anything. It answers "" for a call none of the tables describes — a carried body whose arms
+// disagree is the run-time door's, and a builtin the tables do not name stays the road it has always gone
+// through rather than being accused of a kind nobody wrote.
+func (g *irGen) sliceBoundCallNames(e Expr) (string, bool) {
+	c, isCall := e.(*Call)
+	if !isCall {
 		return "", false
 	}
-	return typeName, true
+	// A container the answer table registers is named by the one predicate the slice base, the comparison,
+	// the membership test and the loop already decide with (ADR 0466's door), so a bound that IS a container
+	// is refused with the reference's sentence rather than reaching `rt_slice` as a heap handle.
+	if kind, ok := g.staticContainerKind(e); ok {
+		return kind, true
+	}
+	nm, isName := c.Fn.(*Name)
+	if !isName {
+		return "", false
+	}
+	// A body the text tables own answers a text: its word is an `@str_tab` index, and an index counted as a
+	// position is this row's wrong answer (roadmap Gap R.233's disease, one construct and one indirection on).
+	if g.strFuncs[nm.Value] {
+		return kindStr, true
+	}
+	// A body ADR 0274's promotion emitted `define double` answers a double, and ADR 0475 is the record of
+	// what one does to an `i32` parameter slot; to `rt_slice`'s argument it does the same.
+	if g.floatFuncs[nm.Value] {
+		return kindFloat, true
+	}
+	return "", false
 }
 
 // badSliceBoundGate asks the bound question at the slice door and raises through the same non-local road every
 // other exception takes, so `except TypeError:` catches it and an uncaught one exits 3 with the reference's own
-// two lines. It runs BEFORE any bound is lowered — which is also what keeps a list-valued bound from reaching
-// `rt_slice`'s i32 arguments as a `@.lstN` global reference and taking the whole module down with it, the shape
-// Gap R.222 measured for an index and this row measures for a slice. It ends the block it branched out of and
-// reopens the continuation, so the door stays a valid module either way.
+// two lines. It runs BEFORE the copy is built and before a bound that is a literal or a slot is lowered — which
+// is also what keeps a list-valued bound from reaching `rt_slice`'s i32 arguments as a `@.lstN` global reference
+// and taking the whole module down with it, the shape Gap R.222 measured for an index and this row measures for
+// a slice. The one bound it does lower first is a CALL, whose body the reference runs on its way to building the
+// slice (see the loop); everything else is refused unread. It ends the block it branched out of and reopens the
+// continuation, so the door stays a valid module either way.
 //
 // The three bounds are asked in the order the reference asks them (low, high, step) so the first complaint is
 // the one the reference would have made. The message names no type — the reference's own sentence does not —
 // so the raise's value is in the class and in the silence on stdout, and the row asserts both.
-func (g *irGen) badSliceBoundGate(b *strings.Builder, n *Slice) bool {
+//
+// The error it returns is the compiler's own (a bound the road below could not lower), not the program's: the
+// program's TypeError travels the non-local raise road like every other exception, and the caller's `true` says
+// "a raise was written here, answer nothing and emit nothing after it".
+func (g *irGen) badSliceBoundGate(b *strings.Builder, n *Slice) (bool, error) {
 	if n == nil {
-		return false
+		return false, nil
 	}
 	for _, bound := range []Expr{n.Low, n.High, n.Step} {
-		if _, bad := g.nonIntBoundTypeName(bound); !bad {
+		kind, bad := g.nonIntBoundTypeName(bound)
+		if !bad {
 			continue
+		}
+		if _, isCall := bound.(*Call); isCall && (kind == kindStr || kind == kindFloat) {
+			// The reference builds the slice object from the values the bound EXPRESSIONS answer, and only then
+			// refuses it — so a bound that is a call to a body the text or float tables own runs first, and
+			// whatever the callee printed is on stdout before the complaint, the way the reference prints it.
+			// The word it answers is thrown away (nothing else may read it: a text's word is an `@str_tab`
+			// index and a float's a box handle), and the raise follows it, which is the one order that keeps
+			// `print(xs[g():2])` printing `side` (**Gap R.237**'s half of the question). A CONTAINER answer is
+			// not lowered here: this position keeps one word for a value, and lowering a container answer into
+			// it is the refusal **Gap R.67**/**ADR 0333** already owns — the gate must not spend exit 1 on a
+			// program the reference stops with a TypeError. Literal and slot bounds have no effects to run, so
+			// they keep the gate's own order and are lowered nowhere.
+			if _, err := g.value(b, bound); err != nil {
+				return false, err
+			}
 		}
 		g.heapUsed = true
 		g.raiseTo(b, exnCode("TypeError"), "TypeError", sliceBoundsMessage(), n.Span())
 		cont := g.newLabel("sbc.cont")
 		b.WriteString(fmt.Sprintf("%s:\n", cont))
-		return true
+		return true, nil
 	}
-	return false
+	return false, nil
 }
 
 // sliceStepZeroMessage is the reference's own words for the one *value* a bound may not take. The kind question

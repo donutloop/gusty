@@ -3225,6 +3225,39 @@ print(s[None:2])       # ab       — the same rule over the text road
 #   xs[[0]:2]          the same (this one used to reach `llc` as a global in an i32 argument: exit 2)
 ```
 
+**A bound whose kind the source does not spell is asked of the tag** (**ADR 0477**). The paragraph above is the
+half the compiler can read in the text; the other half is the bound that is a slot of an object, the answer of a
+call, an element of a container the program built, a field a class filled, or a parameter the CALLER chose — none
+of which has a kind standing in front of it in the source. Those bounds arrive as the `(payload, tag)` pair the
+print, comparison, binding and membership roads already ask for, and one helper (`rt_bound_is_position`) reads the
+tag for all three bounds of both slice roads: a number or a bool is a position, `None` is the absence of one, and
+anything else is the same `TypeError` written above. `None` matters twice over: a slot holding it is the side the
+program left out, so `ys = [None]` / `xs[0:ys[0]]` answers the whole list rather than the empty one, and a step that
+reads `None` is the stride 1 rather than the zero that would raise `ValueError: slice step cannot be zero` for a
+step nobody wrote.
+
+```
+xs = [1, 2, 3]
+ys = [None]
+print(xs[ys[0]:2])          # [1, 2]  — the same slice as xs[:2], because the slot holds None
+ys = [True]
+print(xs[ys[0]:2])          # [2]     — a bool in a slot is still an int
+ys = ["a"]
+print(xs[ys[0] == "a":2])   # [2]     — a verdict is a bool, which is an int
+
+# and these raise, where the toolchain once read the bound's word as a position:
+#   ys = ["a"]      / print(xs[ys[0]:2])       TypeError: slice indices … (the text's table index counted as 0)
+#   ys = [1.5]      / print(xs[ys[0]:2])       the same
+#   d = {"k": "v"}  / print(xs[d["k"]:2])      the same
+#   b = Box()       / print(xs[0:b.k])         the same, over `self.k = "x"`
+#   def g(): return "a"    / print(xs[g():2])  the same
+#   def at(k): return xs[0:k]  / print(at(1.5))the same — the caller's kind is the parameter's kind
+```
+
+A bound that is a CALL runs before it is refused: the reference builds the slice object from the values the bound
+expressions answer and only then rejects it, so a callee that prints has printed by the time the `TypeError`
+arrives. That is the difference between refusing a shape and running the program.
+
 **The length of a slice of a text is the number of CHARACTERS it selects** (**ADR 0470**). `len` asks the slice road
 what text the bounds select and measures that text with the same helper it asks for a text variable
 (`rt_str_nchars`) — code points, never bytes, so the folded spelling and the value-bounded spelling cannot be given

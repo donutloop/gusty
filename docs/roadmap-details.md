@@ -11787,7 +11787,7 @@ class, and it is the next row this loop takes.
 
 <a id="gap-r-237"></a>
 
-### Gap R.237 — a bound whose kind lives in a slot or in a call's answer is read as a word (OPEN, found by ADR 0336)
+### Gap R.237 — a bound whose kind lives in a slot or in a call's answer is read as a word (CLOSED by ADR 0477; found by ADR 0336)
 
 ```python
 xs = [1, 2]
@@ -11836,6 +11836,39 @@ what the static classifier would have decided — text, float or container is th
 before the bound is lowered; an int or a bool is a position and the copy answers as it does today. That is the
 same road as **Gap R.82** (a slot used arithmetically) and **Gap R.146** (a pair handed to a position that keeps
 one word), reached from the slice door: one predicate, three doors, and it should be paid once.
+
+**Paid 2026-11-03 by [ADR 0477](adr/0477-a-slice-bounds-kind-that-lives-in-a-tag-is-asked-of-the-tag.md), and paid once.** `sliceBoundPair`
+(`pkg/lang/slice_bound_pair.go`) asks the bound's `(payload, tag)` words of the doors the print, comparison, binding
+and membership roads already ask — `numericPairRegs`, `taggedLoopVarRead`, `answerCallPair`, `runtimeSlotPairDeep` — in
+the render door's order and for its reason, and declines anything whose kind the compiler already names, so the
+ordinary `print(xs[1:k])` over `k = 1` emits no test at all and keeps the road it always took. One helper,
+`rt_bound_is_position`, reads the tag for all three bounds of both slice roads and answers the reference's three
+verdicts — `1` a position, `0` the absence of one, `-1` the `TypeError` — because the reference words both legal
+answers in one sentence and a boolean is enough to raise but not enough to *not* raise: the `None` verdict is what
+turns `rt_slice`'s presence flag off, and what turns a `None` step into the stride **1** instead of the zero
+[ADR 0337](adr/0337-a-slice-step-of-zero-is-the-programs-valueerror-not-the-runtimes-hang.md)'s guard would otherwise have accused the program of
+writing (`ys = [None]` / `print(xs[::ys[0]])` answers the whole list).
+
+The static gate gained the four kinds it could not see — the kind a CALL answers (`staticContainerKind`, the text
+census, the float census), the kind a CALLER hands a parameter (`floatParamNames`, `pkg/lang/floatargs.go`) and the
+kind a class FIELD holds (`strAttrs`, the census the truth road already asks it from) — and no fourth census, because
+two answers to one question is the defect class this loop keeps paying (**ADR 0232**).
+
+The row's second half is an order, not a kind. The reference builds the slice object from the values the bound
+expressions answer and only then refuses the slice it built, so a bound that is a call **runs** before it is refused:
+`def g(): print("side")` / `return "x"` / `print(xs[g():3])` puts `side` on stdout and then raises, byte for byte as
+CPython does. The word it answers is thrown away, and a bound that is a container is still refused unread — lowering a
+container answer into this one-word position is [Gap R.67](#gap-r-67)/ADR 0333's refusal, and the gate must not spend
+**exit 1** on a program the reference stops with a `TypeError`. Refusing the shape statically, which is what the door
+does to a literal and to a slot, prints less than the reference does: stdout is part of the answer.
+
+Twenty-two new raise rows in the 50-row table (class **and** message, **exit 2** forbidden), four new catchable rows,
+three order rows that assert the callee printed first, seventeen new answered rows in the 71-row table asked of the
+compiler, of CPython and of the record, fifteen CLI raise rows, three CLI catchable rows, seven CLI answered rows and
+three CLI order rows against a live `python3`, fifteen lines added to `integration/programs/slice_bounds.gy` (30 output
+lines → 45, still `match`), and seventeen record entries cross-checked by `tools/recmerge`. The fold and the
+untagged-copy controls still emit no guard for a constant-bounded slice, and the four residues the measurement touched
+kept their own rows: **Gap R.243**, **Gap R.150**/**Gap R.151**, **Gap R.146**, **Gap R.164**/**ADR 0280**.
 
 <a id="gap-r-238"></a>
 

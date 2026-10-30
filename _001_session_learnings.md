@@ -18406,3 +18406,55 @@ module, and the scan took the compiler's.
   surfaced mid-change and looked like my new guard overshooting; the parent-commit binary raises identically, so it
   is a pre-existing divergence and became **Gap R.586** with today's answer and the reference's pinned side by
   side. The guard is keyed by kind precisely so that row cannot be "fixed" by widening it.
+
+## 2026-11-03 — a kind check is half an order (Gap R.237 closed; ADR 0477)
+
+`xs = [1, 2]` / `ys = ["a"]` / `print(xs[ys[0]:2])` answered `[1, 2]` at **exit 0**. **ADR 0336**'s gate already
+asks a bound what it IS, so the honest answer to "why did it miss?" was *"the kind is not in the source"* — and the
+whole cycle was making the door ask the question where that kind actually lives.
+
+**What I did right.** I measured first, with 65 hand-written probes against `python3`, before touching code. That
+number is the point: three shapes were in the roadmap row, and the probes found **nine more** — a text in a dict's
+slot, a tuple's element, a class field, a nested slot, a comparison verdict used as a position, a `None` in a slot
+(the one that turned a wrong list into a wrong *absence*), a call handing back a container, a step bound, and the
+effects-order row I had no idea I needed. A row copied from a roadmap is a checklist; a row copied from CPython is
+a spec.
+
+**The pair roads already existed; I nearly wrote a fourth one.** `numericPairRegs`, `taggedLoopVarRead`,
+`answerCallPair`, `runtimeSlotPairDeep` are the doors the print, comparison, binding and membership roads ask. My
+first draft of `sliceBoundPair` re-derived the "is this a text" question beside them. The correct version asks those
+doors **in their own order** (the render door's order, for the render door's reason) and declines everything the
+compiler already kinds — which is what keeps `xs[1:k]` over `k = 1` emitting no test at all.
+
+**Three verdicts, not a boolean.** The obvious helper answers "is this a position?". It raises every bad bound
+correctly and is *useless* for the two `None` rows, because a tag that says `None` is not a value, it is the side the
+program left out: `rt_slice`'s presence flag has to become a run-time word, and a `None` **step** has to become the
+stride 1 — otherwise **ADR 0337**'s zero-step guard accuses a program of `ValueError: slice step cannot be zero` for
+a step it never wrote. Writing the `None` rows *first* is what forced the third verdict.
+
+**The bug I would have shipped: refusing a shape costs the program its stdout.** With the static gate widened to
+call answers, `def g(): print("side")` / `return "x"` / `print(xs[g():3])` raised the right `TypeError` at the right
+exit code and **printed nothing**: CPython evaluates the bound expression, builds the slice, then refuses it, so
+`side` is part of the reference's answer. A correct class-and-message is not a correct program when stdout is part
+of the record. The gate now lowers a call bound before refusing it — and only a call bound: a *container* answer
+lowered into this one-word position is **Gap R.67**/**ADR 0333**'s refusal, and I learned that when the container row
+started failing with `exit 1` instead of `exit 3`. Refusing too much is a wrong answer too, and it arrives wearing
+the clothes of a fix.
+
+**Process lessons.**
+- Two "filed not fixed" tables (unit and CLI) recorded the *wrong* answers of the shapes I fixed, and failed loudly.
+  That is the best property a suite can have: the row that files a defect must be edited to say it is gone, and the
+  edit is the review.
+- Every record addition breaks four count guards (AGENTS.md, `docs/operations.md`, `roadmap.md`'s snapshot, and one
+  quoted literal in `pkg/lang/leading_dot_float_test.go`). The counts are the artifact's, so the fix is to move them
+  *together*, and `tools/recmerge` refusing to write an entry the compiled leg will not agree to is what makes the
+  17 new entries worth anything.
+- `integration/testdata/*.expected` is a checked-in **reference** answer, not a golden written by this toolchain:
+  when a conformance program grows, regenerate it from `python3` and diff the untouched prefix before copying it
+  back. A regenerated expectation that also *changed* on the old lines is telling you something.
+- One conformance row (`at(1.5)` beside `at(2)` beside `at("1")`) tripped **Gap R.164**/**ADR 0280**: a parameter
+  whose call sites mix kinds the pair census cannot name refuses at compile time. The fix was to give each call
+  *kind* its own function in the program — not to widen a census to make a table green, and not to delete the row.
+- The `.gy` conformance program is CPython-run first: if `python3` stops early on it, my program is wrong, not the
+  oracle. Three of my five new answered lines were wrong expectations on my side (`s[1:4]` is `"bcd"`, not `"bcde"`;
+  `xs[None:2]` is `[1, 2]`, not the whole list) and CPython caught them before the compiler did.

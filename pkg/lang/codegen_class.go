@@ -479,6 +479,14 @@ func (g *irGen) emitClassMethod(className, funcName string, fd *FuncDef) {
 		} else {
 			delete(g.internedVars, fd.Params[i].Name)
 		}
+		// The float twin, read by the slice-bound door alone (roadmap Gap R.237, floatargs.go): a method
+		// parameter every call site hands a float to is a float inside the body, and `def cut(self, k):`
+		// / `return self.xs[0:k]` asks the same question a `def`'s body asks.
+		if g.floatParamOf[fd.Name][i] {
+			g.floatParamNames[fd.Params[i].Name] = true
+		} else {
+			delete(g.floatParamNames, fd.Params[i].Name)
+		}
 	}
 	g.selfClass = className
 	// A method is a call like any other, so it needs what `funcDef` gives a `def`: its own
