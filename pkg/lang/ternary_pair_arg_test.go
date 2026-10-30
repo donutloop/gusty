@@ -243,7 +243,7 @@ func TestWhatTheCallArgumentDoorStillCannotAnswerIsFiledNotFixed(t *testing.T) {
 			src:       "def f(x):\n    return (1, 2) if x else 0\n\nw = f(1)\nprint(w)",
 			compiled:  "0",
 			reference: "(1, 2)",
-			road:      "the tuple's fold is not the list fold — roadmap Gap R.585",
+			road:      "the arm builds the tuple and no table records the answer as a container — roadmap Gap R.585, Gap R.67",
 		},
 		{
 			name:      "a forwarded text inside a list prints the payload",

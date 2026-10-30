@@ -25155,7 +25155,7 @@ naming a `@.` global, each of which must reach `@rt_alloc(`) and at the CLI by t
 
 <a id="gap-r-585"></a>
 
-### Gap R.585 — a tuple arm of a `return` answers the int road where the list, dict and set arms answer
+### Gap R.585 — a tuple arm of a `return` reaches the screen as a heap slot (OPEN, filed and re-diagnosed the same day)
 
 ```python
 def f(x):
@@ -25163,23 +25163,58 @@ def f(x):
 
 w = f(1)
 print(w)          # CPython (1, 2)  ·  this backend: 0  at exit 0
+print(f(1))       # CPython (1, 2)  ·  this backend: 0
 ```
 
-**Gap R.584** closed the arms whose fold writes a global the `phi` cannot name: the list, the nested list, the
-dict, the set and the comprehension all print CPython's bytes now. The tuple is the arm that never reaches `llc`
-at all — and that is what makes it worse, not better. There is no invalid module to reject, no exit 2 to blame:
-the value road's answer for a spelled tuple is a word, the `phi` accepts a word, and the word is read back as the
-container it is not. `print(w)` writes `0`, `print(f(0))` also writes `0`, and the program prints the same digit
-whichever branch the test takes.
+and the same answer through the roads that read a container by name:
 
-This is **ADR 0166**'s worst rung — a number-shaped answer at the exit code of success — with **Gap R.67**'s
-subject (a container answer is a value) and **L11.1**'s missing word (the tag that would make the four arms one
-question instead of four doors). The fix has a shape: a `heapTupleFrom` beside `heapListFrom`, emitted where the
-arm is emitted, and the tuple's own roads (print, `len`, `in`, `==`, a `for`) already read a bound tuple correctly
-today, so the answer needs no new reader. What it does not have is a witness: the row is pinned with today's bytes
-beside the reference's in
-`pkg/lang/ternary_pair_arg_test.go::TestWhatTheCallArgumentDoorStillCannotAnswerIsFiledNotFixed`, and it moves out
-by deletion. Measured 2026-11-02 beside **ADR 0475**.
+```python
+w = f(1)
+print(len(w))     # CPython 2       ·  this backend: refuses, `len of a non-string variable`
+print(w[0])       # CPython 1       ·  this backend: refuses, `index of a non-literal variable`
+t = (1, 2)
+print(len(t), t[0], 1 in t)   # 2 1 True — the spelled tuple, bound the ordinary way, is a value
+```
+
+**The row was filed with the wrong diagnosis and ships corrected.** The first version said the tuple, unlike
+the list/dict/set, was never materialised and owed a `heapTupleFrom`. The module says otherwise — the arm builds
+the object properly:
+
+```text
+tern.then1:
+  %t2 = call i32 @rt_alloc(i32 1)                             ; the object is real
+  call void @rt_set_elem(i32 %t2, i32 0, i32 1)
+  call void @rt_tag_elem(i32 %t2, i32 0, i32 0)
+  call void @rt_set_elem(i32 %t2, i32 1, i32 2)
+  call void @rt_tag_elem(i32 %t2, i32 1, i32 0)
+  call void @rt_mark_estr(i32 %t2, i32 24)                    ; and carries ADR 0361's tuple bit
+tern.merge5:
+  %t4 = phi i32 [ %t2, %tern.thenfwd3 ], [ 0, %tern.elsefwd4 ]   ; a valid phi: no global in it
+  ret i32 %t4
+```
+
+No global, no invalid IR, no missing builder: **Gap R.584**'s disease is absent (the tuple road already went to the
+heap, which is why this shape never reached `llc`). What is absent is the *kind*: `ret i32 %t4` hands back a handle
+with no word beside it, and the one road that would print it as a tuple asks an opinion rather than the object —
+`pkg/lang/codegen_builtin_print.go`'s `ansKind == tupleAnswer || g.tupleVars[ansNameStr]`. That `ansKind` comes from
+**ADR 0333**'s container scan, whose kind question (`containerKindOfIn`'s `ask`) reads a `return` of a literal, a
+comprehension, a `list()`/`set()`/`dict()`, a slice or a forwarding call — and has **no arm for a `return` of a
+ternary**. It cannot have one either: `(1, 2)` runs on one path and `0` on the other, so "which kind is the answer"
+is a run-time fact, which is **L11.1**'s standing claim rather than a missing scan case.
+
+So the fix has a direction, and it is the direction this corpus keeps proving right: **ask the object**.
+**ADR 0361** put a tuple's kind in the object's own `@estr[h]` word precisely so the printer, the equality door,
+the slice door and the dict-key road could ask it instead of being told; the runtime already answers
+`@rt_tuple_flag(i32 %h)` for the container printer. The door that renders a name whose scan kind is unknown asks
+that helper where the scan is silent — and `len`, an index, `in`, `==` and a `for` ask the same question, because
+today they refuse on a value the reference measures and indexes. Where the object cannot answer, the refusal
+stands: this row may turn two refusals and a wrong number into answers, and may not turn a refusal into a number.
+
+Until then the shape is pinned, with both legs read inside the case, in
+`pkg/lang/ternary_pair_arg_test.go::TestWhatTheCallArgumentDoorStillCannotAnswerIsFiledNotFixed`, and the two
+refusals belong to this row rather than to **Gap R.324** — they are a container answer read by name. Measured
+2026-11-02 beside **ADR 0475**; the row's first wording, the `heapTupleFrom` guess, is kept here in the record
+because a wrong diagnosis in the tracker is the expensive kind of error and the correction has to be visible.
 
 ## Gap R.581 — closed half (2026-11-02, ADR 0475)
 

@@ -18310,3 +18310,30 @@ contents for `pkg/lang/paircall.go` that its committed self does not contain (`p
 `ternaryArmIsLiteralText`, `pairSlotWriteRecorder` are all absent from `HEAD`), which is how I came to describe
 machinery that does not exist. The cure is the same as the cure for a stale doc claim: `grep` for the *identifier*,
 and believe the artifact.
+
+## The row I filed wrong and corrected the same hour (Gap R.585) — a filed diagnosis is a claim, not a guess
+
+`Gap R.585` went into the tracker saying the tuple arm of a returned ternary was the one container the ternary
+never materialised, and that the row owed a `heapTupleFrom` beside `heapListFrom`. It was written from the pattern
+of the three rows just closed — list, dict, set each fixed by a heap copy — and from the symptom (`print(w)`
+answers `0`). Both inputs were the wrong kind of evidence. The module says the tuple arm builds the object
+perfectly well: `rt_alloc`, `rt_set_elem`/`rt_tag_elem` per slot, `rt_mark_estr(…, 24)` for
+**ADR 0361**'s tuple bit, and a valid `phi i32` with no global in it. What is missing is the *kind*: the answer
+leaves as a bare handle, no table records it as a container, and the print road's tuple branch is gated on a scan
+opinion (`ansKind == tupleAnswer || g.tupleVars[...]`) that this shape cannot earn — `containerKindOfIn`'s `ask`
+has no arm for a returned ternary and cannot have one, because which arm runs is a run-time fact. The row is
+**L11.1**'s missing tagged word at a `return`, not a missing builder.
+
+Three rules came out of it, and they are the reason the correction is in the tracker and in this file rather than
+silently overwritten:
+
+* **A filed row's diagnosis carries the same evidence debt as its symptom.** The symptom (`0` for `(1, 2)` at exit
+  0) was measured; the cause ("never materialised") was inferred, and the inference was what the next cycle would
+  have acted on. A cause sentence in a roadmap row needs the artifact that shows it — here, the arm's own IR.
+* **Symptom-shaped patterns are the most dangerous template.** Three consecutive rows fixed by a heap copy made a
+  fourth look like the same shape. The measurement that separated them cost one `--emit-llvm` and a grep for
+  `rt_mark_estr`; the cost of not doing it is a cycle spent writing `heapTupleFrom` and discovering at the end
+  that the value was never the problem.
+* **Correct the row, do not quietly rewrite it.** The wrong wording is quoted in `docs/roadmap-details.md` with the
+  IR that refutes it, because the record of a wrong diagnosis is what teaches the next reader to ask for the
+  artifact. Item IDs are permanent and so is what was first written under them.
