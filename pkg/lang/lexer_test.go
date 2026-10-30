@@ -641,44 +641,37 @@ func TestASubtractionIsOneExpressionNotTwo(t *testing.T) {
 	}
 }
 
-// TestTheNumberRuleStillRefusesTheBareDot pins the neighbour ADR 0338 measured in the same function and filed as
-// roadmap **Gap R.245**: `print(.5)` is the reference's `0.5` and a parse error here (`parse error at 1:7:
-// unexpected token`, exit 1), because `lexNumber` is entered on a digit and on the `0x`/`0b`/`0o` prefixes and never
-// on a leading `.` — the dot goes to the operator path, and the parser meets a `.` where a primary belongs.
+// TestTheNumberRuleKeepsTheDotAfterANameAsTheMemberOperator is the half of the row roadmap **Gap R.245** filed
+// that the fix must NOT change, and it is what remains of `TestTheNumberRuleStillRefusesTheBareDot`.
 //
-// The row is pinned at the altitude of the defect (the token boundary) and of the reference's answer (a citation,
-// not a memory). The last row is the one the fix must not break: `obj.5` is an attribute error in the reference too,
-// so a leading-`.` case that enters after a name would turn a refusal into a wrong answer — the previous token
-// decides, exactly as `minusBeginsLiteral` decides for `-`.
-func TestTheNumberRuleStillRefusesTheBareDot(t *testing.T) {
+// That test pinned four shapes: `print(.5)`, `print(1+.5)`, `print(-.5)` refused, and `obj.5` refused. The first
+// three answer the reference now — `0.5`, `1.5`, `-0.5` — so their rows are DELETED by their own text and the
+// programs live in the answered tables of `pkg/lang/leading_dot_float_test.go` and
+// `integration/leading_dot_float_test.go` (**ADR 0464**). This row stays, at the same altitude (the token
+// boundary), because it is the reason the fix is a previous-token rule rather than a lookahead: after a NAME the
+// dot is the member operator, and a lexer that entered the new case there would turn the reference's syntax error
+// into an answer.
+func TestTheNumberRuleKeepsTheDotAfterANameAsTheMemberOperator(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		src    string
 		stream string
-		oracle string // what CPython prints for the same source
+		oracle string // what CPython says for the same source
 	}{
-		{"print(.5)", "IDENT:print OP:( OP:. INT:5 OP:)", "0.5"},
-		{"print(1+.5)", "IDENT:print OP:( INT:1 OP:+ OP:. INT:5 OP:)", "1.5"},
-		// the merge rule needs a DIGIT after the minus, and a `.` is not one, so `-.5` is the operator, the dot and
-		// the number three tokens — the sign rule is not what is missing here, the number rule is
-		{"print(-.5)", "IDENT:print OP:( OP:- OP:. INT:5 OP:)", "-0.5"},
-		{"obj.5", "IDENT:obj OP:. INT:5", "AttributeError — no attribute '5'"},
+		{"obj.5", "IDENT:obj OP:. INT:5", "SyntaxError — a member access cannot take a number as its name"},
+		{"print(obj.5)", "IDENT:print OP:( IDENT:obj OP:. INT:5 OP:)", "SyntaxError, and so a front-end error here"},
+		{"print(1 .5)", "IDENT:print OP:( INT:1 OP:. INT:5 OP:)", "SyntaxError — after a number the dot is not a leading dot"},
 	} {
+		tc := tc
 		t.Run(tc.src, func(t *testing.T) {
 			t.Parallel()
 			got := tokenStream(t, tc.src)
 			if got != tc.stream {
-				t.Fatalf("Lex(%q) streamed\n  %s\nwant\n  %s\n(the filed row roadmap Gap R.245 expects the dot to reach the operator path; the reference answers %q)",
+				t.Fatalf("Lex(%q) streamed\n  %s\nwant\n  %s\n(the dot after a name must stay the member operator, or the leading-dot case turns a refusal into an answer; the reference says %q)",
 					tc.src, got, tc.stream, tc.oracle)
 			}
-			if tc.src == "obj.5" {
-				if _, err := Parse(tc.src + "\n"); err == nil {
-					t.Fatalf("obj.5 parses; the reference gives an AttributeError, and the leading-dot fix must not answer it as a float (roadmap Gap R.245)")
-				}
-				return
-			}
 			if _, err := Parse(tc.src + "\n"); err == nil {
-				t.Fatalf("%q parses; roadmap Gap R.245 expects a refusal — the number rule grew the leading-`.` case, so move the row (the reference answers %q)", tc.src, tc.oracle)
+				t.Fatalf("%q parses; the reference gives %q, and the leading-dot fix must not answer it as a float (roadmap Gap R.245, ADR 0464)", tc.src, tc.oracle)
 			}
 		})
 	}

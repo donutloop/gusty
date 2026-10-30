@@ -1,5 +1,46 @@
 # Session Learnings
 
+## Cycle: the float with no integer part is a literal (**roadmap Gap R.245** closed; **ADR 0464**)
+
+**The row was one character wide and the wrong fix fits it perfectly.** `print(.5)` refused at the front end while
+CPython answered `0.5`; `lexNumber` had a case for a digit and for the base prefixes and none for a leading `.`. The
+fix that any test in the family would have certified — accept `.` followed by digits — accepts `obj.5` and `1 .5`,
+which CPython *rejects*, so the defect class (an accepted program the reference refuses, answering at exit 0) would
+have arrived wearing this row's clothes. The row's own `Next concrete action` had already named the trap ("the previous
+token decides, exactly as `minusBeginsLiteral` decides for `-`"), and honouring it is the whole cycle:
+`dotBeginsLiteral` is **ADR 0338**'s `minusBeginsLiteral` under the dot's name. Two lessons:
+
+- **A gate over a character with two jobs is asked of the token before it, and the walk is shared, not copied.** A
+  float counts as an expression end for the dot for exactly the reason it does for the minus (`1.5 .5` is refused by
+  the reference), and two tables answering one question is how `y = x-1` came to print `5` at exit 0
+  (**Gap R.242**). The next two-job character (`+` under **Gap R.244**, `*` as member-and-unpack) should extend the
+  walk rather than duplicate it.
+- **Not merging `-.5` was the decision the tests could not have caught.** One merged token prints `-0.5` and passes
+  every answer row in the family; it deletes **ADR 0266**'s `bad operand type for unary -: 'str'` raise later, in a
+  cycle that will not know why the sentence moved. So the family asserts the raise, and asserts it against
+  `JIT(...).Stderr` — `RunSource`'s summary carries only the traceback's *first* line, so an assertion written against
+  `err.Error()` silently cannot see the message it claims to check. (Found while writing the row, not while reading it.)
+
+**Ask the artifact, not the memory: five of this cycle's numbers came out of the guards.** `make testparallel`'s
+artifact guards named the digits for me — record 10649 → **10687**, ADRs 452 → **453** (highest **0464**), corpus 285 →
+**286**, matrix 271 → **272** with parity-asserted **236** and oracle `match` **222**, rows owed 266 → **265** — and
+`TestTheRoadmapSnapshotIsMeasuredNotRemembered` failed twice before I had touched a cell, because a regenerated
+`conformance-matrix.json` moves the numbers its rows quote. `tools/recmerge` is the other half of that honesty: it
+asks CPython first and refuses to write an entry the compiled leg will not agree to, including
+`print(- "hi")`, whose record is the negation road's sentence.
+
+**A second agent was working the same row in the same checkout, and the tree was the union of both.** Halfway through
+the cycle `git status` showed files I had not written — an `docs/adr/0464-*.md`, an integration test, a conformance
+program, a rewritten `pkg/lang/lexer_test.go`, a record that had grown by 22 entries and doc counts moved to 10671 —
+while `pkg/lang/lexer.go` still held my own arm. The loop driver (`pi-loop.mjs --force-reset`, and this session is one
+of its children) had spawned a sibling on the same ⏳ `PLANNED` row. Three rules kept it honest: nothing was committed
+that I had not read and **run** (I read the sibling's integration test, ran the corpus program through the built
+binary, and re-derived every count from the artifacts rather than from either agent's prose); the two halves were
+compatible because they were halves of one row (mine the lexer arm and 16 parity/negation records, theirs the refusal
+pins, the matrix row, the ADR and 22 records); and the commit message says so, because a message that narrates one
+author over a tree with two is a false statement about provenance. The record's final count is the file's own —
+**10687** — not either agent's last remembered number.
+
 ## Cycle: a source flag handed another flag's name is a usage error (roadmap **Gap R.549** closed, **Gap R.550** filed; **ADR 0463**)
 
 **The row's own prescription was wrong, and only running it found out.** Gap R.549's `Next concrete action` says *a value

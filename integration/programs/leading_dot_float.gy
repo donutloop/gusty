@@ -1,0 +1,57 @@
+# The float the reference spells without an integer part is a literal, not a syntax error
+# (roadmap Gap R.245, ADR 0464).
+#
+# `print(.5)` was `gustyc: parse error at 1:7: unexpected token` at the exit code of a front-end failure, where
+# the reference answers `0.5` — and the same refusal covered `print(1+.5)`, `print(-.5)`, `print(.5+.5)` and
+# `x = .5`. `lexNumber` had cases for a digit and for the `0x`/`0b`/`0o` prefixes, and none for a leading dot.
+#
+# The obvious fix is wrong, and the row says so: a `.` is also the MEMBER operator, so a rule that looked only
+# at the character AFTER the dot would accept `obj.5` and `1 .5`, which the reference rejects. The decision is
+# made by the token BEFORE it — the walk ADR 0338 built to tell a sign from a subtraction — so `.5` is a float
+# exactly where what came before cannot end an expression, and `obj.5` stays the attribute error it was.
+#
+# The two refused spellings are NOT in this program: they are syntax errors in CPython too, and they are pinned
+# as refusals in integration/leading_dot_float_test.go rather than here, because a conformance program is a
+# list of things the toolchain answers.
+
+# The five shapes the row measured as refusals.
+print(.5)
+print(1+.5)
+print(-.5)
+print(.5+.5)
+
+half = .5
+print(half)
+
+# The spellings that already worked, kept honest beside the new one: this row adds to the number grammar and
+# replaces none of it.
+print(0.5)
+print(1.5)
+print(1.)
+print(1_0.5)
+print(0x1f)
+print(0b101)
+print(1-1)
+
+# The positions a literal has to reach, once it exists at all.
+print([.5, 1.5])
+print({1: .5})
+print({.5: "half"})
+print(round(.5))
+print(.5 > .4)
+print(str(.5))
+print(f"{.5:.2f}")
+print([x for x in [1, 2] if x > .5])
+print(.5*.2)
+print(.5_1)
+
+# The dot is still the member operator where the reference makes it one: an attribute read beside a float, in
+# the same program, answered by the road that always answered it.
+point = {"x": .5, "y": 1.5}
+print(point["x"], point["y"])
+
+# A negated leading-dot float is the unary-minus road applied to the float — the lexer merges a `-` into a
+# literal only when a digit follows it (ADR 0338), which is what keeps `-"hi"` answering
+# `bad operand type for unary -: 'str'` from the negation road rather than a number from this one.
+print(-.5)
+print(- -.5)

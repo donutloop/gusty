@@ -68,6 +68,22 @@ func minusBeginsLiteral(toks []Token) bool {
 	return true // nothing emitted yet: the minus begins the line
 }
 
+// dotBeginsLiteral asks the same question, of the same walk, for the other operator whose leading-character
+// meaning depends on what came before: is a `.` followed by a digit the START OF A LITERAL (`.5`, which is
+// `0.5` to the reference) or the MEMBER OPERATOR that the parser already knows how to follow (`obj.5`, which
+// is an attribute error in both tools and must stay one — an object's name, a dot, then a malformed number).
+//
+// The two operators are decided by one walk rather than two tables because the question they ask is one
+// question — *can what came before END an expression?* — and two tables that answer it can drift, which is how
+// `y = x-1` came to print `5` at exit 0 (**Gap R.242**, **ADR 0338**). A `float` token counts as an expression
+// end here for exactly the reason it does there: `1.5 .5` is refused by the reference, so a rule that let the
+// second dot begin a literal would be accepting a program the reference rejects.
+//
+// Where the walk finds no token at all the answer is yes: a line that begins `.5` is an expression statement
+// the reference runs. And the walk never looks PAST the previous token, so no decision here is made by
+// lookahead — the same restriction **ADR 0338** put on the minus.
+func dotBeginsLiteral(toks []Token) bool { return minusBeginsLiteral(toks) }
+
 // LexError is a lexical error with a source span.
 type LexError struct {
 	Span Span
@@ -166,6 +182,27 @@ func scanDigits(src string, i, base int, allowLeading bool) (string, int, *LexEr
 // its float value, and the index just past the end of the literal.
 func lexNumber(src string, start int) (isFloat bool, ival int64, fval float64, end int, err *LexError) {
 	i := start
+	// The float the reference spells without an integer part: `.5` is `0.5` to CPython, and until this arm
+	// existed the lexer had cases for a digit and for the `0x`/`0b`/`0o` prefixes and NONE for a leading dot,
+	// so `print(.5)`, `print(1+.5)`, `print(-.5)` and `x = .5` were refused at the front end while the
+	// reference answered `0.5`, `1.5`, `-0.5`, `0.5` (**roadmap Gap R.245**). The caller decides whether a `.` may
+	// begin a token at all (`dotBeginsLiteral`), so this arm never has to guess between a literal and a member
+	// access; what it does require is at least one digit after the dot, and it takes the SAME `_` rules the
+	// fraction below takes, so `.5_1` is the reference's `0.51` and `._1` is not a number on either tool.
+	if i < len(src) && src[i] == '.' {
+		if i+1 >= len(src) || !isDigitForBase(src[i+1], 10) {
+			return false, 0, 0, start, &LexError{Msg: "float literal needs a digit after the '.'"}
+		}
+		fracDigits, k, ferr := scanDigits(src, i+1, 10, false)
+		if ferr != nil {
+			return false, 0, 0, start, ferr
+		}
+		f, perr := strconv.ParseFloat("0."+fracDigits, 64)
+		if perr != nil {
+			return false, 0, 0, start, &LexError{Msg: "invalid float literal"}
+		}
+		return true, 0, f, k, nil
+	}
 	base := 10
 	allowLeading := false
 	if i+1 < len(src) && src[i] == '0' {
@@ -447,6 +484,21 @@ func Lex(src string) ([]Token, error) {
 				} else {
 					emit(TokInt, text, start, end, func(t *Token) { t.Int = -ival })
 				}
+				i = end
+			case c == '.' && i+1 < n && isDigitForBase(src[i+1], 10) && dotBeginsLiteral(toks):
+				// `.5` — see `dotBeginsLiteral` for why this position, and only this one, may take the dot.
+				// It is emitted as an ordinary float token with its own text and span, so every road downstream
+				// (the fold, the printer, the float word) sees what it already knows how to read; nothing here
+				// rewrites the source or invents a `0` the program did not write.
+				start := i
+				_, _, fval, end, lerr := lexNumber(src, i)
+				if lerr != nil {
+					emitErr(lerr.Msg, start, i)
+					i = start + 1
+					continue
+				}
+				text := src[start:end]
+				emit(TokFloat, text, start, end, func(t *Token) { t.Float = fval })
 				i = end
 			case c >= '0' && c <= '9':
 				start := i

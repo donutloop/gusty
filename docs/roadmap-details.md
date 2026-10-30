@@ -12014,7 +12014,7 @@ grows, the rows fail and the row moves — a filed row is closed by that failure
 
 <a id="gap-r-245"></a>
 
-### Gap R.245 — a float with no leading digit does not lex (OPEN, found by ADR 0338)
+### Gap R.245 — a float with no leading digit does not lex (CLOSED by ADR 0464)
 
 ```python
 print(.5)             # 0.5 in the reference;   this backend: parse error at 1:7: unexpected token  (exit 1)
@@ -12040,6 +12040,51 @@ token decides, and `minusBeginsLiteral` is the pattern to copy.
 owes the other — which is why they are two rows: the exponent needs a marker after a fraction, and this needs an entry
 condition before one. `print(1 .5)` stays refused on both legs, because CPython refuses it too (`SyntaxError: invalid
 syntax`), and the row owes that row as a negative control.
+
+**Closed 2026-10-30 by ADR 0464.** `lexNumber` gained the leading-`.` arm (a dot, at least one digit, and the SAME
+`scanDigits` the fraction below calls with `allowLeading = false`, so `.5_1` is `0.51` exactly as the reference reads
+it and `._1` is not a number on either tool — inventing a separator rule for the new spelling would have meant two
+grammars for one number), and `Lex` gained one case:
+
+```go
+case c == '.' && i+1 < n && isDigitForBase(src[i+1], 10) && dotBeginsLiteral(toks):
+```
+
+The gate is the **previous** token, and the gate is shared: `dotBeginsLiteral` is `minusBeginsLiteral` under the dot's
+name, one walk answering one question — *can what came before END an expression?* — for both context-sensitive
+characters. Two tables that answer one question drift, and the drift is invisible until a program answers differently
+on the two sides of a character; this is how `y = x-1` came to print `5` at exit 0 (**Gap R.242**, **ADR 0338**).
+After a name, a number, a string, `)` `]` `}` or `True`/`False`/`None` the dot is still the member operator, so the
+three shapes the row needed as negative controls are refusals still:
+
+```
+print(obj.5)  →  IDENT:print OP:( IDENT:obj OP:. INT:5 OP:)   refused, as the reference refuses it
+print(1 .5)   →  IDENT:print OP:( INT:1 OP:. INT:5 OP:)       refused, as the reference refuses it
+print(._1)    →  IDENT:print OP:( OP:. IDENT:_1 OP:)          refused, as the reference refuses it
+```
+
+The token is an ordinary `TokFloat` carrying the program's own text (`.5`, not a rewritten `0.5`) and its own span,
+which is why the fix is a lexer arm rather than a parse-time fold: the formatter, the source map, error spans and the
+REPL all read tokens, and a fold in the parser leaves them describing a program nobody typed.
+
+Two decisions the row had to make against the easy answer. **`-.5` is not merged.** The minus takes a *digit* into its
+literal and nothing else (**ADR 0338**), so `-.5` reaches the parser as `OP:-` `FLOAT:.5` and `-0.5` is written by the
+unary-minus road — the one that owns `TypeError: bad operand type for unary -: 'str'` (**ADR 0266**). Merging `-.5`
+into a single float token prints `-0.5` today and loses that raise tomorrow; it would have passed every answer row in
+the family, which is exactly why the family asserts the raise. **The exponent stays refused.** `.5e2` is refused and
+`1e5` is refused and `1.5e2` is refused, in one test, together — the marker is **Gap R.135**'s, and accepting the
+leading-dot spelling of an exponent while refusing the ordinary one would ship a number grammar in two pieces.
+
+The row's own `Next concrete action` predicted the whole shape of it, including the trap. What the fix had to prove
+beside the five refusals is the **parity** claim: `.5` and `0.5` are one number written twice, so nine programs — a
+bare print, an addition, a negation, a binding, a list element, a dict key, an interpolation spec, a call argument and
+a comparison — are asserted byte-identical on the compiled leg (`TestTheTwoSpellingsOfTheSameFloatAnswerIdentically`),
+which is the cheap statement of what this fix was not allowed to become: a second float road meaning something
+slightly different. **38 record entries** came in from the reference with the compiled leg cross-checked (record
+**10649 → 10687**), and `tools/recmerge` refused any entry the compiled leg would not agree to — including
+`print(- "hi")`, whose recorded trap is the negation road's sentence, and the conformance program itself.
+`integration/programs/leading_dot_float.gy` is a `match` row of the matrix (corpus 285 → 286); the refused spellings
+are deliberately not in it, because a conformance program lists what the toolchain answers.
 
 <a id="gap-r-246"></a>
 

@@ -549,14 +549,23 @@ engines (`parse error at 1:8: expected ")"`, exit 1) where CPython parses them a
 (`programs/probe_float_literal_with_exponent`, an `oracle: debt` row) so the row cannot be forgotten while
 scientific-looking values are being typed into a program.
 
-**The bare-dot float is not in the number lexer either**: `print(.5)` is `0.5` in the reference and
-`parse error at 1:7: unexpected token` (exit 1) here, and with it `print(1+.5)`, `print(-.5)`, `print(.5+.5)` and
-`x = .5` / `print(x)`. Write the leading zero — `0.5`, `1_0.5`, `1.5` — and the literal lexes, folds and prints
-today; `lexNumber` is entered on a digit and on the base prefixes, and there is no case for a leading `.`, so the dot
-reaches the operator path and the parser meets a `.` where a primary belongs. Growing that case has the same
-constraint ADR 0338 met with `-`: it may be entered only where the `.` cannot be the member operator, so `obj.5`
-stays the attribute error the reference reports instead of becoming a float. Filed as roadmap **Gap R.245**, beside
-**Gap R.135**'s exponent marker — the neighbouring half of the same function.
+**A float may drop its integer part**: `.5` is a float literal, and `print(.5)` answers `0.5` (**Gap R.245**,
+**ADR 0464**). It was a front-end refusal — `parse error at 1:7: unexpected token`, exit 1 — for `print(.5)`,
+`print(1+.5)`, `print(-.5)`, `print(.5+.5)` and `x = .5` / `print(x)`, because `lexNumber` was entered on a digit and
+on the base prefixes and had no case for a leading `.`. The spelling is now a token of its own — `TokFloat`, carrying
+the program's own text `.5` and its own span, never a rewritten `0.5` — and it shares the fraction's `_` rules, so
+`.5_1` is `0.51` and `._1` is not a number.
+
+What decides is the token **before** the dot, not the one after it: `.` is also the member operator, so `obj.5` and
+`1 .5` are `.`-followed-by-a-digit too, and the reference *rejects* both. The new case is therefore entered on
+**ADR 0338**'s previous-token walk — the same function, `dotBeginsLiteral` being that walk under the dot's name — so
+after a name, a number, a string, `)` `]` `}` or `True`/`False`/`None` the dot stays the member operator and
+`obj.5` remains the syntax error the reference reports. And `-.5` is deliberately **not** merged into one token: the
+minus takes only a digit into its literal, so `-.5` reaches the parser as `OP:-` `FLOAT:.5` and `-0.5` is written by
+the unary-minus road that owns `bad operand type for unary -: 'str'` (**ADR 0266**).
+
+`.5e2` is still refused, and so is `1e5` — refused *together*, which is the point: the exponent marker belongs to
+**Gap R.135**, and a number grammar half-grown by two cycles is worse than one grammar.
 
 **The two values with no decimal spelling are `float("inf")` and `float("nan")`** (with `-float("inf")`
 for the third). They print `inf`, `-inf` and `nan` on every engine, and they survive a binding, an

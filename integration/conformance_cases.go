@@ -1150,6 +1150,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// parameter it ignores — and keeps the two controls that answered all along: a body that already
 		// spells its kind, and the same read written as a `def`. Every line is what CPython prints for it.
 		"applied_lambda_module_read",
+		// The float the reference spells without an integer part: `print(.5)` was a parse error at the exit code of
+		// a front-end failure where the reference answers `0.5`, because `lexNumber` had cases for a digit and for
+		// the base prefixes and none for a leading dot (roadmap **Gap R.245**, **ADR 0464**). The gate is the
+		// previous token, not the next one — the walk **ADR 0338** built to tell a sign from a subtraction — which
+		// is what keeps `obj.5` and `1 .5` the syntax errors the reference makes them. This program is the answered
+		// half: the five refusals, the spellings that already worked (so an addition to the number grammar replaces
+		// none of it), and the positions a literal has to reach once it exists.
+		"leading_dot_float",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))
