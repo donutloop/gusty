@@ -194,10 +194,13 @@ func TestWhatTheFoldedModuleReadLeavesStandingAtTheCLI(t *testing.T) {
 // TestTheSourceStringAnswerFlagsRefuseToMeasureTheirOwnName is the CLI half of this row's machine path, and the
 // shape that measured the wrong program for as long as it took to write this row: `--lambda-answers` takes a SOURCE
 // STRING, so `--lambda-answers --file prog.gy` hands the flag the string "--file", which parses — as the expression
-// `-(-file)` — and the toolchain answers a well-formed account of THAT program at exit 0. The `--verify-llvm` and
-// `--debug-info` doors already refuse this shape (`expects a source, not … — pass it last or use --flag=<source>`,
-// `cmd/gustyc/main.go`); the account flags do not, and an all-zero document is the answer an agent acts on. Pinned
-// here at today's bytes beside the owning row (**Gap R.549**); it changes the day the door speaks.
+// `-(-file)` — and the toolchain answered a well-formed account of THAT program at exit 0. Only the `--verify-llvm`
+// and `--debug-info` doors refused it, and an all-zero document is the answer an agent acts on.
+//
+// The row is paid: the guard is one door over the whole family now (`refuseFlagShapedSource`, roadmap **Gap R.549**,
+// **ADR 0463**), so both spellings below are the usage error **ADR 0006** reserves for a mis-typed command line. It
+// stays here, at this altitude, because the shape that filed the row was asked of THIS tool — and the whole family,
+// each flag's own exit code and sentence, is pinned in `integration/source_flag_door_test.go`.
 func TestTheSourceStringAnswerFlagsRefuseToMeasureTheirOwnName(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -205,11 +208,11 @@ func TestTheSourceStringAnswerFlagsRefuseToMeasureTheirOwnName(t *testing.T) {
 		exit       int
 		gap        string
 	}{
-		// Today: an account of the program `--file`, reporting that the pass did nothing, at the exit code of success.
-		{"--lambda-answers", `"reads_folded": 0`, 0, "Gap R.549"},
-		// The control that says the guard exists: the same mis-typing at the door that already has it, answered as the
-		// usage error it is (ADR 0006) instead of as a run.
-		{"--verify-llvm", "expects a source", 4, "Gap R.549"},
+		// The door the row filed, answering the mis-typing instead of measuring its own flag name.
+		{"--lambda-answers", "expects a source", 4, "Gap R.549 (paid, ADR 0463)"},
+		// The control that says the door was there all along: the same mis-typing at the flag that already had a
+		// hand-written version of it, which is now the same line of code.
+		{"--verify-llvm", "expects a source", 4, "Gap R.549 (paid, ADR 0463)"},
 	} {
 		tc := tc
 		t.Run(tc.flag, func(t *testing.T) {

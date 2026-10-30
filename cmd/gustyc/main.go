@@ -36,6 +36,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strconv"
@@ -176,13 +177,39 @@ func run() int {
 	// Flags are accepted after positional args too: `gustyc --build out src.gy
 	// --opt-level=2` is what people and agents actually type, and Go's flag package stops
 	// at the first positional, turning the trailing flag into a source filename.
-	if perr := fs.Parse(reorderFlags(fs, os.Args[1:])); perr != nil {
+	reordered, attachedValues := reorderFlags(fs, os.Args[1:])
+	if perr := fs.Parse(reordered); perr != nil {
 		if perr == flag.ErrHelp {
 			return exitOK // --help was handled by the flag package
 		}
 		fmt.Fprintf(os.Stderr, "gustyc: %v\n", perr)
 		usage(fs)
 		return exitUsage
+	}
+
+	// One door, the whole family: every flag below whose value is read as the PROGRAM refuses a value
+	// that names another flag, so no agent is handed a well-formed report about `-(-file)` at exit 0.
+	// It runs before anything consults a source, because the answer must not depend on which handler
+	// the command line happens to reach first (roadmap **Gap R.549**, **ADR 0463**).
+	if code, refused := refuseFlagShapedSource(os.Stderr, fs, attachedValues, []sourceFlag{
+		{"--eval", *evalSrc, "a source"}, {"--file", *file, "a path"},
+		{"--verify", *verify, "a source"}, {"--check", *check, "a source"}, {"--effects", *effects, "a source"},
+		{"--oracle", *oracleSrc, "a source"}, {"--oracle-file", *oracleFile, "a path"},
+		{"--emit-llvm", *emitLLVMF, "a source"}, {"--emit-ast", *emitASTF, "a source"}, {"--emit-source-map", *emitSourceMapF, "a path"},
+		{"--verify-llvm", *verifyLLVMF, "a source"}, {"--verify-llvm-file", *verifyLLVMFile, "a path"},
+		{"--debug-info", *debugInfoF, "a source"}, {"--debug-info-file", *debugInfoFile, "a path"},
+		{"--callables", *callables, "a source"}, {"--lambda-answers", *lambdaAnswers, "a source"},
+		{"--bench", *benchSrc, "a source"}, {"--bench-file", *benchFile, "a path"},
+		{"--fmt", *fmtSrc, "a source"}, {"--fmt-file", *fmtFile, "a path"},
+		// The same mistake at a flag that names a FILE rather than a text: a directory, a baseline document
+		// or an output binary called `--json` is the same mis-typed command line, and the tool would
+		// otherwise go looking for it.
+		{"--bench-dir", *benchDir, "a path"}, {"--bench-baseline", *benchBaseline, "a path"},
+		{"--bench-baseline-update", *benchBaselineUpdate, "a path"},
+		{"--build", *buildOut, "a path"}, {"--source-map-out", *sourceMapOut, "a path"},
+		{"--stdlib", *stdlibDir, "a path"},
+	}); refused {
+		return code
 	}
 
 	if *stdlibDir != "" {
@@ -382,27 +409,14 @@ func run() int {
 	if *emitLLVMF != "" {
 		return emitLLVM(*emitLLVMF, *target, *optLevel, *jsonOut, *debugFlag)
 	}
+	// Both doors used to carry this check themselves (`if strings.HasPrefix(v, "-")`). It moved to
+	// refuseFlagShapedSource above, where one rule covers every source-taking flag and asks the FlagSet
+	// instead of guessing from a leading dash — which is also what lets a real source that begins with a
+	// dash through the door these two would have closed (roadmap **Gap R.549**, **ADR 0463**).
 	if *verifyLLVMF != "" || *verifyLLVMFile != "" {
-		// A value-taking flag followed by another flag swallows it: `--verify-llvm
-		// --json "src"` would compile the string "--json" instead. Catch it as the
-		// usage error it is rather than compiling nonsense.
-		for _, v := range []string{*verifyLLVMF, *verifyLLVMFile} {
-			if strings.HasPrefix(v, "-") {
-				fmt.Fprintf(os.Stderr, "gustyc: %s expects a source, not %q — pass it last or use --flag=<source>\n", "--verify-llvm", v)
-				return exitUsage
-			}
-		}
 		return verifyLLVMMode(*verifyLLVMF, *verifyLLVMFile, atoi(*optLevel), *jsonOut)
 	}
 	if *debugInfoF != "" || *debugInfoFile != "" {
-		// The same guard --verify-llvm needs: `--debug-info --json "src"` would otherwise
-		// compile the string "--json" and report on that.
-		for _, v := range []string{*debugInfoF, *debugInfoFile} {
-			if strings.HasPrefix(v, "-") {
-				fmt.Fprintf(os.Stderr, "gustyc: %s expects a source, not %q \u2014 pass it last or use --flag=<source>\n", "--debug-info", v)
-				return exitUsage
-			}
-		}
 		return runDebugInfo(*debugInfoF, *debugInfoFile, atoi(*optLevel), *jsonOut)
 	}
 	if *emitSourceMapF != "" {
@@ -1141,12 +1155,119 @@ oracle: every conformance program is compared against CPython too (gustyc --orac
 `, lang.Version, strings.Join(lang.ValueTagNames(), " "), strings.Join(lang.HeapKindNames(), " "))
 }
 
+// sourceFlag is one flag whose VALUE the toolchain reads as a thing on disk or as the PROGRAM itself —
+// a source string, the path of one, an artifact path, a bench tree — paired with the value it was
+// actually given. None of those is ever another flag's name, and this is the row of the table the CLI's
+// one wrong-subject door consults (refuseFlagShapedSource).
+type sourceFlag struct {
+	name  string // the flag as the user would type it: "--lambda-answers"
+	value string // what it received
+	says  string // what the flag wanted: "a source" for the source flags, "a path" for the ones that name a file
+}
+
+// refuseFlagShapedSource is the CLI's one door for the family of flags that measure a program: a value that
+// LOOKS LIKE AN OPTION is a mis-typed command line, not a source.
+//
+// The hole was measured, not imagined. `--verify-llvm` and `--debug-info` grew a guard for it because
+// `--verify-llvm --json "src"` compiled the string `--json`; the rest of the family never got it, and
+// `reorderFlags` hands a value-taking flag its successor token whatever that token is, so
+// `gustyc --lambda-answers --file prog.gy` measured the program `--file` — which PARSES, as
+// `-(-file)` — and printed a well-formed account of it at the exit code of success. An agent reading
+// that document learns nothing about `prog.gy` and nothing about its own mistake, and the payload does not
+// say it is about something else: ADR 0346's and ADR 0379's rule that a machine answer about the wrong
+// subject is not a neutral answer, applied to the command line (roadmap **Gap R.549**).
+//
+// It refuses what no source is: the option shapes, so `--eval "-1"` still evaluates the program `-1` and
+// `--opt-level 2` keeps its argument (ADR 0337's rule that a guard is widened by filtering, not by sweeping).
+// The escape for a text that genuinely begins with an option's name is the `--flag=<source>` form, which
+// `reorderFlags` reports and this door honours. The sentence is the one the two guards it replaces already
+// printed, now printed by every member of the family — with the flag's own name in it, which the hand-written
+// `--verify-llvm` loop got wrong for its `--verify-llvm-file` sibling.
+func refuseFlagShapedSource(w io.Writer, fs *flag.FlagSet, attached map[string]bool, given []sourceFlag) (int, bool) {
+	for _, g := range given {
+		// `--flag=<source>` is the deliberate spelling: the text after the `=` is what the caller means to
+		// compile, and it is never read as another flag's name. `reorderFlags` reports which flags arrived
+		// that way, so the escape the refusal's own sentence promises really exists.
+		if attached[canonicalFlagName(fs, strings.TrimLeft(g.name, "-"))] {
+			continue
+		}
+		if !looksLikeAnOption(fs, g.value) {
+			continue
+		}
+		says := g.says
+		if says == "" {
+			says = "a source"
+		}
+		fmt.Fprintf(w, "gustyc: %s expects %s, not %q \u2014 pass it last or use --%s=<%s>\n",
+			g.name, says, g.value, strings.TrimLeft(g.name, "-"), strings.TrimPrefix(says, "a "))
+		return exitUsage, true
+	}
+	return 0, false
+}
+
+// canonicalFlagName resolves what the user typed (`--lambda_answers`) to the name the FlagSet files it
+// under (`lambda_answers`), so a set keyed by one spelling is consultable by the other.
+func canonicalFlagName(fs *flag.FlagSet, name string) string {
+	if fs == nil {
+		return name
+	}
+	if f := fs.Lookup(name); f != nil {
+		return f.Name
+	}
+	return name
+}
+
+// looksLikeAnOption asks whether a value could only have come from the command line, rather than from a
+// program. Two shapes qualify: a LONG OPTION (`--anything`, defined or not), and any token the FlagSet
+// recognises as one of its own flags (`-json` included, which is how the flag package itself reads it).
+//
+// Asking only "does it name a defined flag" was measured and is not enough: `--lambda-answers --not-a-flag`
+// printed a well-formed `gusty.lambda-answers.v1` account of the program `--not-a-flag` at the exit code of
+// success — the same wrong subject, one typo away from the shape that filed the row.
+//
+// What it deliberately does NOT reject is a value that merely starts with a dash: `-1` is a program, and
+// `gustyc --eval -1` has always meant it. `-` (stdin) and `--` (the end-of-flags marker) are the command
+// line's own punctuation and answer no whatever they look like.
+func looksLikeAnOption(fs *flag.FlagSet, v string) bool {
+	if v == "-" || v == "--" || !strings.HasPrefix(v, "-") {
+		return false
+	}
+	if strings.HasPrefix(v, "--") {
+		return true
+	}
+	return namesADefinedFlag(fs, v)
+}
+
+// namesADefinedFlag asks the FlagSet whether a value is another flag's name. `--flag=<source>` is answered by
+// the name before the `=`, because that is the token the user typed.
+func namesADefinedFlag(fs *flag.FlagSet, v string) bool {
+	if fs == nil || !strings.HasPrefix(v, "-") || v == "-" || v == "--" {
+		return false
+	}
+	name := strings.TrimLeft(v, "-")
+	if eq := strings.IndexByte(name, '='); eq >= 0 {
+		name = name[:eq]
+	}
+	if name == "" {
+		return false
+	}
+	return fs.Lookup(name) != nil
+}
+
 // reorderFlags moves flag tokens to the front so the flag package sees all of them,
 // while keeping each flag's value attached. A value-taking flag in `--flag value` form
-// owns the following token, so `--eval --help` still means "evaluate the text --help"
-// rather than "print usage". Tokens the FlagSet does not define are still handed to the
-// flag package, which produces its own "flag provided but not defined" error.
-func reorderFlags(fs *flag.FlagSet, args []string) []string {
+// owns the following token, so a value that merely LOOKS like an option (`--eval "-1"`,
+// `--opt-level 2`, a triple beginning with a dash) survives the trip. What the value may not
+// be is ANOTHER DEFINED FLAG: that is a mis-typed command line, and the family of source-taking
+// flags answers it as the usage error it is rather than measuring the flag's own name as if it
+// were the program (refuseFlagShapedSource, roadmap **Gap R.549**, **ADR 0463**); `--flag=<source>` is the form
+// that does mean "compile exactly this text". Tokens the FlagSet does not define are still
+// handed to the flag package, which produces its own "flag provided but not defined" error.
+//
+// Its second result names the flags that arrived in the `--flag=<value>` spelling, which is the only form
+// that can legitimately carry a value beginning with a dash; refuseFlagShapedSource honours it.
+func reorderFlags(fs *flag.FlagSet, args []string) ([]string, map[string]bool) {
+	attached := map[string]bool{}
 	flags := make([]string, 0, len(args))
 	rest := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
@@ -1157,6 +1278,7 @@ func reorderFlags(fs *flag.FlagSet, args []string) []string {
 		}
 		name := strings.TrimLeft(a, "-")
 		if eq := strings.IndexByte(name, '='); eq >= 0 {
+			attached[canonicalFlagName(fs, name[:eq])] = true
 			name = name[:eq]
 		}
 		f := fs.Lookup(name)
@@ -1172,7 +1294,7 @@ func reorderFlags(fs *flag.FlagSet, args []string) []string {
 			}
 		}
 	}
-	return append(flags, rest...)
+	return append(flags, rest...), attached
 }
 
 func isTTY() bool {

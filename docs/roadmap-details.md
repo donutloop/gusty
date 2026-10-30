@@ -23519,7 +23519,7 @@ mixed-kind table (a text list, a dict, a tuple and a set in one statement) in ev
 pairwise behaviour is only accidentally right in one of them.
 
 <a id="gap-r-549"></a>
-### Gap R.549 — a source-string flag handed another flag measures the flag's own name, and answers at the exit code of success (⏳ PLANNED, filed by **ADR 0461**)
+### Gap R.549 — a source-string flag handed another flag measures the flag's own name, and answers at the exit code of success (✅ DONE, closed by **ADR 0463**; filed by **ADR 0461**)
 
 ```console
 $ gustyc --lambda-answers --file integration/programs/applied_lambda_module_read.gy
@@ -23599,3 +23599,79 @@ refuses the cheap version of it: `--flag <source>` and `--flag=<source>` must an
 or the guard has only moved the trap one keystroke to the left. Pinned at today's bytes by
 `integration/lambda_module_read_test.go::TestTheSourceStringAnswerFlagsRefuseToMeasureTheirOwnName`, which holds the
 account flags and the one guarded door in the same table so the day the doors agree the case says so.
+
+**Closed 2026-10-29 by ADR 0463.** One door, `refuseFlagShapedSource`, sits after `flag.Parse` and before any handler
+reads a source, and the two hand-written guards above are deleted as its special case:
+
+```console
+$ gustyc --lambda-answers --file prog.gy
+gustyc: --lambda-answers expects a source, not "--file" — pass it last or use --lambda-answers=<source>
+$ gustyc --bench-dir --json
+gustyc: --bench-dir expects a path, not "--json" — pass it last or use --bench-dir=<path>
+$ echo $?
+4
+```
+
+Two measurements decided the shape, and both were made after the first version was already built.
+
+*The row's own prescription was too wide.* It asked for *a value beginning with `-`* to be the usage class, which is
+what the two deleted guards tested. That would have made `gustyc --eval -1` — a program that has always printed `-1`
+— a usage error, along with `--opt-level 2` and any triple or compiler path that begins with a dash. **ADR 0337**'s
+rule applies: widen by filtering, not by sweeping. The predicate asks the FlagSet instead: a value is refused when it
+begins with `--`, or when `fs.Lookup` recognises it as one of this binary's own flags. `-1`, `-2.5`, `-O2` stay
+programs; `-` and `--` are the command line's punctuation.
+
+*The narrower rule that passed that filter did not close the hole.* Refusing only a value that names a *defined* flag
+was built and measured against the adjacent command line:
+
+```console
+$ gustyc --lambda-answers --not-a-flag      # nothing defines --not-a-flag
+{ "tool": "callable-values", … "schema": "gusty.lambda-answers.v1", "reads_folded": 0, … }   exit 0
+```
+
+The same well-formed account, the same exit code, a program nobody defines. The predicate had been asking *is this one
+of my flags?* when the harm asks *could this token have come from anywhere but a program?* — a name the FlagSet knows
+is sufficient evidence, not the whole evidence base.
+
+**`--flag=<source>` is the escape, and it was made real rather than advertised.** The first version printed the
+sentence the deleted guards printed — `use --flag=<source>` — while refusing the very command it pointed at, because
+the flag package hands the value to the tool after the `=` has been stripped. `reorderFlags` now returns which flags
+arrived attached, and the door honours that set: `gustyc --eval=--file` compiles the two-character program and answers
+`undefined name "file"`, the ordinary name error about a program. `TestTheAttachedAndSpacedSpellingsAnswerTheSameAccount`
+then pins the pair answering the *same* account byte for byte, which is the Definition of done's defence against a guard
+that merely relocates the trap.
+
+**What was measured and is NOT owed.** The neighbouring command line was hypothesised as a second gap — a value-taking
+flag at the *end* of the argument list, `--file prog.gy --lambda-answers` — and measuring it returned
+`flag needs an argument: -lambda-answers` at **exit 4**, which is already the right answer. It is recorded here so the
+claim is not re-made from the shape alone. The real neighbour is the path side of the same door: **Gap R.550**.
+
+---
+
+### Gap R.550 — a source flag is given a PATH, and the tool compiles the path's name (⏳ PLANNED, filed by **ADR 0463**)
+
+```console
+$ cat real.gy
+t = "hey"
+print((lambda: t)())
+$ gustyc --lambda-answers real.gy
+gustyc: lambda-answers: parse error at 1:1: unexpected token
+$ echo $?
+1
+$ gustyc --emit-source-map real.gy          # the one door that reads the file
+{ "version": 2, "functions": [], … }
+```
+
+Nine characters of a path went to the parser as a program, and the tool reported a syntax error at line 1 column 1 of
+a file it never opened. Thirteen value-taking flags behave this way (`--eval`, `--check`, `--verify`, `--effects`,
+`--callables`, `--lambda-answers`, `--emit-ast`, `--emit-llvm`, `--bench`, `--fmt`, `--debug-info`, `--verify-llvm`,
+`--oracle`); `--emit-source-map` is the exception, and its own comment states the rule as fact:
+
+> a value that is not on disk stays source text, like every other value-taking flag in this CLI
+
+That is the fabrication this row exists to end — a convention asserted by a comment and implemented by the flag the
+comment sits above. The positional already solved the same problem (**ADR 0463**'s § *What this row does not do* quotes
+it): a name that exists on disk *is* `--file`, and a `.gy` name that does not is `no such file` at exit 4 rather than
+an `undefined name` blamed on the user's code. The row asks for that one rule at the flags, or for the flags to say in
+words that they will not follow it, and for the comment to be quoted by a test so it cannot drift again.
+

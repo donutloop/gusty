@@ -261,10 +261,48 @@ gustyc --build out src.gy --opt-level=2 --json     # works
 
 Go's `flag` package stops at the first positional, which used to turn the trailing
 `--opt-level=2` into a source file named `--opt-level=2`. `reorderFlags` moves flag tokens
-front while keeping each flag's value attached, so `--eval --help` still evaluates the text
-`--help` rather than printing usage. Unrecognised `--flags` are still reported by the flag
-package as a usage error (exit `4`). To pass a file whose name really begins with `--`, write
+front while keeping each flag's value attached, so a value that merely *looks* like an option
+(`--eval -1`, `--opt-level 2`) survives the trip. Unrecognised `--flags` are still reported by
+the flag package as a usage error (exit `4`). To pass a file whose name really begins with `--`, write
 `./--weird.gy`.
+
+### A source flag handed another flag: the usage door (roadmap **Gap R.549**, **ADR 0463**)
+
+Every flag whose value the toolchain reads as a program — a source string, the path of one, an
+artifact path, a bench tree — refuses a value that is shaped like an option:
+
+```
+$ gustyc --lambda-answers --file prog.gy
+gustyc: --lambda-answers expects a source, not "--file" — pass it last or use --lambda-answers=<source>
+$ echo $?
+4
+```
+
+Before the door, that command line ran the program `--file` — which parses, as `-(-file)` — and
+printed a well-formed `gusty.lambda-answers.v1` account of *it* and left through exit `0`. The
+document did not say it was about something other than `prog.gy`, so an agent that asked a question
+about a file received an answer about the command line's own punctuation, and had nothing to detect
+(ADR 0346, ADR 0379: a machine payload about the wrong subject is not a neutral answer). `--verify-llvm`
+and `--debug-info` each carried a private `strings.HasPrefix(v, "-")` guard against this; the family
+has one door now (`refuseFlagShapedSource` in `cmd/gustyc/main.go`), and it is both narrower and wider
+than the two it replaces — narrower about a dash, wider about an option, because `--lambda-answers
+--not-a-flag` printed the same well-formed account of a program nobody defines.
+
+| Command line | Answer | Exit |
+|---|---|---|
+| `--lambda-answers --file prog.gy` | `expects a source, not "--file" — pass it last or use --lambda-answers=<source>` | **4** |
+| `--bench-dir --json` | `expects a path, not "--json" — …` (the path-flavoured flags say *path*) | **4** |
+| `--eval -1` | runs the program `-1`, prints `-1` | 0 |
+| `--eval=--file` | runs the program `--file`, i.e. `-(-file)`; the ordinary name error, about the program | 1 |
+| `--not-a-flag --eval 'print(1)'` | `flag provided but not defined: -not-a-flag` (the flag package's own sentence, in a position the door does not own) | **4** |
+
+`--flag=<source>` is the escape hatch, and the refusal's sentence names it because `reorderFlags` records
+which flags arrived in that spelling: the text after the `=` is what gets compiled, whatever it starts with.
+The door covers `--eval`, `--file`, `--verify`, `--check`, `--effects`, `--oracle(-file)`, `--emit-llvm`,
+`--emit-ast`, `--emit-source-map`, `--verify-llvm(-file)`, `--debug-info(-file)`, `--callables`,
+`--lambda-answers`, `--bench(-file)`, `--fmt(-file)`, `--bench-dir`, `--bench-baseline(-update)`,
+`--build`, `--source-map-out` and `--stdlib`; `integration/source_flag_door_test.go` pins each one and checks
+the list against the binary's own `--help`, so a row cannot outlive its flag.
 
 Compile/link errors return diagnostics and exit code 1; missing sources or no
 positional files are a usage error (exit 4). A semantic error in any source
@@ -583,7 +621,7 @@ asserts each row.
 | 1 | **compile error** — the program never ran: parse, analysis, a codegen refusal, or `llc`/`cc` failed. Diagnostics were emitted | `--eval`, `--check`, `--verify`, `--build`, `--emit-*`, `--fmt-check` |
 | 2 | **LLVM rejected the module we emitted** — a compiler bug, not a source error (see ADR 0164/0166). Reached through `errors.As(err, *lang.ToolchainRejectionError)`, never by matching message text; a toolchain that is *not installed* is not a rejection and stays class 1. The same class is reached from inside the compiler since ADR 0378: `pkg/lang/frame_audit.go` audits the finished module for a `define` that reads a frame slot (`%_x`, its `%_x_tag`, a `%_ctrN`, a written-flag `%bnd_x`) that no `alloca` in *that* function created, and fails as `*lang.IRInvariantError` — the compiler saying out loud what `llc` was about to say about a temp file (roadmap L11.6 · Gap R.342) | `--build` (when the verifier stage rejects), `--verify-llvm`, `--aot`/`--jit` (when `llc` refuses what codegen produced), and any compile path (`--emit-llvm`, `--check`, `--verify`, `--file`, `--eval`) when the frame-slot audit refuses the module first |
 | 3 | **runtime error** — the program compiled and ran, then trapped (an uncaught exception, a failed built-in). Every run path reports it identically: the compiled backend's status comes from the generated `main`'s return value, which `lang.JITResult.Code` carries (ADR 0211), and since ADR 0228 so does the *linked binary itself* — `./prog` and `gustyc --aot prog.gy` agree, because 1 is the compile-error code and a trap must never borrow it | `--eval`, `--file`, `--repl`, `--aot`/`--jit`, and the binary `--build` leaves behind |
-| 4 | **usage error** — bad/unknown flags, no source given, unreadable file, empty `--bench-dir`, missing baseline file | any mode |
+| 4 | **usage error** — bad/unknown flags, no source given, unreadable file, empty `--bench-dir`, missing baseline file, and (since **ADR 0463**) a source flag handed *another flag's name* instead of a program: the mistake is in the command line, so the tool must run neither leg to say so | any mode |
 | 5 | **benchmark regression** (`--bench-baseline` gate fired; see `docs/benchmark.md`) | `--bench-*` |
 | 6 | **divergence from CPython** — the program compiled, ran, and printed something other than what CPython prints for the same source (a wrong value, or a leg that refused it) | `--oracle`, `--oracle-file` |
 | 7 | **no verdict** — the CPython leg could not run the source (gusty-only surface such as `await` at module scope, a positional set subscript, or a stdlib attribute Python has no name for), so nothing was checked | `--oracle`, `--oracle-file` |

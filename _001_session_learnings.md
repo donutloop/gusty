@@ -1,5 +1,62 @@
 # Session Learnings
 
+## Cycle: a source flag handed another flag's name is a usage error (roadmap **Gap R.549** closed, **Gap R.550** filed; **ADR 0463**)
+
+**The row's own prescription was wrong, and only running it found out.** Gap R.549's `Next concrete action` says *a value
+beginning with `-` is the usage class*, because that is what the two existing guards tested and the row was written beside
+them. Implemented that way, the door would have made `gustyc --eval -1` a usage error — a program that has always printed
+`-1` — along with `--opt-level 2` and any `--target`/`--cc` value that starts with a dash. **ADR 0337**'s rule (filter, do
+not widen) is what made me check instead of ship. Two predicates were then measured, and each failed a different way:
+
+| predicate | reported shape | `--eval -1` | `--lambda-answers --not-a-flag` |
+|---|---|---|---|
+| starts with `-` (what the row asked for) | refused ✓ | **refused ✗** — a program the CLI has always run | refused ✓ |
+| names a flag the FlagSet defines | refused ✓ | runs ✓ | **exit 0 with a full account ✗** |
+| `--`-prefixed **or** recognised by the FlagSet | refused ✓ | runs ✓ | refused ✓ |
+
+The middle row is the lesson: a predicate built to cover the reported case is answering *is this one of my flags?* when the
+harm asks *could this token have come from anywhere but a program?*. `--lambda-answers --not-a-flag` printing a well-formed
+`gusty.lambda-answers.v1` document at the exit code of success was not guessed — it was run, after the "obvious" narrow rule
+was already green.
+
+**A diagnostic's suggestion is a promise the tool has to keep.** The first version printed `pass it last or use
+--flag=<source>` — the deleted guards' own sentence — and then refused `gustyc --eval=--file`, because by the time the tool
+looks, the flag package has stripped the `=` and the value is `--file` either way. A suggestion the tool itself does not
+honour is a second bug wearing the first one's clothes. `reorderFlags` now returns the set of flags that arrived in the
+attached spelling (it already parsed the `=` to decide token ownership — the information was there and thrown away), the door
+honours that set, and `TestTheAttachedAndSpacedSpellingsAnswerTheSameAccount` pins the two spellings byte-for-byte on real
+sources, which is also the row's Definition of done: a guard that only moves the trap one keystroke left has not guarded
+anything.
+
+**Measure the neighbour before you file it.** Two adjacent shapes looked like the same bug. `--file prog.gy --lambda-answers`
+answered `flag needs an argument: -lambda-answers` at exit 4 — already correct, not owed, and it would have become a roadmap
+row with a fake measurement if I had reasoned from the shape instead of running it. `gustyc --lambda-answers real.gy`, with
+the file sitting on disk, compiled the nine characters of the *path* and reported `parse error at 1:1` — a real gap, filed as
+**Gap R.550** beside the comment in `emitSourceMap` that states the opposite as fact (*"a value that is not on disk stays
+source text, like every other value-taking flag in this CLI"*, true of the one flag whose comment it is). Related lesson, kept
+from **Gap R.534**'s correction: a comment describing a convention is a claim the codebase owes, and a row that quotes it
+should quote the file.
+
+**A refusal must not also answer.** Every row of the family table asserts `stdout == ""` as well as exit 4, because the bug
+was a *report*, not a crash: `--lambda-answers` refusing while still printing an account would have been the same wrong-subject
+document with an apology stapled on. The exit code carries blame too — exit 1 would have said *your program is broken* about
+`-(-file)`, which is the exact confusion the positional's `.gy`-suffix guard (`no such file`, exit 4) exists to avoid, and
+**ADR 0006** already reserves exit 4 for a command-line mistake. `--interp` (ADR 0302) is the closest precedent: a
+command-line lie is answered in words, never honoured quietly.
+
+**A table of flags rots, so the binary is asked.** `TestEveryFlagTheCLIGuardsIsAFlagTheCLIHas` reads the tool's own `--help`
+for every name in the guarded list. The alternative is a green suite certifying a door over a flag that left the tree two
+refactors ago — the failure shape **Gap R.204** built its guards against, at a new altitude.
+
+**Working-tree provenance is part of the gate.** Mid-session, `pkg/lang/parser.go` and `pkg/lang/heapargs.go` appeared modified
+by work I had not written — a unary-plus parser rule and a `pos` wording row, both citing **ADR 0462**, which does not exist,
+and which turned `print(+1)` from an honest parse refusal into `codegen: unsupported unary "+"`. `git status` at session start
+had shown a clean tree, so the edit arrived while I was measuring something else (a `pi-loop.mjs --force-reset` driver is
+running against this checkout). It was saved to a patch, reverted, and the tree rebuilt before anything was certified; the row
+it belongs to (Gap R.244) is untouched and left for its own cycle. The rule: never commit an edit you cannot attribute, and
+never report a green gate over bytes you did not produce.
+
+
 ## Round 19 — the object the run time builds and no statement named is given a name, and the copy is rooted before the statement calls (roadmap Gap R.235 and Gap R.541 closed; ADR 0459; Gaps R.539, R.540 filed)
 
 **One program, two doors, and the road chosen by whether the program spelled a name.** `ys = xs[0:2]` / `print(ys[0])`
