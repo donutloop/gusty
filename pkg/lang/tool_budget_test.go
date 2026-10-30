@@ -25,8 +25,20 @@ import (
 // for the behaviour under test, because the name is what the timeout error has to carry.
 func stubTool(t *testing.T, name, body string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), name)
-	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+	dir := t.TempDir()
+	path := filepath.Join(dir, name)
+	// Written under a name nothing can exec, then RENAMED into place. `os.WriteFile` closes the descriptor
+	// before returning, but the kernel still returns `fork/exec …: text file busy` (`ETXTBSY`) for a moment
+	// after a fresh 0755 file is created on a loaded machine — and this suite runs twenty cases deep, so the
+	// moment is exactly when the call below happens. A rename publishes the bytes atomically, which is the
+	// standard way to make "write it, then run it" safe; without it the budget case fails about one run in a
+	// hundred with the reference to a bug that is in the harness rather than in the toolchain, and a flaky
+	// budget test is worse than no budget at all (the failure it exists to catch becomes background noise).
+	tmp := path + ".writing"
+	if err := os.WriteFile(tmp, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
 		t.Fatal(err)
 	}
 	return path

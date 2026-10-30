@@ -11804,6 +11804,29 @@ parameter has no binding in the callee's frame, so the arm declines and the copy
 record into the callee for the duration of the call is **Gap R.154**'s pair-parameter question one construct out.
 Byte-identical on ADR 0465's parent, and pinned in the same filed table.
 
+<a id="gap-r-553"></a>
+
+### Gap R.553 — a stub tool written and execed in the same breath flakes the concurrent gate (CLOSED, harness fix beside ADR 0465)
+
+```
+--- FAIL: TestAToolThatNeverReturnsIsKilledAtItsBudget (0.00s)
+    tool_budget_test.go:47: want a *ToolTimeoutError, got *fs.PathError:
+        fork/exec /tmp/TestAToolThatNeverReturnsIsKilledAtItsBudget1723790971/001/stub-never-answers: text file busy
+```
+
+Under `make testparallel` the case failed; run alone, the same case passed in 0.3s. The case writes a `#!/bin/sh`
+stub with `os.WriteFile` (which closes the descriptor before returning) and execs it a statement later, and Linux
+still returns `ETXTBSY` for a moment on a loaded filesystem — the last `fput` of a just-written executable can be
+deferred to a worker thread, and an `exec` that lands inside that window is refused. Nothing in the toolchain is
+involved: what broke is the harness, and what it broke is the one case whose whole job is to prove that a toolchain
+call which never returns is ENDURED — the budget's contract (`runTool` stops the call, names the tool, classifies the
+error) was never asked because the stub could not be started.
+
+`stubTool` now writes `name.writing` and `os.Rename`s it into place: the exec target is never open for writing, so the
+window closes. A budget test that fails for no reason is worse than no budget, because the reader learns to ignore the
+failure; this is **ADR 0317**'s argument — a gate must be runnable to be trusted — applied one step further, to the
+race inside a case rather than the cache around it.
+
 <a id="gap-r-239"></a>
 
 ### Gap R.239 — a comprehension whose iterable is a copy refuses while the same copy, named, iterates (OPEN, found by ADR 0336)
