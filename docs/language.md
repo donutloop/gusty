@@ -8054,6 +8054,52 @@ number that payload happens to be, and a tuple arm of a `return` answers the int
 open half and **Gap R.585**, pinned shape by shape with the reference's answer beside this backend's in
 `pkg/lang/ternary_pair_arg_test.go::TestWhatTheCallArgumentDoorStillCannotAnswerIsFiledNotFixed`.
 
+### A membership needle whose kind lives in the object asks the object (L11.1, Gap R.582, Gap R.583, ADR 0476)
+
+`x in xs` asks one question twice — is this value one of the values those slots hold — and the two operands were
+being asked differently. The haystack was asked of the object, comparing payloads *between* their tags; the needle
+was asked of the compiler, whose kind question has an answer for everything it can see and defaults to "an int"
+for everything it cannot.
+
+```python
+d = {"a": "a", "b": 2}
+print(d["a"] in d)        # True   — the needle is a text; it matches the text key
+
+d = {"a": 1, "b": [2]}
+print(d["b"] in d)        # TypeError: unhashable type: 'list' — a container is not an absent key
+
+def g():
+    return [7, "z"]
+
+xs = [g()[1], 3]
+print(xs[0] in xs)        # True
+print(xs[0] not in xs)    # False
+
+nums = {"a": 1, "b": 2.5}
+print(nums["b"] in [2.5]) # True   — and of a haystack the source spells
+print(nums["b"] in {2.5}) # True   — …or the program builds
+
+boxes = {"a": 1, "b": [2]}
+print(boxes["b"] in [[2]])   # True   — a container needle matches by content
+print(boxes["b"] in {1, 2})  # TypeError: unhashable type: 'list', catchable
+```
+
+The needle's payload and its kind now come from the same read — `rt_dict_get_tagged` beside `rt_dict_value_tag`,
+`rt_get_elem` beside `rt_tag_of` — and the tagged scans (`rt_dict_has_tagged`, `rt_contains_tagged`,
+`rt_set_contains_tagged`) compare a payload only between agreeing tags. Two rules keep the change in its place:
+
+* **a fold may not claim a needle it cannot kind.** The zero-allocation unroll behind `print(1 in [1, 2, 3])` is
+  an `icmp eq i32`, and it is sound exactly when the compiler can name the needle; for a read out of an object it
+  cannot, so the fold declines and the object answers (`print(1 in [1, 2, 3])` still builds no object).
+* **the unhashable question is asked of the tag, and keyed by kind.** A list or dict asked of a dict, or of a set,
+  raises **CPython's own sentence** and the program's `except TypeError:` reaches it. A set asked of a set does not
+  raise, because the reference hashes it as the frozenset it converts to — and this language has no frozenset,
+  which is **Gap R.586**.
+
+What is still refused stays refused: a needle whose kind only a run-time branch knows (`pick(0) in xs` where `pick`
+returns a number on one path and a text on another) names the missing half in the program's words at exit 1 —
+**Gap R.212** beside **Gap R.83** — and never the compiler's own vocabulary (**ADR 0249**).
+
 ## Declaration order (ADR 0197)
 
 A `def` is a binding of the scope that contains it — not only of the text below its line.

@@ -800,6 +800,14 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// **Gap R.581**'s open remainder and are filed with both legs' answers in
 		// `integration/ternary_pair_arg_test.go` (roadmap **Gap R.581**, **Gap R.584**, **ADR 0475**).
 		"ternary_pair_arg",
+		// A membership needle whose kind only the OBJECT can state: the needle read out of a dict asked the
+		// dict for its payload and the compiler supplied a kind it had invented (0, "an int"), so a text was
+		// looked up among text keys as a number and the answer was absence at the exit code of success. The
+		// kind now arrives beside the payload from the same read, and with it the question the invented tag
+		// was hiding: a container asked of a dict, or of a set, is not an absent member — the reference
+		// refuses to hash it, catchably (`integration/object_membership_needle_test.go`; roadmap
+		// **Gap R.582**, **Gap R.583**, **ADR 0476**).
+		"object_membership_needle",
 		// A dict entry handed to a CALL is the same self-describing read the printer, the condition and the
 		// fold already ask of the object; what it lacked was the argument's second word. `print(id(d["a"]))`
 		// for `{"a": "x"}` printed `1` — the entry's `@str_tab` index — and a float entry printed its

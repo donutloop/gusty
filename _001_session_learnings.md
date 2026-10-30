@@ -18372,3 +18372,37 @@ Four things came out of building the guard:
   exists" is still an inference. Running the binary, running CPython, and reading `asserted`/`oracle` out of
   `conformance-matrix.json` costs three commands and is what the closure text quotes — the same rule ADR 0317's
   `-count=1` enforces for tests, applied to the tracker.
+
+## 2026-11-02 — a fold that defaults is not a fold that declines (Gap R.582, Gap R.583 closed; ADR 0476)
+
+Two rows filed yesterday, both closed today, **neither by the fix its own row predicted**. R.582 said "a dict
+literal's slots do not describe themselves"; R.583 said "the literal's builder never claims its pair elements".
+The emitted modules said otherwise: the builder wrote `rt_dict_put_tagged` with the value's tag, the element wrote
+payload and tag, and the needle read reached the pair door correctly — and then the membership call was handed the
+payload from the object **and a literal `0` for its kind from the compiler**. One question, two answers in one
+module, and the scan took the compiler's.
+
+* **A filed row's diagnosis is a hypothesis with the same evidence debt as its symptom.** Both rows were written
+  from the symptom plus the shape of the neighbouring fix. The `--emit-llvm` that decided the case costs one
+  command; acting on the guess instead costs a cycle writing a claim (`settleContainerKind` for a literal) that
+  the artifact already said was unnecessary. The rows are corrected in place, with what they first said quoted in
+  `docs/roadmap-details.md` beside the IR that refutes it.
+* **A door ordered behind a decline only runs if the earlier door declines honestly.** `if !ok { ask the object }`
+  was already in the code (**ADR 0474**) and had never once fired for these programs, because `elemKindTag` does
+  not decline an entry it cannot see into — it answers `TagInt`. "The fallback exists" is not "the fallback is
+  reachable": the audit is to ask what the `ok` being tested actually means, and the third site
+  (`foldNamesNeedle`) was the same defect wearing a different name — a fold claiming a needle it could only
+  default. Any `if !ok { better door }` in this tree deserves the same question.
+* **A wrong answer that arrives as a `False` is more expensive than a refusal.** Both rows sat at exit 0 with the
+  reference running the same source, which is the class **ADR 0166** ranks below a crash. The invented tag also
+  *masked an error class*: with the real tag in place, **ADR 0328**'s unhashable raise became askable, and
+  `print(d["b"] in d)` now raises `unhashable type: 'list'` catchably instead of answering "not in".
+* **An IR row must identify which call it is reading.** The first version of the tag-register assertion looked at
+  the first `rt_dict_has_tagged(` in the module and failed — on the *key-existence* check, which shares that
+  helper and legitimately passes a constant tag, because that key is spelled in the source. The row now means:
+  some call of that shape takes a payload the object answered **and** a tag that is a register. Same lesson as
+  the needle doors: name the question, not the helper.
+* **Measure the neighbour before calling it a regression.** `{1} in {1, 2}` raising `unhashable type: 'set'`
+  surfaced mid-change and looked like my new guard overshooting; the parent-commit binary raises identically, so it
+  is a pre-existing divergence and became **Gap R.586** with today's answer and the reference's pinned side by
+  side. The guard is keyed by kind precisely so that row cannot be "fixed" by widening it.

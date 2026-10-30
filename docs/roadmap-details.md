@@ -25039,7 +25039,7 @@ re-run against `python3` 3.12.3 on the same machine as the compiled column.
 
 <a id="gap-r-582"></a>
 
-### Gap R.582 — a needle read out of a DICT literal keeps one word, and the dict answers `False` where the reference answers `True`
+### Gap R.582 — a needle read out of a DICT literal keeps one word, and the dict answers `False` where the reference answers `True` (CLOSED by ADR 0476 on 2026-11-02)
 
 ```python
 d = {"a": "a", "b": 2}
@@ -25071,9 +25071,46 @@ Pinned today in `pkg/lang/membership_needle_pair_test.go::TestWhatTheMembershipN
 with the answer this backend gives written beside the reference's, so the row fails the day the answer drifts and the
 day it becomes right. Measured 2026-11-01 while closing **Gap R.232** / **ADR 0474**.
 
+**Closed — and the row's diagnosis was wrong about where the tag went missing.** The dict literal's slots DO
+describe themselves: the builder wrote `rt_dict_put_tagged(i32 %t1, i32 %t3, i32 %t4, i32 4, i32 4)`, and the
+needle read reached the pair door and asked it correctly. What the emitted module said was
+
+```ll
+%t20 = call i32 @rt_dict_get_tagged(i32 %h2, i32 %t10, i32 4)    ; the payload, from the object
+%t21 = call i32 @rt_dict_value_tag(i32 %h2, i32 %t10, i32 4)     ; the kind, from the object — available, unread
+%t14 = call i32 @rt_dict_has_tagged(i32 %t13, i32 %t20, i32 0)   ; the kind, from the compiler
+```
+
+One read, two answers to one question, and the scan took the compiler's: a literal `0`, `TagInt`, beside a text
+payload, in a dict whose keys are texts. Absence at the exit code of success. It is **Gap R.286**'s defect — a
+missing-key check handed `i32 0` for a `None` key's tag — arrived at one door later, and it is the expensive
+variant of **ADR 0232**'s class: not a refusal that understates the compiler, a `False` that overstates the
+program.
+
+So the fix is an **order**, not a representation. Three doors take a membership needle's pair, and each asked the
+fold (`taggedOperand` → `elemKindTag`) before the object; for an entry the source does not name, the fold does not
+decline — it answers `TagInt` — so the object door **ADR 0474** had already opened was never reached:
+
+- `mixedMembership` (a container variable's haystack) asks the object door first for a needle `isTaggedSlotRead`;
+- `membershipOfLiteralContainer` (a haystack the source spells) asks it at the same precedence;
+- `foldNamesNeedle`, the fold's own claim to be able to name the needle, now refuses to claim a needle the object
+  describes — which is what let `d = {"a": 1, "b": [2]}` / `print(d["b"] in {1, 2})` answer absence with an
+  `icmp eq i32` over a heap handle.
+
+The unhashable half then needed no new rule: once the tag in the module is the object's, **ADR 0328**'s question
+can be asked of it, and `guardHashableNeedle` — the door **ADR 0324** built for a needle read out of a container
+slot — fires at the dict and set haystacks for a tag the compiler did not spell. `print(d["b"] in d)` raises
+`unhashable type: 'list'`, catchably, at exit class 3.
+
+The control that kept the re-ordering from being a widening is in the same file: a needle the SOURCE settles still
+never opens the object door, `print(1 in [1, 2, 3])` still builds no object, and `x = 5` / `print(1 in [x])` keeps
+its fold. The row's answers, the traps, the IR shape and the controls are
+`pkg/lang/membership_needle_pair_test.go`'s four tables and `integration/object_membership_needle_test.go`; the
+whole family is `integration/programs/object_membership_needle.gy`, `match` on both legs.
+
 <a id="gap-r-583"></a>
 
-### Gap R.583 — a list literal whose element is a slot read of a call's answer is not claimed as a container whose slots describe themselves
+### Gap R.583 — a list literal whose element is a slot read of a call's answer is not claimed as a container whose slots describe themselves (CLOSED by ADR 0476 on 2026-11-02)
 
 ```python
 def g():
@@ -25099,6 +25136,39 @@ answer.
 The same program with the haystack built by `append` answers (`xs = []` / `xs.append(g()[1])` / `xs.append(3)` /
 `print(xs[0] in xs)` is `True` on both legs), which is the parity argument that makes this a defect rather than a
 missing feature. Pinned in the same filed table beside **Gap R.582**'s rows. Measured 2026-11-01 beside **ADR 0474**.
+
+**Closed beside Gap R.582, and not by the claim this row predicted.** Nothing was added to
+`literalHasPairElement` or **ADR 0341**'s `settleContainerKind`: the builder's claim was already there, and the
+haystack was already read correctly. The row's program asks one question of one needle — `xs[0]`, a slot read —
+and it was the *needle* that the fold was kinding as `TagInt` (`foldNamesNeedle` claimed it, so the object door
+was never consulted). With the order fixed, `print(xs[0] in xs)` is `True` and `print(xs[0] not in xs)` is
+`False` on both legs, and the rows moved out of the filed table into the answered one. The row's value is the
+parity argument it recorded — the `append`-built haystack answering while the literal one did not — which is
+what pointed at a door rather than a scan, and its cost is the wrong second cell it would have sent a cycle off
+to write.
+
+<a id="gap-r-586"></a>
+
+### Gap R.586 — a set asked of a set raises instead of answering (OPEN, found while closing Gap R.582)
+
+```python
+print({1} in {1, 2})    # CPython False · this backend TypeError: unhashable type: 'set' at exit 3
+```
+
+Found while measuring **Gap R.582**'s unhashable half, and it is not that row's doing: the same program behaves
+identically at the parent commit, which is the only reason it is a row and not a regression report.
+
+The reference does not hash a set as a set. `{1} in {1, 2}` converts the needle to the frozenset it hashes as,
+finds no member equal to it, and answers `False`. This language has no frozenset to find, so the door that
+**ADR 0324** built — and that this cycle extended to the dict and set haystacks of an object-read needle — has
+to answer one of two ways: compare the needle by CONTENT against each member, or keep the raise and stop calling
+it the reference's behaviour. The guard the cycle grew is keyed by KIND (`list`, `dict`, and `set` only for a dict
+haystack) rather than by “any container”, which is what keeps a set member from being refused at a *set* haystack
+and is also the reason this row cannot be closed by widening the guard.
+
+Pinned in `pkg/lang/membership_needle_pair_test.go::TestWhatTheObjectNeedleDoorStillCannotReachIsFiledNotFixed`
+with today's raise beside the reference's `False`, so the row fails the day it drifts and the day someone gives
+sets a frozenset to be.
 
 <a id="gap-r-584"></a>
 

@@ -146,8 +146,8 @@ func TestTheMembershipNeedleArrivesAsThePairTheObjectsWrote(t *testing.T) {
 	t.Parallel()
 	ir := mainBodyOf(emittedModuleIR(t, "xs = [1, \"a\"]\nprint(xs[1] in xs)"))
 	for _, want := range []string{
-		"call i32 @rt_get_elem(",          // the needle is read by the door every slot read uses
-		"call i32 @rt_tag_of(",            // …and its kind is asked of the same object
+		"call i32 @rt_get_elem(",             // the needle is read by the door every slot read uses
+		"call i32 @rt_tag_of(",               // …and its kind is asked of the same object
 		"call i32 @rt_contains_tagged(i32 %", // the haystack is the loaded handle, the needle is two registers
 	} {
 		if !strings.Contains(ir, want) {
@@ -362,32 +362,6 @@ func TestWhatTheMembershipNeedleDoorStillCannotReachIsFiledNotFixed(t *testing.T
 		gap      string
 	}{
 		{
-			// **Gap R.582**, measured while closing Gap R.232: the needle arrives as a pair at the door
-			// whose slots describe themselves; a DICT literal's slots do not, and the untagged road that
-			// serves them reads the needle's payload under a kind the compiler asserted. The reference
-			// looks the value up by what it IS.
-			"a slot of a dict read back as a membership needle",
-			"d = {\"a\": \"a\", \"b\": 2}\nprint(d[\"a\"] in d)",
-			"False", "True", "roadmap Gap R.582 (a dict literal's slots describe nothing, so the needle keeps one word)",
-		},
-		{
-			// **Gap R.582**'s second face: a container needle asked of a dict is not an absent key, it is a
-			// key the language refuses to hash (**ADR 0328**'s rule, applied at the membership door for a
-			// needle the compiler can only read through the object).
-			"a container read out of a dict, asked of that dict",
-			"d = {\"a\": 1, \"b\": [2]}\nprint(d[\"b\"] in d)",
-			"False", "TypeError: unhashable type: 'list'", "roadmap Gap R.582 (the unhashable question is asked of a key the source spells, not of one read out of a slot)",
-		},
-		{
-			// **Gap R.583**, the other direction: the HAYSTACK is a literal whose element is a slot read of
-			// a call's answer — the container the builder fills with a pair, and the membership road that
-			// reads it back compares payloads. The needle's own kind is the pair this door supplies; what
-			// is missing is the haystack's claim that its slots describe themselves.
-			"a slot of a list whose element is a call's slot read",
-			"def g():\n    return [7, \"z\"]\n\nxs = [g()[1], 3]\nprint(xs[0] in xs)",
-			"False", "True", "roadmap Gap R.583 (a literal built with a pair element is not claimed as a container whose slots describe themselves)",
-		},
-		{
 			// **Gap R.212** beside **Gap R.83**: the needle's kind is a run-time fact the source never
 			// settled. This is the row the capability table's sample now shows, and the honest direction
 			// to be wrong in.
@@ -427,6 +401,317 @@ func TestWhatTheMembershipNeedleDoorStillCannotReachIsFiledNotFixed(t *testing.T
 			if got := strings.TrimRight(out, "\n"); got != tc.compiled {
 				t.Fatalf("%q answered %q, the answer recorded for %s was %q (reference: %q)",
 					tc.src, got, tc.gap, tc.compiled, tc.oracle)
+			}
+		})
+	}
+}
+
+// The needle the OBJECT describes (roadmap **Gap R.582**, **Gap R.583**, **ADR 0476**).
+//
+// A needle has a HAYSTACK and a kind, and for two of the three doors this file covers the kind came from the
+// wrong place. `d = {"a": "a", "b": 2}` / `print(d["a"] in d)` emitted
+//
+//	%g2 = call i32 @rt_dict_get_tagged(i32 %h2, i32 %t10, i32 4)   ; the payload, from the object
+//	%t14 = call i32 @rt_dict_has_tagged(i32 %t13, i32 %g2, i32 0)  ; the kind, from the compiler
+//
+// — the read asked the object for the payload and then handed the scan a tag the compiler had invented, 0
+// being `TagInt`, to look up a TEXT among keys that are texts. Absence, printed at the exit code of success.
+// It is **Gap R.286**'s shape one door over (there, a missing-key check asked for a `None` key's tag and was
+// handed 0 too), and it is **ADR 0232**'s defect class in its most expensive form: not a refusal that
+// understates the compiler, but a `False` that overstates the program.
+//
+// **ADR 0474** already owned this door — it opened the equality pair door for a needle that is a slot read —
+// but it asked it only when the fold DECLINED, and the fold (`elemKindTag`) never declines a container entry
+// it cannot see into: it answers `TagInt` and moves on. So the change is an ORDER, in the three places a
+// needle's pair is taken (`mixedMembership`, `membershipOfLiteralContainer`, and the fold's own claim
+// `foldNamesNeedle`): ask the object first for a needle the object alone can describe, and let the fold keep
+// its precedence everywhere else. The control table below is what stops that becoming a widening — a needle
+// the SOURCE settles must still cost no allocation.
+//
+// The second half of the row is the error class the invented tag was hiding: a container asked of a DICT is
+// not an absent key, and asked of a SET is not an absent member — the reference refuses to hash it. Once the
+// tag in the module is the object's, that question can be asked of it (**ADR 0328**'s rule, at the third
+// door), which is why the trap table below is part of this row rather than a separate one: the wrong tag and
+// the missing raise are one defect with two symptoms.
+func TestAMembershipNeedleWhoseKindLivesInTheObjectAnswersTheReference(t *testing.T) {
+	t.Parallel()
+	for _, src := range []string{
+		// **Gap R.582** as filed: the needle is a read out of the very dict it is asked about.
+		"d = {\"a\": \"a\", \"b\": 2}\nprint(d[\"a\"] in d)",
+		"d = {\"a\": \"a\", \"b\": 2}\nprint(d[\"a\"] not in d)",
+		// The same needle, read back through the doors that build their own haystack. Each of these
+		// lowered the needle through the fold, which names a kind for an entry it cannot see.
+		"d = {\"a\": 1, \"b\": 2.5}\nprint(d[\"b\"] in [2.5])",
+		"d = {\"a\": 1, \"b\": 2.5}\nprint(d[\"b\"] not in [2.5])",
+		"d = {\"a\": 1, \"b\": [2]}\nprint(d[\"b\"] in [[2]])",
+		"d = {\"a\": 1, \"b\": {\"k\": 1}}\nprint(d[\"b\"] in [{\"k\": 1}])",
+		"d = {\"a\": 1, \"b\": 2.5}\nprint(d[\"b\"] in {2.5})",
+		// A tuple is hashable, so this answers rather than raising — the guard's own negative control.
+		"d = {\"a\": 1, \"b\": (1, 2)}\nprint(d[\"b\"] in [(1, 2)])",
+		// The two kinds whose payload is a word and whose kind is a verdict, and the void, whose payload
+		// is nothing at all: each was a False because 0 matched none of them.
+		"d = {\"a\": 1, \"b\": True}\nprint(d[\"b\"] in [True])",
+		"d = {\"a\": 1, \"b\": None}\nprint(d[\"b\"] in [None])",
+		// **Gap R.583** as filed: the HAYSTACK is a literal whose element is a slot read of a call's
+		// answer. The row was written as a missing claim on the builder; what the door actually needed was
+		// the needle's own kind, and the pair the builder wrote since **ADR 0332** was right all along.
+		"def g():\n    return [7, \"z\"]\n\nxs = [g()[1], 3]\nprint(xs[0] in xs)",
+		"def g():\n    return [7, \"z\"]\n\nxs = [g()[1], 3]\nprint(xs[0] not in xs)",
+		// Two levels down, over a container the program built rather than spelled.
+		"xs = []\nxs.append({\"k\": [1]})\nprint(xs[0][\"k\"] in [[1]])",
+		// A negative that must stay negative: a text read out of a dict, asked of a dict whose keys are
+		// other texts. Answering True here would be the ADR 0232 collision wearing a correct row.
+		"d = {\"a\": \"x\", \"b\": 1}\nprint(d[\"a\"] in {\"a\": 1})",
+		"xs = [\"z\", 3]\nprint(xs[0] in xs)",
+	} {
+		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
+			res, err := JIT(src, 0)
+			if err != nil {
+				t.Fatalf("the module does not build: %v", err)
+			}
+			if res.Code == 2 {
+				t.Fatalf("exit 2 — the code a compiler bug owns — on a program the reference runs:\n%s", res.Stderr)
+			}
+			if res.Code != 0 {
+				t.Fatalf("exit %d, want 0: %s", res.Code, res.Stderr)
+			}
+			want, _, err := PythonRun(src + "\n")
+			if err != nil {
+				t.Fatalf("the reference could not run the program: %v", err)
+			}
+			if got, w := strings.TrimSpace(res.Output), strings.TrimSpace(want); got != w {
+				t.Fatalf("compiled answered %q, the reference answers %q", got, w)
+			}
+			// The record leg: the answer on record is the retired engine's, so this is the third thing the
+			// row has to agree with — and a missing record entry fails here, which is what forces every
+			// source this table adds to be recorded from the reference rather than self-certified.
+			recorded, err := runGoldenStdout(t, src)
+			if err != nil {
+				t.Fatalf("the record leg: %v", err)
+			}
+			if got := strings.TrimSpace(recorded); got != strings.TrimSpace(want) {
+				t.Fatalf("the record answers %q and the reference answers %q for the same source", got, strings.TrimSpace(want))
+			}
+		})
+	}
+}
+
+// The error class the invented tag was hiding (**Gap R.582**'s second face, **ADR 0328** at the membership
+// door): a container asked of a dict is not an absent key, and asked of a set is not an absent member. The
+// needle's TAG carries the question, because for a needle the compiler cannot see into the tag is the only
+// statement in the module about what it is — which is exactly why the invented 0 answered False instead.
+func TestAnUnhashableNeedleReadOutOfAnObjectIsRaisedNotRefused(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		pre, stmt string
+		class     string
+		message   string
+	}{
+		{"d = {\"a\": 1, \"b\": [2]}", "print(d[\"b\"] in d)", "TypeError", "unhashable type: 'list'"},
+		{"d = {\"a\": 1, \"b\": [2]}", "print(d[\"b\"] not in d)", "TypeError", "unhashable type: 'list'"},
+		{"d = {\"a\": 1, \"b\": {\"k\": 1}}", "print(d[\"b\"] in d)", "TypeError", "unhashable type: 'dict'"},
+		{"d = {\"a\": 1, \"b\": [2]}", "print(d[\"b\"] in {1, 2})", "TypeError", "unhashable type: 'list'"},
+		{"d = {\"a\": 1, \"b\": [2]}\ns = {1, 2}", "print(d[\"b\"] in s)", "TypeError", "unhashable type: 'list'"},
+		{"d = {\"a\": 1, \"b\": [2]}", "print(d[\"b\"] in {\"k\": 1})", "TypeError", "unhashable type: 'list'"},
+		{"d = {\"a\": 1, \"b\": {\"k\": 1}}\ns = {1}", "print(d[\"b\"] in s)", "TypeError", "unhashable type: 'dict'"},
+	} {
+		t.Run(tt.stmt, func(t *testing.T) {
+			t.Parallel()
+			src := tt.pre + "\n" + tt.stmt
+			class, message := jitTrap(t, src)
+			if class != tt.class || message != tt.message {
+				t.Fatalf("raised %s: %s, want %s: %s", class, message, tt.class, tt.message)
+			}
+			// Word for word, because the program's `except` matches on the sentence and a reworded one is
+			// a different exception to anything reading the traceback.
+			if _, _, err := PythonRun(src + "\n"); err == nil {
+				t.Fatalf("the reference raised nothing for the same program; this row's expectation is not the reference's")
+			}
+			prog := tt.pre + "\ntry:\n    " + tt.stmt + "\nexcept TypeError:\n    print(\"caught\")"
+			if out := strings.TrimRight(compiledOut(t, prog), "\n"); out != "caught" {
+				t.Fatalf("the raise is not catchable from the program's own handler: %q", out)
+			}
+		})
+	}
+}
+
+// The IR-shape row: the needle's kind is a REGISTER the object answered, never a constant the compiler
+// guessed. It is the same claim **Gap R.286** pins for a dict KEY's tag and **Gap R.232** pins for a list
+// haystack's needle, aimed at the two doors this cycle re-ordered — a regression that puts the fold back in
+// front of the object door is invisible to every value row above, because `TagInt` answers False quietly.
+func TestTheObjectNeedleIsNeverGivenAKindTheCompilerInvented(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		src  string
+		call string
+	}{
+		{"d = {\"a\": \"a\", \"b\": 2}\nprint(d[\"a\"] in d)", "call i32 @rt_dict_has_tagged("},
+		{"d = {\"a\": 1, \"b\": 2.5}\nprint(d[\"b\"] in [2.5])", "call i32 @rt_contains_tagged("},
+		{"d = {\"a\": 1, \"b\": [2]}\nprint(d[\"b\"] in [[2]])", "call i32 @rt_contains_tagged("},
+		{"def g():\n    return [7, \"z\"]\n\nxs = [g()[1], 3]\nprint(xs[0] in xs)", "call i32 @rt_contains_tagged("},
+	} {
+		t.Run(strings.ReplaceAll(tt.src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
+			ir := mainBodyOf(emittedModuleIR(t, tt.src))
+			// Which call is the MEMBERSHIP test? The same helper is also how a dict read checks that its own
+			// key exists, and THAT call's tag is legitimately a literal — the key is spelled in the source. The
+			// membership call is the one whose needle operand is the payload the OBJECT read answered, so the
+			// row is: some call of this shape takes a payload that came out of `rt_dict_get_tagged`/
+			// `rt_get_elem`, and takes its kind as a REGISTER beside it.
+			payloads := objectReadPayloads(ir)
+			if len(payloads) == 0 {
+				t.Fatalf("%q reads no slot out of an object; the row's premise is wrong:\n%s", tt.src, ir)
+			}
+			var saw []string
+			found := false
+			for _, call := range callOperands(ir, tt.call) {
+				saw = append(saw, call)
+				fields := strings.Split(call, ", ")
+				if len(fields) != 3 || !strings.HasPrefix(fields[2], "i32 %") {
+					continue
+				}
+				for _, p := range payloads {
+					if strings.Contains(fields[1], p) {
+						found = true
+					}
+				}
+			}
+			if len(saw) == 0 {
+				t.Fatalf("the module never asks %s:\n%s", tt.call, ir)
+			}
+			if !found {
+				t.Fatalf("no %s call asks a needle whose payload came out of an object and whose tag is a REGISTER — "+
+					"the candidates were %q (payloads %q); a constant tag is the compiler stating an opinion about a "+
+					"value it has not looked at (roadmap Gap R.582):\n%s", tt.call, saw, payloads, ir)
+			}
+		})
+	}
+}
+
+// objectReadPayloads is the set of registers the object's reads answer with — every temp assigned by
+// `rt_dict_get_tagged` or `rt_get_elem`. The IR row needs them because the membership helper is shared with
+// the key-existence check, which takes a constant tag for a perfectly good reason (the key is spelled), and a
+// row that inspects "the first such call" would be reading the wrong question.
+func objectReadPayloads(ir string) []string {
+	var out []string
+	for _, helper := range []string{"call i32 @rt_dict_get_tagged(", "call i32 @rt_get_elem(", "call i32 @rt_dict_value_tag("} {
+		for at := 0; ; {
+			i := strings.Index(ir[at:], helper)
+			if i < 0 {
+				break
+			}
+			abs := at + i
+			lineStart := strings.LastIndex(ir[:abs], "\n") + 1
+			line := ir[lineStart:]
+			if eol := strings.Index(line, "\n"); eol > 0 {
+				line = line[:eol]
+			}
+			if eq := strings.Index(line, " = "); eq > 0 {
+				out = append(out, strings.TrimSpace(line[:eq]))
+			}
+			at = abs + 1
+		}
+	}
+	return out
+}
+
+// callOperands returns the parenthesised argument list of every call of `helper` in the module.
+func callOperands(ir, helper string) []string {
+	var out []string
+	for at := 0; ; {
+		i := strings.Index(ir[at:], helper)
+		if i < 0 {
+			return out
+		}
+		abs := at + i
+		rest := ir[abs+len(helper)-1:] // from the "("
+		end := strings.Index(rest, ")")
+		if end >= 0 {
+			out = append(out, rest[1:end])
+		}
+		at = abs + len(helper)
+	}
+}
+
+// The control that keeps the re-ordering from being a widening: a needle the SOURCE settles never opens the
+// object door, and a haystack the fold can serve still costs no allocation. Without this the rows above could
+// all stay green while every membership test in the corpus grew a heap object — or, worse, while the fold
+// emitted the global-in-an-i32 shape `llc` rejects at exit 2 (**ADR 0166**, **ADR 0192**).
+func TestTheObjectNeedleDoorLeavesTheFoldAndTheProvenKindAlone(t *testing.T) {
+	t.Parallel()
+	for _, src := range []string{
+		"print(1 in [1, 2, 3])",
+		"x = 5\nprint(1 in [x])",
+		"xs = [1, 2]\nprint(1 in xs)",
+		"xs = [\"a\", \"b\"]\nprint(\"a\" in xs)",
+		"xs = [1, \"a\"]\nprint(\"a\" in xs)",
+		"print(\"k\" in {\"k\": 1})",
+		"xs = [1, 2]\nprint(2 in xs)",
+	} {
+		t.Run(strings.ReplaceAll(src, "\n", "; "), func(t *testing.T) {
+			t.Parallel()
+			res, err := JIT(src, 0)
+			if err != nil || res.Code != 0 {
+				t.Fatalf("%q must keep answering: %v %s", src, err, res.Stderr)
+			}
+			ir := mainBodyOf(emittedModuleIR(t, src))
+			for _, forbidden := range []string{"call i32 @rt_get_elem(", "call i32 @rt_tag_of(", "call i32 @rt_dict_value_tag("} {
+				if strings.Contains(ir, forbidden) {
+					t.Fatalf("%q opened the object door for a needle the source settles (%s):\n%s", src, forbidden, ir)
+				}
+			}
+			if src == "print(1 in [1, 2, 3])" && strings.Contains(ir, "call i32 @rt_alloc(") {
+				t.Fatalf("the fold's zero-allocation membership test now allocates:\n%s", ir)
+			}
+		})
+	}
+}
+
+// What this door still cannot reach, pinned with today's answer beside the reference's so the row fails the
+// day the door grows — and the day one of these answers drifts without a row owning it.
+func TestWhatTheObjectNeedleDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		src      string
+		compiled string // what this backend answers today ("" = it refuses)
+		oracle   string // what CPython answers
+		gap      string
+		raises   bool // the compiled answer is a raise, read off the traceback
+	}{
+		{
+			// **Gap R.586**, measured while closing Gap R.582: the reference converts a set needle to the
+			// frozenset it hashes as and answers; this backend refuses to hash it at all. The unhashable
+			// guard this cycle grew is keyed by kind for exactly this reason, and the raise predates it —
+			// the same program answers identically at the parent commit.
+			"a set asked of a set answers, it does not raise",
+			"print({1} in {1, 2})",
+			"TypeError: unhashable type: 'set'", "False",
+			"roadmap Gap R.586 (no frozenset to hash a set needle as, and the guard asks the tag before the haystack asks the kind)",
+			true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if tc.raises {
+				class, message := jitTrap(t, tc.src)
+				if got := class + ": " + message; got != tc.compiled {
+					t.Fatalf("%q raises %q today and the row records %q — either the door grew (close %s) or the "+
+						"raise drifted without a row owning it", tc.src, got, tc.compiled, tc.gap)
+				}
+				return
+			}
+			out, refused := compiledOutOrRefusal(t, tc.src)
+			if tc.compiled == "" {
+				if !refused {
+					t.Fatalf("%q answered %q; this row is filed because the door has no arm for it\n%s", tc.src, out, tc.gap)
+				}
+				return
+			}
+			if refused || strings.TrimSpace(out) != tc.compiled {
+				t.Fatalf("%q answers %q today and the row records %q — either the door grew (close %s) or the "+
+					"answer drifted without a row owning it", tc.src, strings.TrimSpace(out), tc.compiled, tc.gap)
 			}
 		})
 	}

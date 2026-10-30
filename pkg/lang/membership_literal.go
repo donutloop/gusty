@@ -72,7 +72,22 @@ func (g *irGen) membershipOfLiteralContainer(b *strings.Builder, n *BinOp) (val 
 	if g.sortedReversedDoorIsAskedOf(n.L) && !g.sortedReversedIsAContainer(n.L) {
 		return "", true, g.sortedReversedDoorRefusal(n.L)
 	}
-	needle, needleTag, okPair := g.taggedOperand(b, n.L)
+	// Which pair does the needle denote — asked of the OBJECT first when the needle is a read whose kind only
+	// the object describes, for the same reason **Gap R.582** gives for the container-variable door: the fold
+	// below proves no kind for an entry the source does not name and answers `TagInt`, and a payload arriving
+	// beside a kind the compiler invented is a False at the exit code of success (`d = {"a": 1, "b": 2.5}` /
+	// `print(d["b"] in [2.5])`). The fold keeps its precedence for every other needle.
+	needle, needleTag, okPair := "", "", false
+	if g.membershipNeedleIsObjectRead(n.L) {
+		var scratch strings.Builder
+		if p, t, okObjPair := g.membershipNeedlePair(&scratch, n.L); okObjPair {
+			b.WriteString(scratch.String())
+			needle, needleTag, okPair = p, t, true
+		}
+	}
+	if !okPair {
+		needle, needleTag, okPair = g.taggedOperand(b, n.L)
+	}
 	if !okPair {
 		// The haystack has already been built, and getting here may have run the effects its elements
 		// performed: a declining door must not undo an effect an operand already had, and must not answer
@@ -88,6 +103,21 @@ func (g *irGen) membershipOfLiteralContainer(b *strings.Builder, n *BinOp) (val 
 		return g.iteratorIsNoMember(n.Op), true, nil
 	}
 	g.heapUsed = true
+	// A container cannot be a set's member or a dict's key: the reference refuses to hash one, and a scan
+	// that cannot match it reports absence — an answer where the language has an error (**ADR 0328**'s rule,
+	// read off the needle's tag because a needle the compiler cannot see into has no other statement about
+	// what it is). A list haystack takes no guard: `[1] in [[1], 2]` is an ordinary membership test.
+	if strings.HasPrefix(needleTag, "%") {
+		switch n.R.(type) {
+		case *SetLit:
+			// A SET haystack keeps the reference's own exception: `{1} in {1, 2}` answers, because a set
+			// needle is looked up as the frozenset it converts to.
+			g.guardHashableNeedle(b, needleTag, n.Span(), false)
+		case *DictLit:
+			// Asked to be a KEY, a set is unhashable too: `{1} in {"a": 1}` raises.
+			g.guardHashableNeedle(b, needleTag, n.Span(), true)
+		}
+	}
 	found := g.newTmp()
 	fmt.Fprintf(b, "  %s = call i32 @rt_contains_tagged(i32 %s, i32 %s, i32 %s)\n", found, hay, needle, needleTag)
 	cmp := g.newTmp()
@@ -122,6 +152,15 @@ func spellsLiteralContainer(e Expr) bool {
 // (`elemKindTag`), so the fold and the door cannot disagree about which needles are which (**ADR 0232**'s
 // one question).
 func (g *irGen) foldNamesNeedle(e Expr) bool {
+	// A read out of a container whose slots describe themselves has no compiler-side kind at all: the
+	// fold's own kind question (`elemKindTag`) answers `TagInt` for an entry the source does not name, and
+	// an `icmp eq i32` against the payload of a text, a float box or a heap object is a verdict by
+	// coincidence — the exact answer **ADR 0233** forbids and the reason `d = {"a": 1, "b": [2]}` /
+	// `print(d["b"] in {1, 2})` reported absence where the reference refuses to hash a list at all
+	// (roadmap **Gap R.582**). The object door below names this needle's kind; the fold may not claim it.
+	if g.membershipNeedleIsObjectRead(e) {
+		return false
+	}
 	if g.isFloat(e) || isStringExpr(e) {
 		return false
 	}

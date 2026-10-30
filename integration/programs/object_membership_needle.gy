@@ -1,0 +1,29 @@
+# object_membership_needle.gy — a membership needle whose kind lives in the object (roadmap Gap R.582,
+# Gap R.583, ADR 0476). `d = {"a": "a", "b": 2}` / `print(d["a"] in d)` printed False at the exit code of
+# success: the read asked the dict for the needle's payload and the compiler then handed the scan a tag it had
+# invented (0, "an int"), so a text was looked up among keys as a number and the answer was absence. The kind
+# now comes from the same object as the payload, and with it comes the question the invented tag was hiding —
+# a container asked of a dict is not an absent key, it is a key the language refuses to hash.
+d = {"a": "a", "b": 2}
+print(d["a"] in d)
+print(d["a"] not in d)
+nums = {"a": 1, "b": 2.5}
+print(nums["b"] in [2.5])
+print(nums["b"] in {2.5})
+boxes = {"a": 1, "b": [2]}
+print(boxes["b"] in [[2]])
+print(boxes["b"] in [{"k": 1}])
+def g():
+    return [7, "z"]
+
+pair = [g()[1], 3]
+print(pair[0] in pair)
+print(pair[0] not in pair)
+try:
+    print(boxes["b"] in boxes)
+except TypeError as e:
+    print("caught", e)
+try:
+    print(boxes["b"] in {1, 2})
+except TypeError as e:
+    print("caught", e)

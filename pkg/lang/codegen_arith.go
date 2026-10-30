@@ -810,7 +810,34 @@ func (g *irGen) mixedMembership(b *strings.Builder, n *BinOp) (string, bool, err
 		return "", false, nil
 	}
 	mixed := g.mixedSets[nm.Value] || g.mixedDicts[nm.Value] || g.mixedLists[nm.Value]
-	needle, tag, tok := g.taggedOperand(b, n.L)
+	// Which (payload, tag) pair does this needle denote? ONE question, asked once (**ADR 0232**), and the
+	// order it is asked in is the whole content of **Gap R.582**.
+	//
+	// A needle that is itself a read out of a container whose slots describe themselves carries its kind in
+	// the tag the writer left beside the payload — `rt_dict_get_tagged` answers the payload and
+	// `rt_dict_value_tag` answers the kind, and only the object knows which pair those are. The fold below
+	// cannot produce that kind at all: `elemKindTag` sees a subscript, proves nothing about an entry the
+	// source does not pin down, and its default is `TagInt` — so `d = {"a": "a", "b": 2}` /
+	// `print(d["a"] in d)` emitted `rt_dict_has_tagged(i32 %h, i32 %g2, i32 0)` and looked for an INTEGER
+	// key in a dict whose keys are texts. Absence, at the exit code of success, where the reference answers
+	// True; and `d = {"a": 1, "b": [2]}` / `print(d["b"] in d)` answered False where the reference refuses
+	// to hash a list at all. **ADR 0474** opened this door for the containers whose slots the scan claims;
+	// it opened it only when the fold DECLINED, and the fold never declines a dict entry — it answers 0.
+	//
+	// So the object-reading door is asked FIRST for exactly that needle, and the fold keeps its ordinary
+	// precedence everywhere else: a spelled literal, an int variable, a name the pair road bound, all still
+	// take the fold, which is what keeps `for v in [1, 2]: print(v == 1)` emitting no pair call at all.
+	needle, tag, tok := "", "", false
+	if g.membershipNeedleIsObjectRead(n.L) {
+		var scratch strings.Builder
+		if p, t, okPair := g.membershipNeedlePair(&scratch, n.L); okPair {
+			b.WriteString(scratch.String())
+			needle, tag, tok = p, t, true
+		}
+	}
+	if !tok {
+		needle, tag, tok = g.taggedOperand(b, n.L)
+	}
 	if !tok {
 		// The needle may be a slot whose kind only the OBJECT describes — the pair the equality door
 		// already computes for `xs[i] == v`. Ask THAT door rather than refuse: `xs[i] in xs` is the same
@@ -821,16 +848,12 @@ func (g *irGen) mixedMembership(b *strings.Builder, n *BinOp) (string, bool, err
 		// instructions after a terminator and `llc` would report the compiler's mistake as the program's
 		// (**ADR 0166**) — the shapes that do this are `TestATrapInsideAMembershipNeedleIsRaisedNotRefused`.
 		var scratch strings.Builder
-		probe := n.L
 		// The needle's OWN base may be a call that hands back a container. That road already exists:
 		// `containerAnswerSubscript` materialises the answer under the rooted slot a container variable
 		// occupies and hands back the subscript over the name (ADR 0334), which is the shape the pair door
 		// reads. Ask it before declining, so `words()[0] in words()` is one program with `w = words()` /
 		// `w[0] in w` rather than an answer and a refusal.
-		if redo, okAns := g.containerAnswerSubscript(&scratch, n.L); okAns {
-			probe = redo
-		}
-		if p, t, okPair := g.comparePair(&scratch, probe); okPair {
+		if p, t, okPair := g.membershipNeedlePair(&scratch, n.L); okPair {
 			b.WriteString(scratch.String())
 			needle, tag, tok = p, t, true
 		}
@@ -840,6 +863,24 @@ func (g *irGen) mixedMembership(b *strings.Builder, n *BinOp) (string, bool, err
 			return "", false, nil // the untagged scan keeps the answer it always gave
 		}
 		return "", false, fmt.Errorf("codegen: testing %s against the container %s whose slots describe themselves needs a needle whose kind the compiler can prove; a bool, float or container needle needs the tagged value word (roadmap L11.1, ADR 0232)", exprSurface(n.L), exprSurface(n.R))
+	}
+	// A container asked of a DICT is not an absent key, and a container asked of a SET is not an absent
+	// member: the reference refuses to hash either, and an answer of "not in" loses a whole error class
+	// (**ADR 0328**'s rule). The test is on the needle's TAG because for a needle the compiler cannot see
+	// into, the tag is the only statement in the module about what the needle is — which is precisely the
+	// needle this row exists for. A tag the compiler spelled as a literal needs no guard: the static door
+	// (`unhashableKeyGate`) has refused that program since **Gap R.217**, and refusing it twice with the
+	// same sentence would leave two places to keep in step.
+	if strings.HasPrefix(tag, "%") {
+		switch fn {
+		case "rt_dict_has_tagged":
+			// A set is unhashable too when it is asked to be a KEY: `{1} in {"a": 1}` raises.
+			g.guardHashableNeedle(b, tag, n.Span(), true)
+		case "rt_set_contains_tagged":
+			// …but the reference answers `{1} in {1, 2}` (a set is looked up as the frozenset it
+			// converts to), so a set member is guarded only against the kinds that cannot be hashed.
+			g.guardHashableNeedle(b, tag, n.Span(), false)
+		}
 	}
 	h := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", h, "_"+nm.Value))
@@ -855,4 +896,29 @@ func (g *irGen) mixedMembership(b *strings.Builder, n *BinOp) (string, bool, err
 		cmp = inv
 	}
 	return g.asBoolI32(b, cmp), true, nil
+}
+
+// membershipNeedleIsObjectRead asks whether a membership needle is a read whose kind lives in the object
+// rather than in the expression: a slot of a mixed container, a slot of a slot, a slot of a copy — every
+// shape **ADR 0251**'s recursive read answers with a (payload, tag) pair because no compiler-side answer
+// exists. It is the same predicate the equality door asks (**ADR 0232**: one question, one door), used here
+// only to decide which of the two doors gets to answer FIRST — and the answer it protects against is not a
+// refusal but a plausible False, which is why the order is the bug (**Gap R.582**).
+func (g *irGen) membershipNeedleIsObjectRead(e Expr) bool {
+	return g.isTaggedSlotRead(e)
+}
+
+// membershipNeedlePair is the pair door for a membership needle: the one subscript-materialising road
+// **ADR 0334** opened (a needle whose base is a call that hands back a container is put under a rooted slot
+// first), then the one equality door **ADR 0474** opened (`comparePair`, which answers a slot read, a read
+// of a read, and a popped slot from the pair the printer already carries). It emits nothing unless it
+// succeeds: the caller passes a SCRATCH builder, because every read below can raise — a bounds check whose
+// IndexError branch terminates the block, a KeyError, an unhashable key — and instructions after a
+// terminator are `llc` rejecting the compiler's work, not the program's (**ADR 0166**).
+func (g *irGen) membershipNeedlePair(b *strings.Builder, e Expr) (val, tag string, ok bool) {
+	probe := e
+	if redo, okAns := g.containerAnswerSubscript(b, e); okAns {
+		probe = redo
+	}
+	return g.comparePair(b, probe)
 }

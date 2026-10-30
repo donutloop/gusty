@@ -1,5 +1,83 @@
 {
  "entries": {
+"# object_membership_needle.gy — a membership needle whose kind lives in the object (roadmap Gap R.582,\n# Gap R.583, ADR 0476). `d = {\"a\": \"a\", \"b\": 2}` / `print(d[\"a\"] in d)` printed False at the exit code of\n# success: the read asked the dict for the needle's payload and the compiler then handed the scan a tag it had\n# invented (0, \"an int\"), so a text was looked up among keys as a number and the answer was absence. The kind\n# now comes from the same object as the payload, and with it comes the question the invented tag was hiding —\n# a container asked of a dict is not an absent key, it is a key the language refuses to hash.\nd = {\"a\": \"a\", \"b\": 2}\nprint(d[\"a\"] in d)\nprint(d[\"a\"] not in d)\nnums = {\"a\": 1, \"b\": 2.5}\nprint(nums[\"b\"] in [2.5])\nprint(nums[\"b\"] in {2.5})\nboxes = {\"a\": 1, \"b\": [2]}\nprint(boxes[\"b\"] in [[2]])\nprint(boxes[\"b\"] in [{\"k\": 1}])\ndef g():\n    return [7, \"z\"]\n\npair = [g()[1], 3]\nprint(pair[0] in pair)\nprint(pair[0] not in pair)\ntry:\n    print(boxes[\"b\"] in boxes)\nexcept TypeError as e:\n    print(\"caught\", e)\ntry:\n    print(boxes[\"b\"] in {1, 2})\nexcept TypeError as e:\n    print(\"caught\", e)\n": {
+    "stdout": "True\nFalse\nTrue\nTrue\nTrue\nFalse\nTrue\nFalse\ncaught unhashable type: 'list'\ncaught unhashable type: 'list'\n",
+    "hasStdout": true
+   },
+"d = {\"a\": \"a\", \"b\": 2}\nprint(d[\"a\"] in d)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": \"a\", \"b\": 2}\nprint(d[\"a\"] not in d)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": \"x\", \"b\": 1}\nprint(d[\"a\"] in {\"a\": 1})": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1, \"b\": (1, 2)}\nprint(d[\"b\"] in [(1, 2)])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1, \"b\": 2.5}\nprint(d[\"b\"] in [2.5])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1, \"b\": 2.5}\nprint(d[\"b\"] in {2.5})": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1, \"b\": 2.5}\nprint(d[\"b\"] not in [2.5])": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1, \"b\": None}\nprint(d[\"b\"] in [None])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1, \"b\": True}\nprint(d[\"b\"] in [True])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1, \"b\": [2]}\nprint(d[\"b\"] in [[2]])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1, \"b\": {\"k\": 1}}\nprint(d[\"b\"] in [{\"k\": 1}])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return [7, \"z\"]\n\nxs = [g()[1], 3]\nprint(xs[0] in xs)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return [7, \"z\"]\n\nxs = [g()[1], 3]\nprint(xs[0] not in xs)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"xs = [\"z\", 3]\nprint(xs[0] in xs)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = []\nxs.append({\"k\": [1]})\nprint(xs[0][\"k\"] in [[1]])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
 "# integration/programs/ternary_pair_arg.gy — an answer whose kind the compiler knows only from a\n# table crosses a call boundary: the float the ADR 0274 promotion emitted `define double` for,\n# handed to a parameter, and a `return` whose arm is a container literal the fold keeps in a\n# compile-time global. Both used to reach `llc` (exit 2); both answer now.\n# (roadmap Gap R.581's float arm, Gap R.584, ADR 0475)\n\ndef half(x):\n    return 1.5\n\ndef show(v):\n    return v\n\nprint(show(half(1)))\nprint(show(half(0)))\n\ndef echo(v):\n    print(v)\n\necho(half(1))\n\ndef twice_away(w):\n    return show(w)\n\nprint(twice_away(half(1)))\n\ndef picks(x):\n    return [1, 2] if x else 0\n\nbound = picks(1)\nprint(bound)\nprint(picks(0))\n\ndef built(x):\n    return [i * 2 for i in [1, 2]] if x else 0\n\nrows = built(1)\nprint(rows)\n\ndef entry(x):\n    return {\"a\": 1} if x else 0\n\nrow = entry(1)\nprint(row)\n": {
     "stdout": "1.5\n1.5\n1.5\n1.5\n[1, 2]\n0\n[2, 4]\n{'a': 1}\n",
     "hasStdout": true
