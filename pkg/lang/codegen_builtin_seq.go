@@ -198,6 +198,16 @@ func (g *irGen) builtinLen(b *strings.Builder, c *Call, fnName string) (string, 
 	if n, ok := stringConstLen(c.Args[0], g.builtinShadowed); ok {
 		return fmt.Sprintf("%d", n), nil
 	}
+	// `len(s[1:3])` over `s = "abcd"` is the reference's `2` (roadmap Gap R.240, ADR 0470). Asked BEFORE the
+	// arms below, because every one of them reads the argument as a container or as a text the compiler can
+	// name, and a slice of a text is neither: it is the text the slice road selects, measured by the helper a
+	// text VARIABLE's length asks. A list slice, a dict slice and a slice of anything else keep the road
+	// they have always had — this arm declines them and says so by returning `handled = false`.
+	if v, handled, err := g.lenOfTextSlice(b, c.Args[0]); err != nil {
+		return "", err
+	} else if handled {
+		return v, nil
+	}
 	// len of a string the compiler cannot read asks the table, and counts code points —
 	// the same unit every other position question in this language is asked in
 	// (ADR 0225, ADR 0229). Bytes would say 5 for "café" and be wrong about its own string.

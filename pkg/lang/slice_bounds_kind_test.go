@@ -510,12 +510,13 @@ func TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 			"[2, 4]", "[2, 4]",
 			"roadmap Gap R.239",
 		},
-		{
-			"the length of a slice of a text",
-			"s = \"abcd\"\nprint(len(s[1:3]))",
-			"", "2",
-			"roadmap Gap R.240 (`len(s)` answers 4 and `len(xs[0:2])` answers 2; the length door has no arm for a copy of a text, whatever its bounds are)",
-		},
+		// The length of a slice of a text — `s = "abcd"` / `print(len(s[1:3]))`, the row's own definition of
+		// done — is DELETED by its own text: the length door now walks this file's own slice road (the extracted
+		// `valueTextSlice`) and measures the text it selects through `rt_str_nchars`, so the answer is `2` on the
+		// compiled leg, the JIT and the record, and the four raises this door now INHERITS from the bounds and
+		// step gates and the base gate are witnessed beside it. It lives in `pkg/lang/text_slice_len_test.go`
+		// (**roadmap Gap R.240**, **ADR 0470**), and the shape still refused here — a step that is a VALUE — is
+		// filed as **Gap R.243** with the road's own sentence, not this file's container one.
 		{
 			"a stepped slice of a text whose step is a value",
 			"s = \"abcd\"\nk = 2\nprint(s[::k])",

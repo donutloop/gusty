@@ -381,12 +381,11 @@ func TestWhatTheBoundDoorStillCannotAnswerThroughTheCLI(t *testing.T) {
 			"1", "TypeError: slice indices must be integers or None or have an __index__ method",
 			"roadmap Gap R.237 (a float parameter is the pair road's, so the body holds no static kind to ask; a text argument DOES raise — the gate reads that kind)",
 		},
-		{
-			"the length of a slice of a text",
-			"s = \"abcd\"\nprint(len(s[1:3]))",
-			"", "2",
-			"roadmap Gap R.240 (`len(s)` answers 4 and `len(xs[0:2])` answers 2; the door has no arm for a copy of a text)",
-		},
+		// The length of a slice of a text is DELETED by its own text: `s = "abcd"` / `print(len(s[1:3]))` answers
+		// `2` through the CLI and against a live `python3` in `integration/len_text_slice_test.go`, together with
+		// the eleven shapes the door now inherits from the slice road's gates (`'set'`, `KeyError: slice(0, 1,
+		// None)`, `slice indices must be integers …`, `slice step cannot be zero`) — **roadmap Gap R.240**,
+		// **ADR 0470**. The value-step sibling below stays: the stride road is **Gap R.243**'s.
 		{
 			"a stepped slice of a text whose step is a value",
 			"s = \"abcd\"\nk = 2\nprint(s[::k])",

@@ -17930,3 +17930,60 @@ program (**289 → 290** programs, matrix **275 → 276**, parity-asserted **239
 drift 0), three queue rows added and one closed (**467 → 470** rows, owed **274 → 276**), and **ADR 0469** as the
 457th record. Four documents quote the record's size and `TestTheRoadmapSnapshotIsMeasuredNotRemembered` recomputes
 them all; the correct move is to let the guard name the stale ones rather than to remember.
+
+## Cycle: the length of a slice of a text is asked of the road that already owned the question (**roadmap Gap R.240** closed; **Gap R.567** filed; **ADR 0470**)
+
+**"Copy the branch into the new door" is the shape of almost every future bug in a compiler, and the extraction is
+the whole fix.** `len(s[1:3])` refused with `len requires an inline list/dict/set literal` while `print(len(s))`
+answered `4`, `print(len(xs[0:2]))` answered `2` and `print(s[1:3])` printed `bc` — the characters existed twice in
+the compiler and the length door had no arm that went and asked. Thirty lines inside `builtinLen` would have answered
+every value row in the table: fold the runes for the constant shapes, call `rt_str_slice` for the value shapes. What
+that version does not have is the branch's stack of gates — base (**ADR 0466**/**ADR 0468**), bounds (**ADR 0336**),
+step (**ADR 0337**) — and the order they are asked in, which is the difference between `len(s["a":"b"])` raising
+`slice indices must be integers or None or have an __index__ method` and printing `2` at exit 0. So the branch was
+MOVED out of `valueSlice` into `pkg/lang/text_slice_len.go` (`sliceRoadCallsItAText`, `valueTextSlice`) and both the
+slice road and the length door call it. The measurement that proves the choice is not aesthetic: the raise table for
+this door has eleven rows, all four families of exception, and `len` asked about none of them — it inherited every
+one by walking the road. Had the branch been copied, each of those eleven would have been a decision made twice, in
+two files, with only the corpus noticing when they parted.
+
+**A `raised` flag on a lowering function is an exit-2 guard, not hygiene.** The first draft of `lenOfTextSlice`
+called the branch and then emitted its measurement unconditionally — so for `len(s["a":"b"])` the module got
+`call i32 @rt_str_nchars(` after the raise's terminator, and `llc` rejected the compiler's own module. The branch
+now returns `(reg, raised, err)` and the callers stop on `raised`, which is what `valueSlice` had always done by
+returning `"0"` inline. Two lessons: a value-returning road that can also raise needs to say WHICH it did, because
+`("", nil)` is not distinguishable from "the raise is where the value was"; and an IR-verifier failure found in
+review is worth less than a row that fails — the raise rows therefore carry an IR assertion of their own (no
+measurement call on a raising shape, with the answered program as the counter-row).
+
+**Ask the object, or accept two rules for one question.** The folded shape's count is computable in Go — `len([]rune(sv))`,
+no call at all — and the first draft did it, alongside `rt_str_nchars` for the value-bounds shape. That is one
+question with two owners, and the parity table (one program written with constant bounds, with value bounds, and with
+the slice bound to a name first) exists exactly where such a pair drifts. Both spellings now ask the same helper
+**ADR 0225** fixed for a text variable, so the unit — code points, never bytes — is decided once; the UTF-8 rows
+(`"café"[2:]` → `2`, `"héllo"[1:3]` → `2`, `"日本語です"[1:3]` → `2`) are what makes that decidable, and the byte helper
+being forbidden in the program's own functions — with a counter-row whose truth test still emits it — is what makes
+the forbidding a witness rather than an absence of evidence.
+
+**A refusal the row does not fix can still be improved by the row.** `len(s[::k])` stays refused — the stride road is
+**Gap R.243**'s — but it stopped being a lie on the way past: the reader used to be told to supply an inline
+container literal for a text, and now gets the slice road's own `cannot fold string slice`, because the length door
+walks that road and repeats its sentence. Same for `len(s.split(" ")[1])`, filed as **Gap R.240**'s neighbour
+**Gap R.567** with the bad message named as half the defect (**ADR 0249**: a refusal that sends the reader after the
+wrong thing is worse than no refusal, because they will act on it). The general rule: when your arm declines, check
+whose sentence the fall-through speaks — a fall-through to a generic container refusal is a new bug your feature
+ships even when it does not ship a wrong answer.
+
+**The conformance corpus had been working around this row, and the workaround was the tell.** `programs/slice_bounds.gy`
+asserts `s[1:3] == "bc"` rather than `len(s[1:3]) == 2`, because the corpus may only assert doors its own row answers.
+Writing `programs/len_text_slice.gy` — measuring the length in nine bound shapes, four raises and three UTF-8 texts —
+is what turned that apology into a row, and it is the pattern to look for elsewhere: a corpus program that asserts
+around a shape instead of through it is a roadmap row wearing a test.
+
+**Counts, again, moved as one set.** 69 record entries came in from the reference with the compiled leg
+cross-checked (**10862 → 10931**, `tools/recmerge`, which refuses an entry the compiled leg will not agree to), one
+corpus program (**290 → 291**, matrix **276 → 277**, parity-asserted **240 → 241**, oracle `match` **226 → 227**),
+one ADR (**458**, highest **0470**), one queue row closed and one filed (**277 of 471**). The four places that
+publish the record count are guarded by `pkg/lang/golden_artifact_counts_test.go`, and the row that pinned
+`len(s[1:3])` as refused moved out of two filed tables by deletion — a filed row closes by failing, not by being
+edited.

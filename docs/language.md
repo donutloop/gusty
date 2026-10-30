@@ -3225,7 +3225,48 @@ print(s[None:2])       # ab       — the same rule over the text road
 #   xs[[0]:2]          the same (this one used to reach `llc` as a global in an i32 argument: exit 2)
 ```
 
-**A step is asked what it holds, and zero is the program's `ValueError`** (**ADR 0337**). `0` is a perfectly good
+**The length of a slice of a text is the number of CHARACTERS it selects** (**ADR 0470**). `len` asks the slice road
+what text the bounds select and measures that text with the same helper it asks for a text variable
+(`rt_str_nchars`) — code points, never bytes, so the folded spelling and the value-bounded spelling cannot be given
+two rules and a `é` is one character whichever of them produced it:
+
+```
+s = "abcd"
+print(len(s[1:3]))          # 2       — the row's own shape; refused until ADR 0470
+print(len(s[::-1]))         # 4       — a stride counted the way the printer walks it
+print(len(s[::2]))          # 2
+print(len("abcd"[1:3:2]))   # 1       — a literal base, every bound written
+print(len(s[-2:]))          # 2
+print(len(s[10:20]))        # 0       — out of range selects nothing, and nothing has no characters
+print(len(s[3:1]))          # 0
+s = "café"
+print(len(s[2:]))           # 2       — not 3 bytes
+i = 1
+j = 3
+print(len(s[i:j]))          # 3       — value bounds, the same answer as s[1:3] would give
+print(len(s[1:3]) + len(s)) # 7       — the answer is an int, so it sits in any expression
+
+def at(t):
+    return len(t[1:4])
+print(at("abcdef"))         # 3       — a text parameter's slice answers too
+```
+
+The bounds and the step are asked BEFORE the count, because they belong to the slice road and not to `len`: that is
+why `len(s["a":"b"])` raises `TypeError: slice indices must be integers or None or have an __index__ method`, why
+`len(s[::0])` raises `ValueError: slice step cannot be zero`, and why `len({1, 2}[0:1])` and `len({"a": 1}[0:1])`
+raise the OBJECT's complaint (`'set' object is not subscriptable`, `KeyError: slice(0, 1, None)`) — all four
+ catchably, at **exit 3**, with the program's own `except` able to take them. A `len` that measured first would have
+printed a number for every one of them.
+
+**What the door still declines**, with the reference's answer beside each: a step that is a VALUE
+(`k = 2` / `print(len(s[::k]))` — the road's own `cannot fold string slice`, owed by **Gap R.243**, and `len` answers
+it the day the stride road lands); a module text a function BODY reads (`s = "abcd"` / `def body():` …
+`print(len(s[1:3]))` — the same refusal `print(s[1:3])` in that body earns, owed by **Gap R.402**); and a slot of the
+list a call answered (`print(len(s.split(" ")[1]))` — **Gap R.567**, whose refusal still blames a literal, which is
+part of what that row owes).
+
+**A step is asked what it holds, and zero is the program's `ValueError`** (**ADR 0337**).
+`0` is a perfectly good
 integer, so it passes the kind gate above — and `rt_slice` walks its own loop forever on it, which used to end with
 the run killed and **exit 2**, the code ADR 0166 reserves for a compiler bug, reported for a program whose only fault
 was writing `xs[::0]`. The reference answers `ValueError: slice step cannot be zero`, and so does this backend, on
@@ -3246,7 +3287,6 @@ print(xs[::k])         # [1, 3]   — a stride the compiler cannot read is guard
 
 A stride the compiler can read as anything but zero asks nothing at all: no compare, no raise block, no interned
 message in the module. What the door still declines, and why, is filed rather than glossed:
-
 - **a copy of a brace whose loop copies a container that mixes kinds** — `print([x for x in [1, "a"]][0:2])` is
   `[1, 'a']` in the reference and the position's own refusal here, while the bound twin
   (`zs = [x for x in [1, "a"]]`, `print(zs[0:2])`) answers: **Gap R.539** (no builder claimed the element kind,
@@ -3269,9 +3309,6 @@ message in the module. What the door still declines, and why, is filed rather th
 - **a comprehension over a copy** — `print([x * 2 for x in xs[0:2]])` is `[2, 4]` in the reference and refuses
   here with a sentence about texts, while the same copy *named* (`zs = xs[0:2]`) iterates and answers: **Gap R.239**,
   because the iterable door asks none of what the binding door records;
-- **the length of a slice of a text** — `print(len(s[1:3]))` over `s = "abcd"` is `2` in the reference and refuses
-  with `len requires an inline list/dict/set literal`, although `len(s)` answers `4`, `len(xs[0:2])` of a list copy
-  answers `2`, and the fold that prints `s[1:3]` holds the characters it would count: **Gap R.240**;
 - **a slice handed back by a function ANSWERS** — `def n(): return xs[1:3]` with `print(n())` prints `[2, 3]`, the
   mixed base prints `[1.5, 'a']`, `for v in n():` walks the copy, `len(n())` answers `2`, `n() == [2, 3]` answers
   `True` and `bool()` of the empty copy answers `False` (**Gap R.238**, paid by **ADR 0465**): the scan that decides

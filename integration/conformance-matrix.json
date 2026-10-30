@@ -4083,6 +4083,27 @@
     },
     {
       "case": {
+        "id": "programs/len_text_slice",
+        "name": "len_text_slice.gy",
+        "source": "s = \"abcd\"\nprint(len(s[1:3]))\nprint(len(s[::-1]))\nprint(len(\"abcd\"[1:3]))\nprint(len(\"abcd\"[1:3:2]))\nprint(len(s[1:]))\nprint(len(s[:]))\nprint(len(s[::2]))\nprint(len(s[::-2]))\nprint(len(s[-2:]))\nprint(len(s[-3:-1]))\nprint(len(s[10:20]))\nprint(len(s[3:1]))\nw = \"hello world\"\nprint(len(w[6:]))\nprint(len(w[:5]))\nu = \"café\"\nprint(len(u))\nprint(len(u[2:]))\nprint(len(u[1:3]))\ni = 1\nj = 3\nprint(len(s[i:j]))\nprint(len(s[i:j]) == len(s[1:3]))\nt = s[1:3]\nprint(len(t))\nprint(len(s[1:3][::-1]))\nprint(len(s[::-1][::-1]))\ndef edge(x):\n    return len(x[1:4])\nprint(edge(\"abcdef\"))\nprint(len(\"abcdef\".upper()[0:3]))\nprint(len(s.upper()[1:3]))\nprint(len(s[1:3].upper()))\nprint(len(s[1:3]) + len(s))\nprint([len(s[1:3]), len(s)])\nprint({\"n\": len(s[1:3])})\nprint(len(s[1:3]) == 2)\nprint(bool(len(s[0:0])))\ntry:\n    print(len(s[\"a\":\"b\"]))\nexcept TypeError as e:\n    print(\"caught\", e)\ntry:\n    print(len(s[::0]))\nexcept ValueError as e:\n    print(\"caught\", e)\nst = {1, 2}\ntry:\n    print(len(st[0:1]))\nexcept TypeError as e:\n    print(\"caught\", e)\nd = {\"a\": 1}\ntry:\n    print(len(d[0:1]))\nexcept KeyError as e:\n    print(\"miss\", e)\nxs = [1, 2, 3]\nprint(len(xs[0:2]))\nprint(len(xs[::2]))\nprint(s[1:3])\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "2\n4\n2\n1\n3\n4\n2\n2\n2\n2\n0\n0\n5\n5\n4\n2\n2\n2\nTrue\n2\n2\n4\n3\n3\n2\n2\n6\n[2, 4]\n{'n': 2}\nTrue\nFalse\ncaught slice indices must be integers or None or have an __index__ method\ncaught slice step cannot be zero\ncaught 'set' object is not subscriptable\nmiss slice(0, 1, None)\n2\n2\nbc\n",
+      "python_ok": true,
+      "python_stdout": "2\n4\n2\n1\n3\n4\n2\n2\n2\n2\n0\n0\n5\n5\n4\n2\n2\n2\nTrue\n2\n2\n4\n3\n3\n2\n2\n6\n[2, 4]\n{'n': 2}\nTrue\nFalse\ncaught slice indices must be integers or None or have an __index__ method\ncaught slice step cannot be zero\ncaught 'set' object is not subscriptable\nmiss slice(0, 1, None)\n2\n2\nbc\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/for_iterables",
         "name": "for_iterables.gy",
         "source": "# A `for` loop asks its iterable what it is (Gap R.246, ADR 0339).\n# Every answer here is the reference's; the compiled backend is judged against it.\n\ndef b():\n    return [3, 1, 2]\n\nxs = [3, 1, 2]\nys = [1, 2, 3]\nwords = [\"b\", \"a\"]\nempty = []\n\n# the containers the compiler can write down, which it used to step over as a repeat count\nfor v in sorted([3, 1, 2]):\n    print(v)\nfor v in reversed([1, 2, 3]):\n    print(v)\nfor v in sorted([3, 1, 2], reverse=True):\n    print(v)\nfor v in sorted([3, 1, 2], reverse=False):\n    print(v)\nfor v in sorted([]):\n    print(v)\nfor v in reversed([]):\n    print(v)\nfor v in reversed(\"abc\"):\n    print(v)\nfor v in sorted([2, 2, 1]):\n    print(v)\n\n# the operations nest, and apply in the order the reference applies them\nfor v in sorted(reversed([3, 1, 2])):\n    print(v)\nfor v in reversed(sorted([1, 3, 2])):\n    print(v)\n\n# the containers the runtime measures, which the container pair now hands the loop\nfor v in sorted(xs):\n    print(v)\nfor v in reversed(ys):\n    print(v)\nfor v in sorted(words):\n    print(v)\nfor v in reversed(words):\n    print(v)\nfor v in sorted(b()):\n    print(v)\nfor v in reversed(b()):\n    print(v)\nfor v in sorted([3, 1, 2][0:2]):\n    print(v)\nfor v in sorted(empty):\n    print(v)\n\n# one ordering, written once: what the program prints and what it steps over are the same sequence\nprint(sorted([3, 1, 2]), sorted(xs), sorted([3, 1, 2], reverse=True), sorted(xs, reverse=True))\n\n# the loop's own semantics survive the fold\nfor v in sorted([3, 1, 2]):\n    if v == 2:\n        break\n    print(v)\nfor v in sorted([3, 1, 2]):\n    if v == 2:\n        continue\n    print(v)\nfor v in sorted([3, 1]):\n    print(v)\nelse:\n    print(\"done\")\nfor v in reversed([7, 8]):\n    print(v * 10)\n\n# the roads the row is not allowed to disturb\nfor v in [1, 2, 3]:\n    print(v)\nfor c in \"abc\":\n    print(c)\nfor i in range(3):\n    print(i)\nfor v in xs:\n    print(v)\nfor v in [1, 2, 3][0:2]:\n    print(v)\nfor k in {1: 2}:\n    print(k)\nfor v in {1, 2}:\n    print(v)\nfor v in b():\n    print(v)\n",
@@ -6532,11 +6553,11 @@
       ]
     }
   ],
-  "rows": 276,
+  "rows": 277,
   "skipped": 36,
-  "pass": 240,
+  "pass": 241,
   "fail": 0,
-  "oracle_match": 226,
+  "oracle_match": 227,
   "oracle_debt": 24,
   "oracle_not_applicable": 26,
   "oracle_drift": 0

@@ -862,6 +862,17 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// augmented `+= +1`, and the two caught raises are in this one program, whose expectation is what
 		// CPython printed for it (roadmap Gap R.244, ADR 0469).
 		"unary_plus",
+		// The length of a slice of a TEXT is the number of CODE POINTS the slice selects. `len` had arms for
+		// a container's count field, a text variable's length and a call's answer, and none for a slice of a
+		// text, so `s = "abcd"` / `print(len(s[1:3]))` stopped the build with `len requires an inline
+		// list/dict/set literal` at exit 1 — a sentence about a container the program never wrote — while
+		// `print(len(s))` printed `4` and `print(s[1:3])` printed `bc`. The constant-folded bounds, the value
+		// bounds, the steps, the negative and out-of-range bounds, the UTF-8 counts, the answer in an
+		// arithmetic/comparison/loop/dict position, the base that is a parameter or a call's answer, and the
+		// four raises the arm inherits from the slice road (the bounds' `TypeError`, the zero step's
+		// `ValueError`, the set's and the dict's own complaints) are in this one program, whose expectation is
+		// what CPython printed for it (roadmap Gap R.240, ADR 0470).
+		"len_text_slice",
 		// A `for` loop asks its ITERABLE what it is before choosing a road for it. The loop had three
 		// ways to step over an iterable and no question to choose between them, so a container the
 		// compiler could write down but could not NAME — `sorted([3, 1, 2])`, `reversed([1, 2, 3])`,

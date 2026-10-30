@@ -1043,55 +1043,18 @@ func (g *irGen) valueSlice(b *strings.Builder, e Expr, n *Slice) (string, error)
 	// The gate is "is this a string?", not "can the compiler read its text?": a slice of a
 	// string the emitter only knows the *kind* of (`s = "abcdef"` inside a function body)
 	// still has an answer, and the table gives it (ADR 0229).
-	_, objIsFoldedStr := g.stringVal(n.Obj)
-	if objIsFoldedStr || g.exprIsString(n.Obj) {
-		// A text slice counts characters, so its bounds are positions and the reference's sentence for a
-		// bound that is neither an integer nor `None` is the same one a list's slice gets. Asked before the
-		// fold and before the helper, because both read a bound as a number without asking what it holds:
-		// `print(s["a":"b"])` over `s = "abcd"` answered `b` at exit 0 (roadmap Gap R.233, ADR 0336).
-		if g.badSliceBoundGate(b, n) {
+	// The text branch is its own function (`valueTextSlice`, pkg/lang/text_slice_len.go) so the length door
+	// can walk the SAME gates for `len(s[1:3])` rather than keep a second copy of them — one question about
+	// a text slice, asked in one place (roadmap Gap R.240, ADR 0470; ADR 0232's rule).
+	if g.sliceRoadCallsItAText(n) {
+		reg, raised, err := g.valueTextSlice(b, n)
+		if err != nil {
+			return "", err
+		}
+		if raised {
 			return "0", nil
 		}
-		// A step of zero is the reference's `ValueError: slice step cannot be zero`, and the fold reads a
-		// step as a stride without asking whether it strides at all — asked here, before the fold and
-		// before the helper, so the shape that used to be refused with `cannot fold string slice` is the
-		// program's exception instead (roadmap Gap R.236, ADR 0336).
-		if g.sliceStepIsKnownZero(n) {
-			g.raiseSliceStepIsZero(b, n)
-			return "0", nil
-		}
-		if sv, ok := g.stringVal(n); ok {
-			return g.internStr(b, sv), nil
-		}
-		// Bounds that are values rather than constants are still a slice of the same
-		// string: an absent bound is spelled with the helper's own sentinel, because an
-		// i32 argument cannot be "missing" (ADR 0229).
-		if g.sliceBoundIsAbsent(n.Step) {
-			if sreg, sok, serr := g.strReg(b, n.Obj); serr != nil {
-				return "", serr
-			} else if sok {
-				lo := "-2147483648"
-				hi := "2147483647"
-				if !g.sliceBoundIsAbsent(n.Low) {
-					v, lerr := g.strPosReg(b, n.Low)
-					if lerr != nil {
-						return "", lerr
-					}
-					lo = v
-				}
-				if !g.sliceBoundIsAbsent(n.High) {
-					v, herr := g.strPosReg(b, n.High)
-					if herr != nil {
-						return "", herr
-					}
-					hi = v
-				}
-				r := g.rtStrCall(b, "rt_str_slice", "i32 "+sreg, "i32 "+lo, "i32 "+hi)
-				g.checkStrSentinels(b, r, "IndexError", "string slice out of range", n.Span(), "stslice")
-				return r, nil
-			}
-		}
-		return "", fmt.Errorf("cannot fold string slice")
+		return reg, nil
 	}
 	// The copy is only as good as the description of what it copies: `rt_slice` needs a heap list, and the
 	// roads that read the copy need to be told whether its slots describe themselves. Asked of a base

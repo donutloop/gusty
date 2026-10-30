@@ -11936,7 +11936,7 @@ Both shapes are pinned in the two filed tables (`pkg/lang/slice_bounds_kind_test
 
 <a id="gap-r-240"></a>
 
-### Gap R.240 — the length of a slice of a text refuses (OPEN, found by ADR 0336)
+### Gap R.240 — the length of a slice of a text refuses (CLOSED by ADR 0470, found by ADR 0336)
 
 ```python
 s = "abcd"
@@ -11959,6 +11959,63 @@ This is why the row's conformance program compares `s[1:3] == "bc"` instead of m
 only doors its own row answers (Gap N's rule), and the measurement of the refusal is this section. The fix is one
 arm per road — the fold's shapes and the `rt_str_slice` one — answering the character count through the helper `len`
 already trusts for a text variable, so a step and a negative bound are counted the way the printer walks them.
+
+**Closed 2026-10-31 by ADR 0470.** The arm landed in `pkg/lang/text_slice_len.go`, and it is one call to the road
+that already owned the question rather than a second counting rule. Two functions moved out of
+`valueSlice`'s text branch unchanged — `sliceRoadCallsItAText` (the base question the road asks, exported) and
+`valueTextSlice` (bounds gate → step gate → fold → `rt_str_slice`) — and `len` walks them and asks
+`rt_str_nchars` of whatever register comes back:
+
+```python
+s = "abcd"
+print(len(s[1:3]))            # 2   — the fold's text, measured by the table
+print(len(s[::-1]))           # 4   — a constant step, counted the way the printer walks it
+print(len("abcd"[1:3:2]))     # 1   — a literal base and a stride
+print(len(s[i:j]))            # 2   — the rt_str_slice road, the same question
+print(len(s["a":"b"]))        # TypeError: slice indices must be integers or None or have an __index__ method
+print(len(s[::0]))            # ValueError: slice step cannot be zero
+print(len({1, 2}[0:1]))       # TypeError: 'set' object is not subscriptable
+print(len({"a": 1}[0:1]))     # KeyError: slice(0, 1, None)
+```
+
+Three things about that list are the row's real content, not the answers.
+
+**The raises are the row, not an aside.** `len` did not acquire a bounds complaint, a step complaint and a base
+complaint; it inherited four. Extracting the branch instead of copying it is what makes that inheritance
+automatic — a door that had counted first would have answered `2` for `len(s["a":"b"])` at exit 0, which is the one
+trade this loop is not allowed to make for a refusal (**ADR 0166**, **ADR 0211**). The raise rows are witnessed
+twice each (`jitTrap` and the record), the handler rows byte for byte, and the IR rows assert that a raising shape
+emits **no** `rt_str_nchars` call at all — with the answered program as the counter-row so the absence is a fact
+about the arm rather than about a deleted helper.
+
+**The unit is code points, and that is checkable.** `rt_str_len` counts bytes and `rt_str_nchars` counts characters
+(**ADR 0225**); the row's UTF-8 families (`"café"[2:]` → `2`, `"héllo"[1:3]` → `2`, `"日本語です"[1:3]` → `2`) are what
+stops the arm from reaching for the byte helper, and the IR rows forbid that call in the program's own functions
+with a counter-row that still emits it (`def f():` / `    return "abc"` / `if f():`, the truth test's own door) so
+the prohibition is not satisfied by a helper that was never there.
+
+**The count is asked of the object, so the roads cannot disagree.** The parity table runs one program written
+three ways — folded bounds, value bounds, and the slice bound to a name — and one text measured folded and
+re-reversed. Two counting rules drift exactly there, and the reference cannot tell the spellings apart.
+
+**What the row leaves, with the measurement.** `print(len(s[1:3]))` inside a `def` that reads `s` from the module
+still refuses, because `print(s[1:3])` in that body refuses too — the doors read the module's container records and
+not the frame's, which is **Gap R.402**'s open row and is cited rather than re-filed. A step that is a VALUE
+(`len(s[::k])`) keeps its refusal, but the refusal is now the slice road's own sentence — `cannot fold string
+slice` — where before the reader was told to supply a literal for a text; **Gap R.243** owns the stride, and when it
+lands `len` answers with no change to this file, which is the extraction's whole point. And `len` of a slot of the
+list a call answered (`len(s.split(" ")[1])`, `len(sorted(["b", "a"])[0])`) still refuses with
+`len requires an inline list/dict/set literal`, blaming a literal the program never wrote: the object is on the
+heap and walkable and what is missing is the (payload, tag) pair coming back out of the road that built it, which
+is filed as **Gap R.567** with **L11.1** named as the real owner.
+
+**The closing records.** 69 record entries came in from the reference with the compiled leg cross-checked
+(**10862 → 10931**), none self-certifying; `integration/programs/len_text_slice.gy` joined the corpus as a `match`
+row (corpus 290 → 291, matrix 276 → 277, parity-asserted 240 → 241, oracle `match` 226 → 227, `fail` 0, `drift` 0)
+and measures the length rather than comparing `s[1:3] == "bc"`, which is the sentence this section used to quote as
+a limitation of the corpus. The two filed rows that pinned `len(s[1:3])` for this shape —
+`TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed` in `pkg/lang/slice_bounds_kind_test.go` and its CLI twin in
+`integration/slice_bounds_test.go` — moved out by deletion, and the emptied slot says where it went.
 
 <a id="gap-r-241"></a>
 
@@ -24421,3 +24478,40 @@ rule is the one that should decide.
 The action is one precedence check in `parsePrefix` (a prefix may not be followed by `not`), pinned by a parse-leg
 row for each of `+not`, `-not` and `not -` (the last is legal and answers `False`), and by the record leg for the
 two that stop parsing. Measured 2026-10-31 landing **ADR 0469**.
+
+<a id="gap-r-567"></a>
+
+### Gap R.567 — the length door cannot reach into the list a CALL answered, and blames a literal for it (OPEN, found by ADR 0470)
+
+```python
+$ python3 -c 's = "hello world"
+print(len(s.split(" ")[1]))'
+5
+$ gustyc --file probe.gy
+gustyc: jit: codegen: len requires an inline list/dict/set literal                                    # exit 1
+
+$ python3 -c 'print(len(sorted(["b", "a"])[0]))'
+1
+$ gustyc --file probe2.gy
+gustyc: jit: codegen: len requires an inline list/dict/set literal                                    # exit 1
+```
+
+`len` reaches a slot of a container the compiler can NAME — `xs = ["ab","cd"]` / `print(len(xs[0]))` answers `2`,
+and `def m():` / `    return ["ab","cd"]` / `print(len(m()[0]))` answers `2` — but not a slot of the list a
+builtin's METHOD answered. The object is on the heap, its slots are walkable, and `len` already measures such an
+object for a variable through `rt_heap_len`; what is missing is the door's own `(payload, tag)` pair coming back out
+of the road that built the list, exactly the shape **ADR 0365** names for a sequence that builds a container and
+**Gap R.314** files for that one door.
+
+Why it is a row here rather than a fix in the `len` commit: this row's arm had to fall through this shape to reach
+its refusal, so the measurement is this row's, while the repair belongs to the call-answer roads — the same
+fallback `print` and the indexing door take, and the same answer **L11.1** makes unnecessary (a slot that carries
+its own kind needs no notebook to be measured). The refusal is the second half of the row: `len requires an inline
+list/dict/set literal` tells a reader to go and write a literal for a text the program already holds, which is
+**ADR 0249**'s complaint verbatim — a refusal that sends the reader after the wrong thing is worse than no refusal,
+because they will act on it.
+
+The action is the pair, handed back by the method-answer road, and the length door asking the object
+(`rt_heap_len` for a container slot, `rt_str_nchars` for a text slot) as it already does for a variable; the two
+rows move out of `textSliceLenFiledNotFixed` and its CLI twin by deletion, and `len(s.split(" ")[1])` joins the
+answered table with the reference's `5`. Measured 2026-10-31 landing **ADR 0470**.

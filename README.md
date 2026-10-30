@@ -567,8 +567,9 @@ run-time fact the gate stays silent rather than guess (ADR 0232's rule: a claim 
 bytes some writer wrote), and the silence is priced: a bound hidden in a slot, in a call's answer or in a
 float-carrying parameter still answers `[1, 2]` (**Gap R.237**), a slice handed back by a function still travels as
 one word, so `print(n())` over `return xs[1:3]` answers `1` while `ys = n()` prints the list (**Gap R.238**), a
-comprehension over a copy refuses although the named copy iterates (**Gap R.239**), and `len` of a slice of a text
-refuses although `len` of the text and `len` of a list copy both answer (**Gap R.240**).
+comprehension over a copy refuses although the named copy iterates (**Gap R.239**); `len` of a slice of a text used
+to be the same kind of silence — `len` of the text and `len` of a list copy both answering while the slice itself
+refused — and is paid now, by the door below (**Gap R.240** closed by **ADR 0470**).
 
 **The step of zero is asked what it holds, and ADR 0337 pays Gap R.236** — the worst row of that family, and the one
 that could not be witnessed: `rt_slice` walked its loop forever on a zero step, the run was killed, and **exit 2**
@@ -607,6 +608,30 @@ operand**, `print(+1)` dying with `unexpected token` where CPython prints `1` (*
 the prefix rule landed beside the minus, and `+x` is its own door rather than `x + 0`, because the identity the
 first attempt used is a guess about the domain and the domain is what the operator asks (**ADR 0469**; the surface
 is *Unary plus is the operand, or the `TypeError`* in `docs/language.md`).
+
+**The length of a slice of a text is asked of the slice road, and ADR 0470 pays Gap R.240** — three doors answered
+one fact and the fourth refused to go and ask it. `print(len(s))` printed `4`, `print(s[1:3])` printed `bc` (the
+fold holds those characters), `print(len(xs[0:2]))` of a list copy printed `2` — and `s = "abcd"` /
+`print(len(s[1:3]))` stopped the build with `codegen: len requires an inline list/dict/set literal` at **exit 1**:
+a sentence about a literal, spoken where the only literal in the program is a text (**ADR 0249**'s complaint about a
+refusal that blames the wrong door). The arm is one call to the road that already owned the question: `valueSlice`'s
+text branch was **extracted** (`sliceRoadCallsItAText` for the base, `valueTextSlice` for bounds gate → step gate →
+fold → `rt_str_slice`) and `len` walks it, then measures the register with `rt_str_nchars` — the same helper a text
+VARIABLE's length asks, so the folded spelling and the value-bounded spelling are measured by one rule and a `é` is
+one character whichever produced it (**ADR 0225**: `"café"[2:]` is `2`, not 3 bytes; `"日本語です"[1:3]` is `2`).
+Copying the branch instead of moving it was the tempting version, and it is the one that lies: extracting is why
+`len` INHERITED four raises it never asked about — `len(s["a":"b"])` writes `slice indices must be integers or None
+or have an __index__ method` (**ADR 0336**), `len(s[::0])` writes `slice step cannot be zero` (**ADR 0337**),
+`len({1,2}[0:1])` and `len({"a":1}[0:1])` keep the object's own complaint (**ADR 0466**/**ADR 0468**) — all at
+**exit 3**, catchable, where a door that counted first printed `2` at **exit 0** for every one of them. The rows ask
+the count of the object (`call i32 @rt_str_nchars(` in the program's own functions, the BYTE helper forbidden with a
+counter-row that still emits it), and four parity rows run one program written three ways, because that is where two
+counting rules would part. 69 record entries came in from the reference cross-checked (**10862 → 10931**) and
+`programs/len_text_slice.gy` joined the corpus measuring the length where the corpus had been comparing
+`s[1:3] == "bc"`. What the row leaves is measured, not glossed: a step that is a VALUE keeps the road's own sentence
+(**Gap R.243**), a module text a function body reads stays invisible to the door exactly as it does to `print`
+(**Gap R.402**), and `len` of a slot of the list a call answered still blames a literal for a text the program is
+holding — filed as **Gap R.567**, with **L11.1** named as the row that would make it unnecessary.
 
 **A `for` loop asks its iterable what it is, and ADR 0339 pays Gap R.246** — the loop had three roads and no
 question in front of them, so anything the compiler could not name fell through to the numeric counter road and

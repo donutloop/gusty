@@ -1,5 +1,359 @@
 {
  "entries": {
+"s = \"abcd\"\nprint(len(s[1:3]))\nprint(len(s[::-1]))\nprint(len(\"abcd\"[1:3]))\nprint(len(\"abcd\"[1:3:2]))\nprint(len(s[1:]))\nprint(len(s[:]))\nprint(len(s[::2]))\nprint(len(s[::-2]))\nprint(len(s[-2:]))\nprint(len(s[-3:-1]))\nprint(len(s[10:20]))\nprint(len(s[3:1]))\nw = \"hello world\"\nprint(len(w[6:]))\nprint(len(w[:5]))\nu = \"café\"\nprint(len(u))\nprint(len(u[2:]))\nprint(len(u[1:3]))\ni = 1\nj = 3\nprint(len(s[i:j]))\nprint(len(s[i:j]) == len(s[1:3]))\nt = s[1:3]\nprint(len(t))\nprint(len(s[1:3][::-1]))\nprint(len(s[::-1][::-1]))\ndef edge(x):\n    return len(x[1:4])\nprint(edge(\"abcdef\"))\nprint(len(\"abcdef\".upper()[0:3]))\nprint(len(s.upper()[1:3]))\nprint(len(s[1:3].upper()))\nprint(len(s[1:3]) + len(s))\nprint([len(s[1:3]), len(s)])\nprint({\"n\": len(s[1:3])})\nprint(len(s[1:3]) == 2)\nprint(bool(len(s[0:0])))\ntry:\n    print(len(s[\"a\":\"b\"]))\nexcept TypeError as e:\n    print(\"caught\", e)\ntry:\n    print(len(s[::0]))\nexcept ValueError as e:\n    print(\"caught\", e)\nst = {1, 2}\ntry:\n    print(len(st[0:1]))\nexcept TypeError as e:\n    print(\"caught\", e)\nd = {\"a\": 1}\ntry:\n    print(len(d[0:1]))\nexcept KeyError as e:\n    print(\"miss\", e)\nxs = [1, 2, 3]\nprint(len(xs[0:2]))\nprint(len(xs[::2]))\nprint(s[1:3])\n": {
+    "stdout": "2\n4\n2\n1\n3\n4\n2\n2\n2\n2\n0\n0\n5\n5\n4\n2\n2\n2\nTrue\n2\n2\n4\n3\n3\n2\n2\n6\n[2, 4]\n{'n': 2}\nTrue\nFalse\ncaught slice indices must be integers or None or have an __index__ method\ncaught slice step cannot be zero\ncaught 'set' object is not subscriptable\nmiss slice(0, 1, None)\n2\n2\nbc\n",
+    "hasStdout": true
+   },
+"d = {\"a\": 1, \"b\": 2}\nprint(len(d))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"d = {\"a\": 1}\nprint(len(d[0:1]))": {
+    "err": "KeyError: slice(0, 1, None)",
+    "exnType": "KeyError",
+    "exnMsg": "slice(0, 1, None)"
+   },
+
+"d = {\"a\": 1}\ntry:\n    print(len(d[0:1]))\nexcept KeyError as e:\n    print(\"miss\", e)": {
+    "stdout": "miss slice(0, 1, None)\n",
+    "hasStdout": true
+   },
+
+"def f(t):\n    print(len(t))\nf(\"café\")": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"def f(t):\n    return len(t[1:3])\nprint(f(\"abcdef\"))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"def g(t, i, j):\n    return len(t[i:j])\nprint(g(\"abcdef\", 1, 4))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"def h():\n    return \"abcdef\"\nprint(len(h()[1:3]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"abcd\"))": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"print(len(\"abcd\".upper()))": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"print(len(\"abcd\"[1:3:2]))": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"print(len(\"abcd\"[1:3]) == 2)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(len(\"abcd\"[1:3]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print(len(\"abcdef\".upper()[0:3]))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(len(\"café\"))": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"print(len(1[0:2]))": {
+    "err": "TypeError: 'int' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'int' object is not subscriptable"
+   },
+
+"print(len(None[0:1]))": {
+    "err": "TypeError: 'NoneType' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'NoneType' object is not subscriptable"
+   },
+
+"print(len(True[0:1]))": {
+    "err": "TypeError: 'bool' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'bool' object is not subscriptable"
+   },
+
+"s = \"\"\nprint(len(s[1:3]))": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\ni = 1\nj = 3\nprint(len(s[i:j]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nif len(s[1:3]) == 2:\n    print(\"two\")": {
+    "stdout": "two\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nn = 2\nprint(len(s[:n]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint([len(s[1:3]), len(s)])": {
+    "stdout": "[2, 4]\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(bool(len(s[1:3])))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s))": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s.upper()[1:3]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[\"a\":\"b\"]))": {
+    "err": "TypeError: slice indices must be integers or None or have an __index__ method",
+    "exnType": "TypeError",
+    "exnMsg": "slice indices must be integers or None or have an __index__ method"
+   },
+
+"s = \"abcd\"\nprint(len(s[-2:]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[-3:-1]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[1.5:2]))": {
+    "err": "TypeError: slice indices must be integers or None or have an __index__ method",
+    "exnType": "TypeError",
+    "exnMsg": "slice indices must be integers or None or have an __index__ method"
+   },
+
+"s = \"abcd\"\nprint(len(s[10:20]))": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[1:3:0]))": {
+    "err": "ValueError: slice step cannot be zero",
+    "exnType": "ValueError",
+    "exnMsg": "slice step cannot be zero"
+   },
+
+"s = \"abcd\"\nprint(len(s[1:3]) + len(s))": {
+    "stdout": "6\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[1:3]) + len(s[1:3]))": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[1:3]) == 2)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[1:3]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[1:3].upper()))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[1:3][0:1]))": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[1:3][::-1]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[1:]))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[3:1]))": {
+    "stdout": "0\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[::-1]))": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[::-1][::-1]))": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[::-2]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[::0]))": {
+    "err": "ValueError: slice step cannot be zero",
+    "exnType": "ValueError",
+    "exnMsg": "slice step cannot be zero"
+   },
+
+"s = \"abcd\"\nprint(len(s[::2]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[:]))": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint(len(s[[1]:2]))": {
+    "err": "TypeError: slice indices must be integers or None or have an __index__ method",
+    "exnType": "TypeError",
+    "exnMsg": "slice indices must be integers or None or have an __index__ method"
+   },
+
+"s = \"abcd\"\nprint(s[1:3])": {
+    "stdout": "bc\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nprint({\"n\": len(s[1:3])})": {
+    "stdout": "{'n': 2}\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\nt = s[1:3]\nprint(len(t))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\ntry:\n    print(len(s[\"a\":\"b\"]))\nexcept TypeError as e:\n    print(e)": {
+    "stdout": "slice indices must be integers or None or have an __index__ method\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\ntry:\n    print(len(s[::0]))\nexcept ValueError as e:\n    print(e)": {
+    "stdout": "slice step cannot be zero\n",
+    "hasStdout": true
+   },
+
+"s = \"abcd\"\ntry:\n    print(len(s[::0]))\nexcept ValueError:\n    print(\"right arm\")\nexcept TypeError:\n    print(\"wrong arm\")": {
+    "stdout": "right arm\n",
+    "hasStdout": true
+   },
+
+"s = \"abcdefgh\"\nprint(len(s[1:6:2]))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"s = \"café\"\nk = 2\nprint(len(s[k:]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"s = \"café\"\nprint(len(s))": {
+    "stdout": "4\n",
+    "hasStdout": true
+   },
+
+"s = \"café\"\nprint(len(s[2:]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"s = \"hello world\"\nprint(len(s[6:]))": {
+    "stdout": "5\n",
+    "hasStdout": true
+   },
+
+"s = \"héllo\"\nprint(len(s[1:3]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"st = {1, 2}\nprint(len(st[0:1]))": {
+    "err": "TypeError: 'set' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'set' object is not subscriptable"
+   },
+
+"st = {1, 2}\ntry:\n    print(len(st[0:1]))\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"w = \"hello world\"\nprint(len(w.split(\" \")))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [\"ab\", \"cd\"]\nprint(len(xs[0:1]))": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"xs = [\"ab\", \"cd\"]\nprint(len(xs[0:1][0]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3, 4]\nprint(len(xs[1:6:2]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint(len(xs[\"a\":\"b\"]))": {
+    "err": "TypeError: slice indices must be integers or None or have an __index__ method",
+    "exnType": "TypeError",
+    "exnMsg": "slice indices must be integers or None or have an __index__ method"
+   },
+
+"xs = [1, 2, 3]\nprint(len(xs[0:2]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2, 3]\nprint(len(xs[::2]))": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
 "x = 5\nx = \"a\"\nprint(+x)": {
     "err": "TypeError: bad operand type for unary +: 'str'",
     "exnType": "TypeError",
