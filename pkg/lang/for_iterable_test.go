@@ -72,6 +72,21 @@ var forIterablesAnswered = []struct {
 	{"for v in sorted([3, 1, 2][0:2]):\n    print(v)", "1\n3"},
 	{"for v in sorted([3, 1, 2], reverse=False):\n    print(v)", "1\n2\n3"},
 	{"for v in sorted([1, 1, 1]):\n    print(v)", "1\n1\n1"},
+	// The four iterables the container pair could not name, and the reference walks element by element:
+	// a TEXT yields its CHARACTERS, a DICT yields its KEYS, a `range(...)` the program wrote yields its
+	// INTEGERS, and an ordering handed another ordering walks the sequence the inner call walked. Each is
+	// the list the reference builds before it orders it, spelled by the one road that spells it
+	// (`orderingSequenceArg`), so the loop, the print door and the sort cannot order three sequences
+	// for one program (**Gap R.247**, **Gap R.250**, **ADR 0473**).
+	{"for v in sorted(\"bca\"):\n    print(v)", "a\nb\nc"},
+	{"t = \"bca\"\nfor v in sorted(t):\n    print(v)", "a\nb\nc"},
+	{"for v in sorted(\"caf\u00e9\"):\n    print(v)", "a\nc\nf\n\u00e9"},
+	{"d = {'b': 1, 'a': 2}\nfor k in sorted(d):\n    print(k)", "a\nb"},
+	{"for v in reversed({1: 2}):\n    print(v)", "1"},
+	{"for v in sorted(range(3)):\n    print(v)", "0\n1\n2"},
+	{"for v in sorted(range(5, 2, -1)):\n    print(v)", "3\n4\n5"},
+	{"xs = [\"b\", \"a\"]\nfor v in sorted(xs[0:2]):\n    print(v)", "a\nb"},
+	{"xs = [3, 1, 2]\nfor v in sorted(sorted(xs)):\n    print(v)", "1\n2\n3"},
 }
 
 // forIterablesRefused are the loops neither door reaches and the backend therefore REFUSES — each one used
@@ -83,11 +98,7 @@ var forIterablesRefused = []struct {
 	names  string // what the refusal has to say (ADR 0249: a refusal names the missing half)
 	oracle string // what the reference answers, for the record
 }{
-	{"for v in reversed({1: 2}):\n    print(v)", "`for` over reversed({1: 2})", "1"},
-	{"for v in sorted(\"bca\"):\n    print(v)", "`for` over sorted(\"bca\")", "a\nb\nc"},
-	{"d = {'b': 1, 'a': 2}\nfor k in sorted(d):\n    print(k)", "`for` over sorted(d)", "a\nb"},
 	{"for v in sorted([3, 1, 2], True):\n    print(v)", "`for` over sorted", "TypeError: 'bool' object is not callable"},
-	{"for v in sorted(range(3)):\n    print(v)", "`for` over sorted(range(3))", "0\n1\n2"},
 }
 
 // forIterablesUnchanged are the loops the row must leave answering exactly what they answered: the roads the
@@ -304,17 +315,12 @@ func TestWhatTheLoopRowLeavesOwed(t *testing.T) {
 		// this family is in forIterablesRefused; the `print` half is the builtin's refusal beside it. A DICT is
 		// the same door and is answered by `print(sorted(d))` (`['b']`, what the reference prints) while the
 		// LOOP over it is refused — one word, two doors, the row that owns them owns both.
-		{"print(sorted(\"bca\"))", "sorted", "['a', 'b', 'c']", "Gap R.247"},
-		{"for v in sorted(range(3)):\n    print(v)", "not a container this backend can name", "0\n1\n2", "Gap R.247"},
-		{"d = {'b': 1, 'a': 2}\nfor k in sorted(d):\n    print(k)", "its argument is a DICT", "a\nb", "Gap R.247"},
-		{"xs = [\"b\", \"a\"]\nfor v in sorted(xs[0:2]):\n    print(v)", "comparator", "a\nb", "Gap R.247"},
 		// Gap R.248 — a FLOAT list is refused with a sentence that blames a mix of kinds it does not have.
 		{"xs = [1.5, 0.5]\nfor v in sorted(xs):\n    print(v)", "ELEMENT kind", "0.5\n1.5", "Gap R.248"},
 		// Gap R.249 — a positional key is still the reference's TypeError the language does not answer;
 		// the `key=` half of that row was paid by ADR 0340 and its loop rows now live in
 		// call_key_test.go's answered table.
 		// Gap R.250 — a `sorted` of a call that is not itself a builtin the pair can prove.
-		{"xs = [3, 1, 2]\nfor v in sorted(sorted(xs)):\n    print(v)", "not a container this backend can name", "1\n2\n3", "Gap R.250"},
 		// Gap R.251 — `reversed` standing where an EXPRESSION goes answers its argument UNREVERSED; the loop
 		// beside it walks the flipped copy, so one word is answered two ways. The reference prints
 		// <list_reverseiterator object at 0x…>, and `list(reversed(xs))` is the spelling that shows the order.

@@ -4104,6 +4104,27 @@
     },
     {
       "case": {
+        "id": "programs/sorted_iterables",
+        "name": "sorted_iterables.gy",
+        "source": "print(sorted(\"bca\"))\nprint(sorted(\"café\"))\nprint(sorted(\"\"))\nprint(sorted(\"bca\", reverse=True))\nt = \"bca\"\nprint(sorted(t))\nprint(sorted(\"banana\"))\nfor v in sorted(\"bca\"):\n    print(v)\nprint(sorted({\"b\": 1, \"a\": 2}))\nprint(sorted({3: 1, 1: 2}))\nprint(sorted({\"b\": 1}))\nd = {\"b\": 1, \"a\": 2}\nprint(sorted(d))\nfor k in sorted(d):\n    print(k)\nfor v in reversed({1: 2}):\n    print(v)\nprint(sorted(range(3)))\nprint(sorted(range(2, 5)))\nprint(sorted(range(5, 2, -1)))\nprint(sorted(range(0)))\nprint(sorted(range(3), reverse=True))\nfor v in sorted(range(3)):\n    print(v)\nprint(\"a\" in sorted(\"bca\"))\nprint(1 in sorted(range(3)))\nprint(sorted({\"b\": 1, \"a\": 2}) == [\"a\", \"b\"])\nprint([sorted(\"bca\")])\nprint([sorted({\"b\": 1, \"a\": 2})])\nprint([sorted(range(2))])\nprint(sorted(sorted(\"bca\")))\nprint(sorted(sorted([3, 1, 2])))\nxs = [\"b\", \"a\"]\nprint(sorted(xs[0:2]))\nprint(sorted(xs[0:2], reverse=True))\nys = sorted(\"bca\")\nprint(ys)\nprint(ys[0])\nprint(ys[2])\nfor v in ys:\n    print(v)\nprint(ys[0:2])\nprint(ys[0] + \"x\")\nprint(ys == [\"a\", \"b\", \"c\"])\nprint(\"b\" in ys)\nprint(len(ys))\nzs = sorted(range(3))\nprint(zs)\nprint(zs[1])\nfor v in zs:\n    print(v)\nws = sorted({\"b\": 1, \"a\": 2})\nprint(ws)\nprint(ws[1])\ncs = sorted(\"café\")\nprint(cs)\nprint(cs[3])\nprint(sorted([3, 1, 2]))\nprint(sorted([3, 1, 2], key=lambda x: 0 - x))\nprint(len(sorted(range(2, 10, 3))))\nprint(sum(sorted([3, 1, 2])))\nprint(sorted([1, 2, 3]))\nprint(sorted({1, 2}))\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "['a', 'b', 'c']\n['a', 'c', 'f', 'é']\n[]\n['c', 'b', 'a']\n['a', 'b', 'c']\n['a', 'a', 'a', 'b', 'n', 'n']\na\nb\nc\n['a', 'b']\n[1, 3]\n['b']\n['a', 'b']\na\nb\n1\n[0, 1, 2]\n[2, 3, 4]\n[3, 4, 5]\n[]\n[2, 1, 0]\n0\n1\n2\nTrue\nTrue\nTrue\n[['a', 'b', 'c']]\n[['a', 'b']]\n[[0, 1]]\n['a', 'b', 'c']\n[1, 2, 3]\n['a', 'b']\n['b', 'a']\n['a', 'b', 'c']\na\nc\na\nb\nc\n['a', 'b']\nax\nTrue\nTrue\n3\n[0, 1, 2]\n1\n0\n1\n2\n['a', 'b']\nb\n['a', 'c', 'f', 'é']\né\n[1, 2, 3]\n[3, 2, 1]\n3\n6\n[1, 2, 3]\n[1, 2]\n",
+      "python_ok": true,
+      "python_stdout": "['a', 'b', 'c']\n['a', 'c', 'f', 'é']\n[]\n['c', 'b', 'a']\n['a', 'b', 'c']\n['a', 'a', 'a', 'b', 'n', 'n']\na\nb\nc\n['a', 'b']\n[1, 3]\n['b']\n['a', 'b']\na\nb\n1\n[0, 1, 2]\n[2, 3, 4]\n[3, 4, 5]\n[]\n[2, 1, 0]\n0\n1\n2\nTrue\nTrue\nTrue\n[['a', 'b', 'c']]\n[['a', 'b']]\n[[0, 1]]\n['a', 'b', 'c']\n[1, 2, 3]\n['a', 'b']\n['b', 'a']\n['a', 'b', 'c']\na\nc\na\nb\nc\n['a', 'b']\nax\nTrue\nTrue\n3\n[0, 1, 2]\n1\n0\n1\n2\n['a', 'b']\nb\n['a', 'c', 'f', 'é']\né\n[1, 2, 3]\n[3, 2, 1]\n3\n6\n[1, 2, 3]\n[1, 2]\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/sorted_container",
         "name": "sorted_container.gy",
         "source": "print(1 in sorted([3, 1, 2]))\nprint(5 not in sorted([3, 1, 2]))\nprint(2 in reversed([1, 2, 3]))\nprint(1 in sorted([]))\nprint(3 in sorted([1, 2, 3], reverse=True))\nprint(sorted([3, 1, 2]) == [1, 2, 3])\nprint([1, 2] == sorted([2, 1]))\nprint(sorted([3, 1, 2]) == sorted([1, 2, 3]))\nprint(sorted([]) == [])\nprint(sorted([3, 1, 2]) != [1, 2, 3])\nxs = [3, 1, 2]\nprint(sorted(xs) == [1, 2, 3])\nprint(1 in sorted(xs))\nprint(sorted(xs) == sorted(xs))\ndef b():\n    return [3, 1, 2]\nprint(1 in sorted(b()))\nprint(\"a\" in sorted([\"b\", \"a\"]))\nprint(sorted([\"b\", \"a\"]) == [\"a\", \"b\"])\nprint(sorted([3, 1, 2]) in [[1, 2, 3]])\nprint(sorted([3, 1, 2]) in [[1, 2, 4]])\nprint(sorted(sorted([3, 1, 2])))\nprint(reversed([1, 2]) == [2, 1])\nprint(reversed([1, 2]) != [2, 1])\nprint(reversed([1, 2]) == reversed([1, 2]))\nprint(reversed([1, 2]) in [[2, 1]])\nprint([sorted([3, 1, 2])])\nprint([sorted([3, 1, 2]), 1])\nprint({\"k\": sorted([3, 1, 2])})\nprint((sorted([3, 1, 2]),))\nys = []\nys.append(sorted([3, 1, 2]))\nprint(ys)\nzs = [0, 0]\nzs[0] = sorted([3, 1, 2])\nprint(zs)\nd = {}\nd[\"k\"] = sorted([3, 1, 2])\nprint(d[\"k\"])\nws = [sorted([3, 1, 2])]\nprint(ws[0])\nprint(ws[0][0])\nprint(ws == [[1, 2, 3]])\nqs = sorted([3, 1, 2])\nqs.append(9)\nprint(qs)\nprint(2 in sorted(reversed([3, 1, 2])))\nprint(len(sorted([3, 1, 2])))\nfor v in sorted([3, 1, 2]):\n    print(v)\nfor v in reversed([1, 2, 3]):\n    print(v)\nprint(sorted([3, 1, 2]))\nprint(sorted([\"b\", \"a\"]))\nif sorted([3, 1, 2]) == [1, 2, 3]:\n    print(\"ordered\")\ndef f(vals):\n    return sorted(vals) == [1, 2, 3]\nprint(f([3, 1, 2]))\n",
@@ -6574,11 +6595,11 @@
       ]
     }
   ],
-  "rows": 278,
+  "rows": 279,
   "skipped": 36,
-  "pass": 242,
+  "pass": 243,
   "fail": 0,
-  "oracle_match": 228,
+  "oracle_match": 229,
   "oracle_debt": 24,
   "oracle_not_applicable": 26,
   "oracle_drift": 0

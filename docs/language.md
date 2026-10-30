@@ -7303,6 +7303,46 @@ payloads (**Gap R.568**), a container stored in a set or a dict is hashed by its
 measures an iterator the reference refuses to measure (**Gap R.570**), and an element list whose kind the compiler
 cannot name is refused by name (**Gap R.248**, seen at this door as **Gaps R.571–R.575**).
 
+### What an ordering is handed — a text, a dict, a written-out `range` (Gap R.247, ADR 0473)
+
+`sorted` and `reversed` are handed an ITERABLE, and an iterable is not a container: the reference builds one and
+orders that. The backend builds the same container, in one road, and every door asks it the same question
+(**ADR 0473**, on **ADR 0472**'s doors and **ADR 0339**'s loop):
+
+```python
+print(sorted("bca"))                # ['a', 'b', 'c']     — the characters
+print(sorted("café"))               # ['a', 'c', 'f', 'é'] — four members, not six bytes (L11.5)
+t = "bca"
+print(sorted(t))                    # ['a', 'b', 'c']     — a NAMED text is the same sequence
+print(sorted({"b": 1, "a": 2}))     # ['a', 'b']          — a dict's keys, in the order they were written
+print(sorted(range(5, 2, -1)))      # [3, 4, 5]           — the integers range yields, ordered
+print(sorted(sorted("bca")))        # ['a', 'b', 'c']     — a nest walks the inner call's sequence
+xs = ["b", "a"]
+print(sorted(xs[0:2]))              # ['a', 'b']          — the comparator is asked of the OBJECT
+ys = sorted("bca")
+print(ys[0], ys[0:2], ys[0] + "!")  # a ['a', 'b'] a!     — the name knows its elements are texts
+for c in sorted("bca"):             # a, b, c
+    print(c)
+```
+
+A text is its characters, ordered as code points and never as bytes. A dict is its keys, read through the one road
+that reads a dict's keys at all (**ADR 0417**), which is what keeps `print(sorted(d))` and `for k in sorted(d)` from
+keeping two answers about one dict. A `range(...)` is the integers it yields, and only when the program wrote its
+bounds — `n = 3` / `sorted(range(n))` is refused under **Gap R.250** rather than guessed. The order is chosen by the
+thing being ordered: a list of texts goes to `@rt_sort`'s text comparator, a list of numbers to the numeric one, and
+that is what makes a slice's, a call's or a nest's answer come out ordered instead of arriving in the order the
+intern table saw it. A name bound to the answer is given the same claim a literal binding writes, so reading `ys[0]`
+does not answer the interned index of `"a"`.
+
+What still refuses does so in words, at **exit 1**, and says which half is missing: a SET (its members live in the
+runtime's own hash table, which the ordering does not walk — **Gap R.247**'s left), a list whose elements are floats
+or of more than one kind (**Gap R.248**), a `range(...)` whose bound the program did not write (**Gap R.250**), the
+reference's `key=`/positional comparator (**Gap R.249**), and the subscript or slice of an ordering whose argument
+was not a list literal — `print(sorted("bca")[0])`, `print(sorted(["b", "a"])[0])` (**Gap R.576**, **Gap R.577**) —
+or an alias of a name the binding recorded (**Gap R.578**). Two answers are known wrong and pinned with CPython's
+beside them: `print(sorted([1.5, 0.5]))` keeps arrival order (**Gap R.248**) and `print(1 in sorted("bca"))` answers
+`True` where the reference answers `False` (**Gap R.575**).
+
 ### An applied `lambda` answers a container the way a `def` does (L11.7, Gap R.382, ADR 0401)
 
 ```python

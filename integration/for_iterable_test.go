@@ -75,6 +75,17 @@ var forIterableCLIRows = []struct {
 	{"words = [\"b\", \"a\"]\nfor v in sorted(words):\n    print(v)\nfor v in range(2):\n    print(v)", "a\nb\n0\n1"},
 	// the `print` answer the loop's ordering is shared with, in the same program
 	{"xs = [3, 1, 2]\nprint(sorted(xs))\nfor v in sorted(xs):\n    print(v)", "[1, 2, 3]\n1\n2\n3"},
+	// the iterables the reference BUILDS a list from, which no container door could name until ADR 0473
+	// substituted the sequence they denote: the characters of a text, a dict's keys, `range`'s integers, and
+	// the sequence an inner ordering walks (**Gap R.247**; the nest is **Gap R.250**'s stated fix)
+	{"for v in sorted(\"bca\"):\n    print(v)", "a\nb\nc"},
+	{"for v in sorted(range(3)):\n    print(v)", "0\n1\n2"},
+	{"d = {'b': 1, 'a': 2}\nfor k in sorted(d):\n    print(k)", "a\nb"},
+	{"xs = [\"b\", \"a\"]\nfor v in sorted(xs[0:2]):\n    print(v)", "a\nb"},
+	{"xs = [3, 1, 2]\nfor v in sorted(sorted(xs)):\n    print(v)", "1\n2\n3"},
+	{"for v in reversed({1: 2}):\n    print(v)", "1"},
+	// a user function's container answer handed to an ordering walks the same copy the doors build
+	{"def vals():\n    return [3, 1, 2]\nfor v in sorted(vals()):\n    print(v)", "1\n2\n3"},
 }
 
 // forIterableRefusalRows are the loops neither door reaches. `names` is what the refusal has to say; `oracle`
@@ -86,16 +97,14 @@ var forIterableRefusalRows = []struct {
 	oracle  string
 	roadmap string
 }{
-	{"for v in sorted(\"bca\"):\n    print(v)", "`for` over sorted(\"bca\")", "a\nb\nc", "Gap R.247"},
-	{"for v in sorted(range(3)):\n    print(v)", "not a container this backend can name", "0\n1\n2", "Gap R.247"},
-	{"d = {'b': 1, 'a': 2}\nfor k in sorted(d):\n    print(k)", "its argument is a DICT", "a\nb", "Gap R.247"},
-	{"xs = [\"b\", \"a\"]\nfor v in sorted(xs[0:2]):\n    print(v)", "comparator", "a\nb", "Gap R.247"},
 	{"xs = [1.5, 0.5]\nfor v in sorted(xs):\n    print(v)", "ELEMENT kind", "0.5\n1.5", "Gap R.248"},
 	// Gap R.249's `key=` half was paid by ADR 0340 — its CLI rows live in integration/call_key_test.go.
-	{"xs = [3, 1, 2]\nfor v in sorted(sorted(xs)):\n    print(v)", "not a container this backend can name", "1\n2\n3", "Gap R.250"},
-	{"for v in reversed({1: 2}):\n    print(v)", "`for` over reversed({1: 2})", "1", "Gap R.247"},
+	// the five rows this commit answers (the text, the dict, `range`, the slice of text, the nest) moved to
+	// `forIterableCLIRows` with the reference's answer, and `for v in reversed({1: 2})` went with them.
 	// a second POSITIONAL argument is the reference's `key`, and the reference itself stops the program
 	{"for v in sorted([3, 1, 2], True):\n    print(v)", "POSITIONAL argument", "TypeError: 'bool' object is not callable", "Gap R.249"},
+	// a `range(...)` the program COMPUTES is the half Gap R.250 still owns
+	{"n = 3\nfor v in sorted(range(n)):\n    print(v)", "whose bound the program did not write", "0\n1\n2", "Gap R.250"},
 }
 
 // loopCounterAgainstContainerIR is the exit-2 instruction itself.

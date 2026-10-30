@@ -604,16 +604,20 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 		Sample:     "def words():\n    return [\"hi\", \"ho\"]\n\nprint(words()[0] in words())",
 	},
 	{
-		Code:       "lower.unsupported.sort-loop-argument",
-		Shape:      "for over sorted()/reversed() with an argument neither door can name",
-		Suggestion: "sort a list literal or a list variable (for v in sorted(xs)), or bind the sorted list first and walk it — the ordering helper chooses its comparator from the argument's spelled kind, and this argument has none the doors can read",
+		Code: "lower.unsupported.sort-loop-argument",
+		// The door widened (**Gap R.247**, **ADR 0473**): a TEXT, a DICT, a constant `range(...)` and an
+		// ordering handed another ordering are sequences the loop walks now, because the backend builds the
+		// list the reference builds. What still refuses is the ELEMENT — the kind one loop variable cannot hold.
+		Shape:      "for over sorted()/reversed() whose elements no door can name — a SET, a generator, a float or mixed list, or an argument that is no sequence at all",
+		Suggestion: "walk a list, a text, a dict or a constant range(...) — the compiled backend builds the sequence the reference builds and orders it — and keep one kind per container: a float, a verdict, None or a mixed list travels as the tagged pair one loop variable cannot hold, and the reference raises TypeError for the mixed sort too",
 		Rows:       []string{"Gap R.247", "Gap R.248", "L11.1"},
 		Markers: []string{
-			"is a TEXT, which the reference sorts by building a list of one-character strings",
-			"the ELEMENT kind of that list is not something this backend's roads print from one word",
-			"its argument is not a container this backend can name",
+			"is not a sequence this backend can put in front of @rt_sort",
+			"its elements are not all integers or all text",
+			"the ELEMENT kind of that list is not something this backend's roads print from one",
+			"the sequence behind it is one whose elements no door can name",
 		},
-		Sample: "for v in sorted(\"bca\"):\n    print(v)",
+		Sample: "for v in sorted([1.5, 0.5]):\n    print(v)",
 	},
 	{
 		Code:       "lower.unsupported.container-slot-kind-unprovable",

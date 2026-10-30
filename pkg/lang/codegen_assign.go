@@ -490,6 +490,10 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 		_, literal := rhs.(*ListLit)
 		_, literalDict := rhs.(*DictLit)
 		_, literalSet := rhs.(*SetLit)
+
+		// boundOrdering is the `sorted`/`reversed` call whose answer this name receives, once the question
+		// above has named its element kind; nil means the binding is not an ordering's.
+		var boundOrdering *Call
 		boundKind := containerKindFromTy(exprTyName(n.Value))
 		// A call that hands back a container says so from its own body, which is better evidence than an
 		// inferred type name: the answer is an object of that kind whatever the inference made of the call
@@ -506,6 +510,24 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 				// same record — without it `ys = c.m()` printed right and `len(ys)` refused, which is **Gap R.67**'s
 				// asymmetry one class later. Only a body whose EVERY road answers that one kind is taken.
 				boundKind = a.kind.String()
+			}
+
+			// The two orderings bind the LIST they built, the way a user function's `return [...]` does: the
+			// reference's `sorted` answers a list whatever the iterable was — the characters of a text, the keys
+			// of a dict, the integers of a `range` — and the object its door built carries its element kinds in
+			// its own slots. Nothing here claimed anything for the name, so it kept a handle no road could
+			// name: `xs = sorted("bca")` printed right, while `print(xs[0])` answered `2`, the interned index,
+			// and `for v in xs:` printed `2|0|1` where the reference prints `a|b|c` (roadmap **Gap R.247**,
+			// **ADR 0473**). The kind is asked of the one door that also decides the comparator and the loop's
+			// slot, so a list cannot be a text list at the print door and an unlabelled word at the subscript.
+			if _, arg, isOrdering := g.containerSortBuiltin(c); isOrdering {
+				doorIsSorted := g.orderingDoorIsSorted(c)
+				if kind, known := g.forIterSortedElemKind(arg, doorIsSorted); known {
+					if boundKind == "" {
+						boundKind = kind
+					}
+					boundOrdering = c
+				}
 			}
 		}
 		// A comprehension says what it binds better than an inferred type can: the kind is written
@@ -595,6 +617,12 @@ func (g *irGen) stmtAssign(b *strings.Builder, st Stmt, n *AssignStmt) error {
 		}
 		if boundIsSeq {
 			g.recordSeqBinding(nm.Value, boundSeqOp)
+		}
+		// The ordering binding's facts are the same three questions every container binding answers — which
+		// kind, do the slots describe themselves, is there a static literal behind it — asked of the argument the
+		// builtin was handed (roadmap **Gap R.247**, **ADR 0473**).
+		if boundOrdering != nil {
+			g.recordOrderingBinding(nm.Value, boundOrdering)
 		}
 		// Track the None singleton the same way containers are tracked: the variable's
 		// *latest* assignment decides how print/truthiness/equality lower, and any other

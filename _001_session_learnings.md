@@ -18085,3 +18085,63 @@ files already name, and the numbering has gaps by design), eight queue rows file
 `TestTheRoadmapSnapshotIsMeasuredNotRemembered` failed first on the matrix and oracle cells I had not touched, which
 is the guard doing its job: the four documents that publish the record's size are recomputed, not remembered, and a
 cycle that adds a corpus program owes the artifact's numbers to the tracker in the same commit.
+
+## Cycle: an ordering asks its ARGUMENT what sequence it denotes (Gap R.247 closed; ADR 0473)
+
+**Five exit-0 wrong answers, and four of them were the same bug wearing four costumes.** `print(sorted("bca"))`
+printed `0`, `print(sorted(range(3)))` printed the address of a global through `%d`, `print(sorted(xs[0:2]))` over a
+list of text printed arrival order, `print(sorted(sorted("bca")))` printed arrival order too, and
+`xs = sorted("bca")` printed the list and then `2` for `xs[0]`. Each looked like its own defect and each had its own
+filed row waiting for it. The one thing they shared: a decision was being made from a **spelling** — `isContainerExpr`
+for the print door, a `*Name`'s notebook marker or a literal's elements for `@rt_sort`'s comparator,
+`staticContainerKind` for the loop's gate — instead of from the object the program denoted. The repair is one road
+that spells the sequence an iterable *denotes* (`orderingSequenceArg`) and four doors asking it, and the fifth failure
+(`xs[0]` answering the interned index) was the same mistake one layer later: the BINDING had no door, so the name
+printed its list correctly and read its own slots wrong. A program that PRINTS right can still READ a slot wrong, and
+only a table that asserts the CLAIMS (`listElemStr`, `mixedLists`, the kind) sees that; the answered-program table
+passed the whole time the binding recorded nothing.
+
+**The print door is deliberately WIDER than the walk door, and that is only safe because it propagates the refusal.**
+`printRoadSeesAnOrderingArgument` claims any argument that is container-shaped or a substituted sequence, and then
+calls the same builder the loop calls, so a shape whose ELEMENT has no tag road fails with the sort door's sentence
+instead of printing a handle with `%d`. The refusal table is the witness for that property, not the door table: five
+rows (`sorted([1.5, 0.5])`, `sorted([1, "a"])`, `sorted([{}])`, `sorted([[]])`) ask the print road for the sentence
+the sort door owns. If a future cycle widens the print gate without propagating the build refusal, those rows go red
+before any wrong value ships.
+
+**A mutation that reddens nothing is a finding, twice over.** The non-vacuity run found a helper of mine,
+`orderingSequenceIsTextArgument`, that had no call site at all — written in an early draft of the comparator door and
+left behind when the comparator moved to `forIterSortedElemKind`; it went in the commit as deleted, not as decoration.
+The other null result is honest and stays in the ADR: letting the FOLD order a text moves no row, because the
+compile-time order and `@rt_sort`'s strcmp agree on every program in the tables today. That clause is a guard against
+a future drift, not an answer road, and the row says so instead of claiming a witness it does not have.
+
+**Two filings were wrong before they were checked, and both were caught by re-measuring through `--file`.** The first
+draft filed "a TEXT literal subscripted at all is refused" (`print("bca"[0])`) — measured through `--eval` inside a
+shell loop where quoting had mangled the program; the real behaviour answers `b`, and the row became the subscript of
+the ordering's answer instead (**Gap R.576**). The second: `print(reversed("abc"))` prints `0` on THIS build, and also
+on the parent build, and also through `--file` — a pre-existing handle print that belongs to **Gap R.251**, not a
+regression from this row. Both legs' values now sit in the filed table. **A program is not measured until it has been
+written to a file and run as a file.**
+
+**A markdown table row is a data structure, and editing it by string replacement can truncate the tracker.** The
+Open-queue tally guard scans rows until the first line that is not one. My status-cell edit had consumed the row's
+trailing cells, the scan stopped at 64 of 479 rows, and the Snapshot reported an artifact of 9 owed rows — a number so
+obviously wrong that the guard is worth its weight. The same file had a second instance from the previous cycle: a
+row containing `container == (fold || name)` inside backticks, where the pipes split the row into twelve cells.
+Backticks do not protect a table cell. Write "or".
+
+**The sweep is mandatory, and it is the only thing that reads the corpus.** 11031 recorded sources through the
+parent binary and this one: 48 differ — 44 refusals that answer, 3 wrong answers that came right, 1 that differs
+only because `llc` prints the temp path of the `.ll` it rejected in its error text (a "move" that is the same
+behaviour twice, and the only reason a diff must compare exit code and stdout before it believes a difference). Two
+of the 48 were defects this row does not own: a decorated function whose body binds a list emits an undefined
+`%f.raiseexit` and dies at exit 2, and its twin that returns `[x][0]` prints `0` where the reference prints `3`.
+Both reproduce on the parent AND the grandparent, so they are filed — **Gap R.579**, **Gap R.580** — rather than
+fixed here, because a cycle that fixes what it did not measure has no witness for the fix.
+
+**Counts move as one set or they lie.** record **10977 → 11031** (54 entries — the 54th added by the corpus recorder after `TestEveryAssertedCorpusProgramIsOnTheRecord` named the new program missing), corpus **292 → 293**, matrix **278 → 279**
+(**243** asserted, oracle `match` **229**), ADRs **459 → 460** (highest **0473**), queue **479 → 482** rows with
+**285** owed, and the capability table regenerated from the registry (`go run ./tools/captable -check`). Four of those
+cells are recomputed by tests, three more by the snapshot guard, and the ones with no guard at all — the rows-owed
+pair — are exactly the ones that went wrong this cycle.

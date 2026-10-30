@@ -883,6 +883,17 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// stores the handle with its tag, the four positions a container travels in, and the iterator rule
 		// (`reversed(...) == [...]` is the reference's False, and an iterator is a member of nothing) are in
 		// this one program, whose expectation is what CPython printed for it (roadmap Gap R.253, ADR 0472).
+		// The ordering doors ask an ITERABLE what it is. The container tables answered that question with a
+		// spelling — `staticContainerKind`, a record of what a NAME holds — so the three iterables the
+		// reference builds a list from and this backend could not name fell out of every door at once:
+		// `sorted("bca")` (its CHARACTERS, in code points), `sorted(d)` (a dict's KEYS) and
+		// `sorted(range(5, 2, -1))` (its INTEGERS) were refused in the loop and printed a bare handle — `0`,
+		// or the address of the fold's `@.lst1` — in `print`, while `print(sorted(xs[0:2]))` of a list of text
+		// printed them in ARRIVAL order because @rt_sort chose its comparator from the argument's spelling,
+		// and `xs = sorted("bca")` / `print(xs[0])` printed the interned index. The substitution the reference
+		// makes, asked once, and the comparator asked of the object, are this program (roadmap **Gap R.247**,
+		// ADR 0473).
+		"sorted_iterables",
 		"sorted_container",
 		// A `for` loop asks its ITERABLE what it is before choosing a road for it. The loop had three
 		// ways to step over an iterable and no question to choose between them, so a container the

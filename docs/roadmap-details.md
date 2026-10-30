@@ -12473,7 +12473,7 @@ programs whose order comes from the runtime — so "the loop stopped calling the
 
 <a id="gap-r-247"></a>
 
-### Gap R.247 — `sorted`/`reversed` over an argument neither door can name (PLANNED, found by ADR 0339)
+### Gap R.247 — `sorted`/`reversed` over an argument neither door can name (CLOSED by ADR 0473, found by ADR 0339)
 
 See the row's `Item` cell for the programs. The short version: the two doors ADR 0339 opens are gated on the
 argument being a *list* and on its element kind being visible. A text, a dict, a set, a range and a slice or
@@ -12483,6 +12483,44 @@ all of them. The interesting row-mate is `print(sorted(xs[0:2]))` over a list of
 the argument's *spelling* (a `*Name`'s notebook, a literal's elements) and a slice or a call's answer is
 neither, so the text is ordered by payload, i.e. by arrival order. That half is the builtin's own door and this
 row owns it too, which is why the loop's refusal for the same program names the comparator rather than shrugging.
+
+
+**Closed 2026-10-30 by [ADR 0473](adr/0473-an-ordering-asks-its-argument-what-sequence-it-denotes.md).** The
+sentence this section ended with — "*that half is the builtin's own door and this row owns it too*" — is what the
+commit did, and the way out was the reference's own order of operations. The reference does not sort an iterable;
+it builds a container from one and sorts that. So the backend builds the same container, once, in one named road:
+`orderingSequenceArg` spells the list an argument *denotes*, and each sequence is spelled by the one road that
+already spells it elsewhere — `runeElems` for a TEXT (**L11.5**'s code points; `sorted("café")` is four members,
+not six bytes), `constRangeElems` for a `range(...)` whose bounds the program wrote, and `sortedDictAnswers` /
+`@rt_dict_keys` for a DICT (**ADR 0417**'s stride-by-two read rather than re-derived, which is what keeps
+**Gap R.426**'s answer single). Four doors then ask that one question — the fold/build, the walkable half
+(`orderingArgumentIsNameableSequence`), the kind half (`forIterSortedElemKind`) and the print door
+(`printRoadSeesAnOrderingArgument`) — and each of them turned out to own one of the measured failures:
+
+| program | before | now |
+|---|---|---|
+| `for v in sorted("bca")` | refused, naming the TEXT | `a`, `b`, `c` |
+| `for k in sorted(d)` over `{"b": 1, "a": 2}` | refused, naming the DICT and its `[key, value]` layout | `a`, `b` |
+| `for v in sorted(range(3))` | refused (`not a container this backend can name`) | `0`, `1`, `2` |
+| `print(sorted("bca"))` | **`0`** at exit 0 | `['a', 'b', 'c']` |
+| `print(sorted(range(3)))` | the address of the fold's `@.lst1`, printed by `%d` | `[0, 1, 2]` |
+| `print(sorted(xs[0:2]))` over `xs = ["b", "a"]` | **`['b', 'a']`** at exit 0 | `['a', 'b']` |
+| `print(sorted(sorted("bca")))` | **`['b', 'c', 'a']`** at exit 0 | `['a', 'b', 'c']` |
+| `xs = sorted("bca")` / `print(xs[0])`, `for v in xs` | **`2`** and `2`, `0`, `1` | `a`; `a`, `b`, `c` |
+
+Three lessons came out of it, and they are in the ADR. (1) The comparator is a property of the OBJECT: `@rt_sort`
+took its mode from the argument's *spelling*, so anything reached through a slice, a nest or a substitution was
+ordered by payload — which for an interned text is arrival order, and that is the whole of the exit-0 wrong
+answers. (2) The BINDING is a door too: `xs = sorted(...)` recorded nothing, which is why the name printed the list
+and read its own slots wrong; `recordOrderingBinding` writes the three claims `xs = [...]` writes, asked of the
+same kind door. (3) A refusal that blames an object the program never built (`its argument is a DICT: sorted()
+would order its KEYS, which the runtime stores as [key, value] pairs the sort does not walk`) is a defect beside
+the missing answer, and both were fixed in the same pass (**ADR 0249**).
+
+What stayed refused is refused in words and has rows of its own: a float or mixed element list (**Gap R.248**), a
+SET, the reference's positional `key` (**Gap R.249**), a `range(...)` whose bound the program did not write
+(**Gap R.250**), and the subscript or slice of the ordering's answer, with the alias of a binding this row records —
+filed as **Gap R.576**, **Gap R.577**, **Gap R.578**, each pinned with its refusal sentence on both legs.
 
 <a id="gap-r-248"></a>
 
@@ -24769,3 +24807,101 @@ the half **ADR 0472** opened and could not finish without a comparator: `sortedR
 built container are still stored untagged. Closing this row and **Gap R.568** is the same change seen from the two
 sides of `rt_contains`, and the two pinned rows — here and in the refusal table — go red together with it. Measured
 2026-10-14 landing **ADR 0472**.
+
+<a id="gap-r-576"></a>
+
+### Gap R.576 — the subscript and the slice of an ordering's answer are refused wherever the argument was not a list literal (OPEN, found by ADR 0473)
+
+```python
+$ python3 -c 'print(sorted("bca")[0]); print(sorted({"b":1,"a":2})[0]); print(sorted("bca")[0:2])'
+a
+a
+['a', 'b']
+$ gustyc --file probe.gy
+gustyc: jit: codegen: index requires an inline list/dict/set literal           # exit 1
+```
+
+The integer twin answers: `print(sorted([3, 1, 2])[0])` prints `1`, because the subscript door's own fold
+(`indexListElems` → `foldedBuiltinListElems`) carries an ordering of a literal's elements that knows only numbers.
+Everything the ordering road gained in **ADR 0473** — the substituted text, the substituted `range`, the dict's
+keys — is readable by `print(sorted(...))`, by `in`, by `==`, by a `for`, and by a binding, and not by a subscript.
+The slice door is the same wall from the other side: `print(sorted("bca")[0:2])` refuses with
+`cannot slice *lang.Call: the copy is a list whose slots are the base's payloads with their tags, and the base is
+not a…`, a sentence about a base this backend can build — the very same program with a binding in front of it
+(`xs = sorted("bca")` / `print(xs[0:2])`) answers `['a', 'b']`.
+
+That pair is the measurement that localises the row: the object exists and reads correctly through a name, so what
+is missing is the door that reads it inline. The action is to stop carrying a second ordering — the integer-only
+one inside the subscript — and ask `orderingSequenceArg` and `forIterSortedElemKind`, which is **ADR 0258**'s
+one-table rule applied to the last road in the family that has not been asked yet. **Gap R.577** is the same door
+with a text LIST literal in front of it, filed apart because the literal road fails for a different reason: the
+elements are visible there, it is the comparator's kind that is not carried into the subscript.
+
+<a id="gap-r-577"></a>
+
+### Gap R.577 — the subscript of an ordering over a TEXT LIST literal is refused while the number twin answers (OPEN, found by ADR 0473)
+
+`print(sorted(["b", "a"])[0])` refuses `index requires an inline list/dict/set literal` where the reference answers
+`a`, where `print(sorted([3, 1, 2])[0])` answers `1` two lines away, and where `xs = ["b", "a"]` / `print(xs[0])`
+answers `a` with no ordering in the program at all. Three slots, three roads, one reference answer; the road that
+fails is the one that has to know the elements are texts, which is the knowledge **ADR 0473** put behind
+`forIterSortedElemKind` and the subscript has not been given.
+
+<a id="gap-r-578"></a>
+
+### Gap R.578 — an alias of a name the ordering binding recorded loses the claim (OPEN, found by ADR 0473)
+
+`xs = sorted("bca")` / `print(xs[0])` answers `a`; add `yy = xs` and `print(yy[0])` refuses
+`index of a non-literal variable`, while `print(yy)` in the same program prints `['a', 'b', 'c']` — the object is
+right and the NAME's claim is gone. `recordOrderingBinding` (**ADR 0473**) writes kind, `listElemStr` and
+`mixedLists` for the name it is given, and the alias road copies a container's claims for the bindings it was
+written to know (**ADR 0341**), which does not yet include a name whose claim came from an ordering. Filed rather
+than widened in place: the alias door is shared by the four container claims and by every plain `yy = xs` in the
+corpus, and a copy that reads one table too many is how a working program becomes a refusal (**ADR 0249**).
+
+<a id="gap-r-579"></a>
+
+### Gap R.579 — a decorated function whose body binds a list and returns one of its elements emits a block that was never opened (OPEN, found by ADR 0473's differential sweep)
+
+```python
+$ cat deco_container.gy
+def dec(g):
+    return g
+
+@dec
+def f(x):
+    xs = [x]
+    return xs[0]
+
+print(f(3))
+$ python3 deco_container.gy
+3
+$ gustyc --file deco_container.gy          # 03f1bf0, 5a610ff and this build, identically
+gustyc: jit: llc: exit status 1
+llc-20: error: .../jit.ll:4609:12: use of undefined value '%f.raiseexit'          # exit 2
+```
+
+Every one of the four variants measured behaves: undecorated, the same six lines print `3`; decorated with an
+empty body, `3`; decorated returning `x + 1`, `4`. Put a list in the decorated body and the module references the
+function's unwind block — `.raiseexit`, the block **ADR 0181** gives a body so an unwind cannot leak a frame —
+without ever opening it, and `llc` is the one that says so. Exit 2 is the contract's word for a compiler bug
+(**ADR 0166**), and the shape reaches it while a program the same size answers; that is why the row's action is
+written as "do not hand this to `llc`" before it is written as "answer it".
+
+The row came out of the sweep, not out of a table: 11031 recorded sources run through the parent binary and this
+one, 48 moved, and these two were among them only because the comparison includes the stderr of a run that dies.
+They are not ordering programs and this commit does not touch them; they are listed here, with their bytes,
+because a defect that is measured and not filed is a defect the next cycle cannot plan around.
+
+<a id="gap-r-580"></a>
+
+### Gap R.580 — the subscript of an inline list inside a decorated function answers `0` (OPEN, found by ADR 0473's differential sweep)
+
+`def dec(g):` / `    return g` / `@dec` / `def f(x):` / `    return [x][0]` / `print(f(3))` prints **`0`** at
+**exit 0**; the reference and the undecorated twin both print `3`. `0` is the shape of a slot read for its payload
+with the tag left behind (**ADR 0187**, **ADR 0232**) — the same answer this family keeps producing whenever a road
+is handed a container it has no claims for. The decorated body is one such road: it builds the list (the fold wrote
+its `@.lst`) and the subscript reads it without the element kind, exactly the failure **ADR 0473** removed for a
+`sorted` binding by writing the three claims (`listElemStr`/`listElemInt`/`mixedLists`). Filed apart from
+**Gap R.579** because a wrong answer at exit 0 and an invalid module are different classes on the ladder and get
+different definitions of done, and they may have different owners in the decorator road.

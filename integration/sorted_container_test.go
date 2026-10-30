@@ -48,6 +48,15 @@ var sortedContainerCLIRows = []struct {
 	{"print(3 in sorted([1, 2, 3], reverse=True))", "True"},
 	// the equality door: ADR 0189's refusal, and the `icmp eq i32 @.lst1, @.lst2` that used to beat it
 	{"print(sorted([3, 1, 2]) == [1, 2, 3])", "True"},
+	// the equality door over the shapes ADR 0473 substituted a sequence for: a dict's keys and an ordering
+	// handed another ordering were refusals here, naming Gaps R.572 and R.573, and answer today
+	{"print(sorted({\"a\": 1}) == [\"a\"])", "True"},
+	{"print(sorted(reversed([3, 1, 2])) == [1, 2, 3])", "True"},
+	// the membership door over the substituted sequences
+	{"print(sorted({\"b\": 1, \"a\": 2}) == [\"a\", \"b\"])", "True"},
+	{"print(\"a\" in sorted(\"bca\"))", "True"},
+	// a sorted TEXT haystack read by a number needle is the reference's `False` and ours is `True`: that row
+	// is not an answer to assert here, it lives in `orderingArgumentFiledCLIDivergences` with both legs
 	{"print([1, 2] == sorted([2, 1]))", "True"},
 	{"print(sorted([3, 1, 2]) == sorted([1, 2, 3]))", "True"},
 	{"print(sorted([]) == [])", "True"},
@@ -108,11 +117,13 @@ var sortedContainerCLIRefusals = []struct {
 	roadmap  string
 }{
 	{"print(1 in sorted([1, \"a\"]))", "more than one kind", "Gap R.248"},
-	{"print(1 in sorted(\"bca\"))", "is refused", "Gap R.247"},
 	{"print(1 in sorted([2, 1]) == True)", "comparison chain", "Gap R.53"},
 	{"print(1 in reversed([1, 2, 3]) == True)", "comparison chain", "Gap R.53"},
-	{"print(sorted({\"a\": 1}) == [\"a\"])", "needs a tagged value", "Gap R.572"},
-	{"print(sorted(reversed([3, 1, 2])) == [1, 2, 3])", "needs a tagged value", "Gap R.573"},
+	// `print(1 in sorted("bca"))` used to be a row here. It no longer refuses — it answers `True` where the
+	// reference answers `False`, which is a wrong answer rather than a door that cannot speak, so it is pinned
+	// with BOTH values in `orderingArgumentFiledCLIDivergences` under **Gap R.575**, and a refusal row here
+	// would only hide it (**ADR 0249**). The dict-key and nested-ordering equality rows moved to the answered
+	// table when **ADR 0473** substituted the sequence those arguments denote.
 }
 
 // TestSortedContainerDoorsAnswerThroughTheCLI runs every answered row through the CLI and through CPython

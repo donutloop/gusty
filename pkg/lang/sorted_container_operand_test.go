@@ -7,7 +7,7 @@ import (
 )
 
 // sorted_container_operand_test.go — the doors BESIDE the loop ask a `sorted`/`reversed` what its
-// answer IS (roadmap **Gap R.253**, **ADR 0472**).
+// answer IS (roadmap **Gap R.253**, **ADR 0473**).
 //
 // ADR 0333 made a container answer a pair: the door that DECIDES an expression is a container and the
 // door that BUILDS it are one function, because the failure mode of keeping them apart is not a wrong
@@ -54,6 +54,11 @@ var membershipAndEqualityAnswered = []struct {
 	src  string
 	want string
 }{
+	// The ordering over a DICT and over another ordering, both of which the doors now walk: the equality
+	// the refuse-table used to speak (`needs a tagged value`) is answered by the object the build door made,
+	// and it is the reference's answer, not a fabricated verdict (**Gap R.247**, **ADR 0473**).
+	{"print(sorted({\"a\": 1}) == [\"a\"])", "True"},
+	{"print(sorted(reversed([3, 1, 2])) == [1, 2, 3])", "True"},
 	// the two membership shapes that made `llc` reject the module, and their `not in` twins
 	{"print(1 in sorted([3, 1, 2]))", "True"},
 	{"print(5 not in sorted([3, 1, 2]))", "True"},
@@ -123,11 +128,8 @@ var membershipAndEqualityRefused = []struct {
 }{
 	{"print(1 in sorted([1, \"a\"]))", "more than one kind", "Gap R.248", true},
 	{"print(1 in reversed([1, \"a\"]))", "list literal elements must be integers", "Gap R.571", false},
-	{"print(1 in sorted(\"bca\"))", "is refused", "Gap R.247", true},
 	{"print(1 in sorted([2, 1]) == True)", "comparison chain", "Gap R.53", true},
 	{"print(1 in reversed([1, 2, 3]) == True)", "comparison chain", "Gap R.53", true},
-	{"print(sorted({\"a\": 1}) == [\"a\"])", "needs a tagged value", "Gap R.572", true},
-	{"print(sorted(reversed([3, 1, 2])) == [1, 2, 3])", "needs a tagged value", "Gap R.573", true},
 	// The OPTION the builtins refuse, met at the container doors. The value road folds `sorted(xs, True)`
 	// to its constant and prints `[3, 2, 1]`; a door that read that word would hand the global to
 	// @rt_contains/@rt_set_elem, which is this row's own exit-2 shape on a program the reference STOPS
@@ -195,12 +197,11 @@ var filedNotFixed = []struct {
 }{
 	{"print(1 in sorted([1.5, 0.5]))", "True", "False", "Gap R.248"},
 	{"print(None in sorted([1, None]))", "True", "TypeError: '<' not supported between instances of 'NoneType' and 'int'", "Gap R.571"},
-	{"print(\"a\" in reversed(\"abc\"))", "False", "True", "Gap R.570"},
-	{"print(\"c\" in reversed(\"abc\"))", "False", "True", "Gap R.570"},
 	{"print(len(reversed([1, 2, 3])) == 3)", "True", "TypeError: object of type 'list_reverseiterator' has no len()", "Gap R.251"},
 	{"print([reversed([1, 2, 3])])", "[[3, 2, 1]]", "[<list_reverseiterator object at 0x…>]", "Gap R.251"},
 	{"sa = set()\nsa.add(sorted([3, 1, 2]))\nprint(len(sa))", "1", "TypeError: unhashable type: 'list'", "Gap R.574"},
 	{"print(1 in sorted([\"b\", \"a\"]))", "True", "False", "Gap R.575"},
+	{"print(1 in sorted(\"bca\"))", "True", "False", "Gap R.575"},
 }
 
 // TestTheDoorsNeverHandAContainerGlobalToAHelper is the row's IR claim: no module this suite compiles
@@ -416,10 +417,10 @@ func TestTheDecideDoorAndTheBuildDoorAreOneQuestion(t *testing.T) {
 		// and the third clause is what makes the value doors refuse it rather than read the fold's global
 		// (Gap R.247, Gap R.249, ADR 0340; the exit-2 class is ADR 0166's).
 		{"sorted([3, 1, 2], True)", false, false, false, true},
-		{"sorted(reversed([3, 1, 2]))", false, false, false, false}, // the argument is a list neither door can reach
-		{"reversed([1, \"a\"])", false, false, false, false},        // the builtin's own emitList refusal
-		{"reversed(\"abc\")", false, false, false, false},           // a text, not a container — the text roads own it
-		{"sorted(\"bca\")", false, false, false, false},             // Gap R.247's argument
+		{"sorted(reversed([3, 1, 2]))", false, true, true, false}, // the nest is NAMED: the runtime copies and sorts what the inner call walks
+		{"reversed([1, \"a\"])", false, false, false, false},      // the builtin's own emitList refusal
+		{"reversed(\"abc\")", false, true, true, false},           // Gap R.251's iterator, walked by the text road's list
+		{"sorted(\"bca\")", false, true, true, false},             // Gap R.247's argument: NAMED, the substitution is what makes it nameable
 	}
 	for _, tc := range cases {
 		t.Run(tc.expr, func(t *testing.T) {
@@ -489,7 +490,7 @@ func newSortedContainerProbeGen() *irGen {
 // CONJUNCTION and not the second clause. The kind is a string today precisely because the element road and
 // the loop will want to say what an element IS (**ADR 0233**'s tag-and-store pair, **Gap R.248**'s missing
 // comparator); a door that returned the right boolean with the wrong name behind it would leave every
-// program row green. This is the row that would notice (roadmap **Gap R.253**, **ADR 0472**).
+// program row green. This is the row that would notice (roadmap **Gap R.253**, **ADR 0473**).
 func TestTheKindDoorNamesWhatTheElementsAre(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -505,22 +506,34 @@ func TestTheKindDoorNamesWhatTheElementsAre(t *testing.T) {
 		// Text: `sorted` asks the comparator question too, `reversed` does not.
 		{"sorted([\"b\", \"a\"])", "text", true},
 		{"reversed([\"b\", \"a\"])", "text", true},
-		// The argument's OWN kind is what is asked: a slice copies its base, and @rt_sort chooses its
-		// comparator from the spelling it was handed, so a text arriving through a slice is the comparator's
-		// refusal while a number arrives fine (ADR 0191, Gap R.247).
+		// The argument's OWN kind is what is asked: a slice copies its base's slots and tags, and since
+		// **Gap R.247** the comparator is asked of that OBJECT rather than of the argument's spelling — which
+		// is what makes a text base walkable beside a numeric one instead of arriving in the order the program
+		// wrote it (ADR 0191's comparator question, **ADR 0473**'s answer).
 		{"sorted([3, 1, 2][0:2])", "number", true},
 		// One kind per container or nothing at all — the mixed list, and the float list whose comparator the
 		// sort's own road cannot choose (**Gap R.248**: this is the answer that keeps a tag from being invented).
 		{"sorted([1, \"a\"])", "", false},
 		{"reversed([1, \"a\"])", "", false},
 		{"sorted([1.5, 0.5])", "", false},
-		// A dict's elements are its KEYS; the tag road reads a dict literal's VALUES. The argument is what
-		// is asked, and the pair that would be built is a number tag over text — which is why this is no kind.
-		{"sorted({\"a\": 1})", "", false},
-		{"reversed({\"a\": 1})", "", false},
-		// Neither ordering builtin answers a bare text, so neither names its characters as a container kind.
-		{"sorted(\"bca\")", "", false},
-		{"reversed(\"abc\")", "", false},
+		// A dict's elements are its KEYS, in entry order — the question **ADR 0417**'s sort road answers with
+		// `@rt_dict_keys`, and the kind door reads the same records, so `for k in sorted(d)` and
+		// `print(sorted(d))` cannot keep two answers about one dict (**Gap R.247**, **Gap R.426**).
+		{"sorted({\"a\": 1})", "text", true},
+		{"sorted({\"b\": 1, \"a\": 2})", "text", true},
+		{"sorted({2: 1, 1: 2})", "number", true},
+		{"reversed({\"a\": 1})", "text", true}, // the loop walks the flipped KEYS; the ITERATOR rule is the value doors'
+		// The characters of a TEXT: `sorted("bca")` builds the list the reference builds, one string per CODE
+		// POINT (**ADR 0225**'s rule, which is why `sorted("café")` is four members and not six bytes).
+		{"sorted(\"bca\")", "text", true},
+		{"reversed(\"abc\")", "text", true}, // flipped CHARACTERS: the loop's sequence, the code-point rule included
+		// A `range(...)` the program wrote out is its integers; a nested ordering walks what the inner call
+		// walked, so the kind comes from the sequence BEHIND the nest and not from the outer spelling — the
+		// shape that printed `['b', 'c', 'a']` for `sorted(sorted("bca"))` (**Gap R.247**, **Gap R.250**).
+		{"sorted(range(3))", "number", true},
+		{"sorted(range(5, 2, -1))", "number", true},
+		{"sorted(sorted([3, 1, 2]))", "number", true},
+		{"sorted(sorted(\"bca\"))", "text", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.expr, func(t *testing.T) {

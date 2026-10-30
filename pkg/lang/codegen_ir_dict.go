@@ -235,6 +235,20 @@ body:
   %tg = select i1 %istext, i32 4, i32 %st
   call void @rt_set_elem(i32 %nh, i32 %i, i32 %k)
   call void @rt_tag_elem(i32 %nh, i32 %i, i32 %tg)
+  ; A slot that holds interned text has to SAY so in the bit the printers read, not only in the tag.
+  ; rt_print_mixed_value hands a container slot to rt_print_container_value, which asks the object's
+  ; own estr map, and a copy that wrote only the tag printed the intern table's INDEX through the nested
+  ; road while the same list printed correctly flat: print([sorted(d)]) over {"b":1,"a":2} came out
+  ; [[1, 0]] where the reference prints [['a', 'b']] (roadmap **Gap R.247**, found by opening the
+  ; dict to the ordering doors; the bit-and-tag pair is **ADR 0232**'s, written together the way
+  ; heapListFrom writes them). The mask is capped at the width the map has; a key beyond slot 31 keeps
+  ; today's behaviour, which is the estr map's own limit and not this road's.
+  %iwrap = and i32 %i, 31
+  %bit = shl i32 1, %iwrap
+  %inrange = icmp ult i32 %i, 32
+  %bitok = select i1 %inrange, i32 %bit, i32 0
+  %mark = select i1 %istext, i32 %bitok, i32 0
+  call void @rt_mark_estr(i32 %nh, i32 %mark)
   %inext = add i32 %i, 1
   br label %lo
 done:

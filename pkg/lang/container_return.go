@@ -1584,6 +1584,15 @@ func (g *irGen) containerAnswerArgIsCarriable(e Expr) bool {
 		if g.strFuncs[nm.Value] {
 			return true // a text answer is one interned index, which a slot holds
 		}
+		// A `range(...)` whose bounds the compiler can read answers a LIST of integers — the very object
+		// `list(range(3))` builds — and a slot holds its handle the way it holds a literal's. Saying no
+		// here is what sent `print(sorted(range(3)))` down the ordinary call road, where the ordering's
+		// fold answers the compile-time GLOBAL and the print door's `%d` printed it (roadmap **Gap R.247**,
+		// **ADR 0473**); the bounds are asked of `constRangeElems`, the one road that spells a range's list.
+		if nm.Value == "range" {
+			_, isRange := g.constRangeElems(v)
+			return isRange
+		}
 		_, ok := g.containerAnswerOf(nm.Value)
 		return ok && g.containerAnswerCallIsCarriable(e)
 	}

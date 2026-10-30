@@ -26,6 +26,19 @@ func (g *irGen) builtinSorted(b *strings.Builder, c *Call, fnName string) (strin
 	if len(c.Args) < 1 || len(c.Args) > 2 {
 		return "", fmt.Errorf("sorted expects 1 or 2 arguments")
 	}
+	// The reference builds a container from an ITERABLE before it orders it, and two iterables are in none
+	// of the container tables: a TEXT, whose list is its characters, and a `range(...)` whose bounds are
+	// constants, whose list is the integers it yields. Substituting the list they denote HERE — before the
+	// fold, before the runtime sort, before the print — is what lets every road below answer about the one
+	// sequence the loop walks and the doors build, which is the shape **ADR 0258**'s one-table rule asks for
+	// and what `print(sorted("bca"))` had never been asked (roadmap **Gap R.247**, **ADR 0473**).
+	if seq, isSeq := g.orderingSequenceArg(c.Args[0]); isSeq {
+		rest := []Expr{}
+		if len(c.Args) > 1 {
+			rest = append(rest, c.Args[1:]...)
+		}
+		c = &Call{Fn: c.Fn, Args: append([]Expr{seq}, rest...), Src: c.Src}
+	}
 	// The ordinary cases first: sorted(xs) on a variable, and sorted([...]) with
 	// anything but plain integers inside. The fold below is a fast path for constant
 	// int literals; the runtime path copies and sorts, so sorted(xs) leaves xs in its

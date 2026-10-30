@@ -633,6 +633,51 @@ counting rules would part. 69 record entries came in from the reference cross-ch
 (**Gap R.402**), and `len` of a slot of the list a call answered still blames a literal for a text the program is
 holding — filed as **Gap R.567**, with **L11.1** named as the row that would make it unnecessary.
 
+**An ordering asks its ARGUMENT what sequence it denotes, and ADR 0473 pays Gap R.247** — the reference does not
+order an iterable: it builds a container from one and orders that. The backend builds the same container now, once,
+in one road — `orderingSequenceArg` — where each sequence is spelled by the one door that already spells it: a TEXT
+becomes its characters (**L11.5**'s code points, so `sorted("café")` is four members and not six bytes), a DICT
+becomes its keys read through **ADR 0417**'s `@rt_dict_keys` rather than a re-derivation, a `range(...)` whose bounds
+the program wrote becomes the integers it yields, and an ordering handed another ordering walks the INNER call's
+sequence. Four doors ask that one question — the fold/build, the walkable half, the kind half
+(`forIterSortedElemKind`) and the print door (`printRoadSeesAnOrderingArgument`) — and each of them turned out to own
+one of the measured failures: `print(sorted("bca"))` printed `0`, `print(sorted(range(3)))` printed the address of
+the fold's `@.lst1` through `%d`, `print(sorted(xs[0:2]))` over a list of text printed `['b', 'a']`,
+`print(sorted(sorted("bca")))` printed `['b', 'c', 'a']`, and `xs = sorted("bca")` printed the list correctly and
+`2` — the interned index of `"a"` — for `xs[0]`, every one of them at the exit code of success. The comparator is
+asked of the OBJECT now, and the BINDING became a door: `recordOrderingBinding` writes the three claims
+`xs = [...]` writes, which is what sends a reader of that name's slots to the tags (**ADR 0232**). The refusals were
+rewritten rather than left to lie — the dict's sentence blamed a `[key, value]` layout no program ever built
+(**ADR 0249**) and is gone, the sequence sentence now names the five shapes the door walks, and a `range(...)` with a
+bound the program did not write is refused under **Gap R.250**'s own clause. Witnesses
+(`pkg/lang/sorted_ordering_argument_test.go`, 9 functions; `integration/sorted_ordering_argument_test.go`): **46**
+answered programs read out of the record AND run on the compiler AND on the JIT, a **17**-expression four-door
+agreement table with the pair rule asserted in both directions, **7** binding programs whose CLAIMS (not just whose
+output) are asserted — the only witness for the half where a program can print right and still read a slot wrong —
+**9** refusals asserting the whole sentence, **9** neighbours, **4** filed divergences asked of both legs, **37**
+programs re-run against a live `python3` in the case that asserts them with the IR claim beside each
+(`@rt_sort(i32 %, i32 1)` for a text, `@rt_sort(i32 %, i32 0)` for numbers, three counter-rows that keep the fold's
+`@.lst` answer honest, and the no-printf-of-a-container-global guard over the WHOLE module so the counter-row cannot
+certify an accident). Non-vacuity, again by deleting each gate: the **substitution** reddens **51** cases,
+the **kind door** 23, the **binding claim** 15, the **print door** narrowed back to its parent's gate 21 unit and 12
+CLI, the **nested recursion** 8, the **dict's key kind** 2, the **binding's text claim** 12 — and one mutation
+reddens nothing, which is reported rather than hidden: letting the FOLD order a text moves no row, because the two
+orderings agree today, so that clause is a guard against a future drift and not an answer road.
+`programs/sorted_iterables.gy` joined the corpus as a `parity`/`match` row (corpus 292 → 293, matrix 278 → 279 with
+**243** asserted and oracle `match` **229**) and **54** record entries came in from the reference with the compiled
+leg cross-checked (**10977 → 11031**). What the row does not reach is filed with both legs' values rather than hushed
+or deleted: **Gap R.576** (the subscript and the slice of an ordering's answer — `print(sorted("bca")[0])`),
+**Gap R.577** (its text-list-literal twin), **Gap R.578** (an alias of a bound ordering), beside **Gap R.248**
+(float elements), **Gap R.250** (a `range` the program computes), **Gap R.251** (printing an iterator) and
+**Gap R.575** (a number needle against interned payloads). A differential sweep of **11031** record
+sources through the parent build and this one moved **48**: **44** from an exit-1 refusal to the reference's answer,
+**3** from an exit-0 wrong answer to the reference's answer, **1** differing only in the temp path inside its `llc`
+error — nothing moved from an answer to a refusal, nothing newly reached **exit 2**, and all 48 match their record
+stdout. What the sweep found that this row does not own is filed with its bytes, not hushed: **Gap R.579**
+(a decorated function whose body binds a list emits an undefined `%f.raiseexit` — **exit 2**) and **Gap R.580**
+(the same body returning `[x][0]` prints `0` where the reference prints `3`), both identical on the parent and the
+grandparent builds.
+
 **Membership, equality, an element slot and a comparison chain ask a `sorted`/`reversed` what it IS, and ADR 0472
 pays Gap R.253** — the row **ADR 0339** measured, withdrew its own arms for, and left standing with the measurement
 as its evidence. `print(1 in sorted([3, 1, 2]))` emitted

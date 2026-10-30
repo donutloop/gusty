@@ -30,18 +30,31 @@ func (g *irGen) sortedRuntime(b *strings.Builder, c *Call) (string, error) {
 	}
 	// A literal argument is freshly allocated by containerOperand, so sorting it in place is
 	// correct; a variable must be copied first, because sorted(xs) leaves xs in its own order.
+	// The argument the ordering was handed may be an ITERABLE the reference builds a container from — a
+	// TEXT, whose list is the one-character strings, or a `range(...)` with constant bounds, whose list is
+	// the integers. Substituting it HERE, once, is what keeps the two questions this road asks — what to
+	// build, and which comparator to build it with — about ONE object: a text ordered by the numeric
+	// comparator is sorted by interned index, which is the order the program wrote it in, and
+	// `print(sorted(xs[0:2]))` over a list of text measured exactly that wrong answer at exit 0 (roadmap
+	// **Gap R.247**, **ADR 0473**).
+	argSeq, isSeq := g.orderingSequenceArg(c.Args[0])
+	if !isSeq {
+		argSeq = c.Args[0]
+	}
 	argIsFresh := true
-	if _, isName := c.Args[0].(*Name); isName {
+	if _, isName := argSeq.(*Name); isName {
 		argIsFresh = false
 	}
-	sv, serr := g.containerOperand(b, c.Args[0])
+	sv, serr := g.containerOperand(b, argSeq)
 	if serr != nil {
 		return "", serr
 	}
 	// Which comparator: numbers by payload, interned strings by their text. A list holding both
-	// is Python's TypeError, and ordering strings by payload would sort them by arrival order.
+	// is Python's TypeError, and ordering strings by payload would sort them by arrival order. The
+	// substituted sequence above lands in the LIST arm, so a text's characters are ordered by the text
+	// comparator without a second rule for them being written here.
 	mode := 0
-	switch a := c.Args[0].(type) {
+	switch a := argSeq.(type) {
 	case *ListLit:
 		sawInt, sawStr := false, false
 		for _, el := range a.Elems {
@@ -67,6 +80,16 @@ func (g *irGen) sortedRuntime(b *strings.Builder, c *Call) (string, error) {
 		}
 		if lit, has := g.containerLits[a.Value]; has && sortElementsAreContainersLit(lit) {
 			return "", errSortElementsHaveNoOrder()
+		}
+	default:
+		// A slice, or a call that hands back a list, has no SPELLING to choose a comparator from, and
+		// choosing none is how a list of text came to be ordered by interned index — the order the program
+		// wrote it in. `xs = ["b", "a"]` / `print(sorted(xs[0:2]))` answered `['b', 'a']` at the exit code of
+		// success where the reference answers `['a', 'b']`, and `reverse=True` printed the OTHER wrong order.
+		// The kind is asked of the OBJECT instead, of the one gate the loop asks, so the two roads cannot keep
+		// two answers for one sequence (roadmap **Gap R.247**, **ADR 0473**).
+		if kind, known := g.forIterSortedElemKind(argSeq, true); known && kind == "text" {
+			mode = 1
 		}
 	}
 	// Handle registers in this backend are named %h<N> off heapSeq; a %t<N> name reads as an

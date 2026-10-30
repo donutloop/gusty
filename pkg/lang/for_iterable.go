@@ -160,6 +160,130 @@ func runeElemsReversed(s string) []Expr {
 	return elems
 }
 
+// runeElems is a text walked in CODE POINT order — the forward sibling of `runeElemsReversed`, and the
+// same per-rune string literals the loop's own text road builds for `for c in "abc"`. The reference's
+// `sorted("bca")` builds a list of one-character strings and orders them; the list it builds is THIS
+// list, spelled the same way, so the sort, the loop and the print all order the same elements
+// (roadmap **Gap R.247**, **ADR 0473**; the code-point rule is **ADR 0225**/L11.5 — a byte-reversed or
+// byte-sorted text would split an `é` into two members).
+func runeElems(s string) []Expr {
+	var elems []Expr
+	for _, r := range []rune(s) {
+		elems = append(elems, &StrLit{Value: string(r)})
+	}
+	return elems
+}
+
+// constRangeElems is `range(...)` answered as the LIST the reference's `sorted(range(3))` builds: the
+// integers, in the order `range` yields them, when every bound is a constant the compiler can read.
+// The semantics are the reference's — one, two or three arguments, a negative step, and an empty range
+// when the step points away from the stop — because a `sorted` that ordered a different sequence than
+// the one `range` yields would be a second answer to one question (roadmap **Gap R.247**).
+//
+// A non-constant bound is `ok == false`, which is the scan's own limitation and roadmap **Gap R.250**'s
+// to own: the value road has no table for a builtin call's answer, so the sequence behind a variable's
+// number has no home here yet.
+func (g *irGen) constRangeElems(c *Call) ([]Expr, bool) {
+	if len(c.Args) == 0 || len(c.Args) > 3 {
+		return nil, false
+	}
+	for _, a := range c.Args {
+		if _, isKw := a.(*KeywordArg); isKw {
+			return nil, false
+		}
+	}
+	bound := func(i int) (int64, bool) {
+		if i >= len(c.Args) {
+			return 0, true
+		}
+		v, err := g.constIntVal(c.Args[i])
+		return v, err == nil
+	}
+	var start, stop, step int64
+	switch len(c.Args) {
+	case 1:
+		v, ok := bound(0)
+		if !ok {
+			return nil, false
+		}
+		stop, step = v, 1
+	case 2:
+		a, okA := bound(0)
+		b, okB := bound(1)
+		if !okA || !okB {
+			return nil, false
+		}
+		start, stop, step = a, b, 1
+	default:
+		a, okA := bound(0)
+		b, okB := bound(1)
+		s, okS := bound(2)
+		if !okA || !okB || !okS {
+			return nil, false
+		}
+		start, stop, step = a, b, s
+	}
+	if step == 0 {
+		return nil, false // range()'s own step-zero stop lives in its road; nothing is walked here
+	}
+	var elems []Expr
+	if step > 0 {
+		for v := start; v < stop; v += step {
+			elems = append(elems, &IntLit{Value: v})
+		}
+	} else {
+		for v := start; v > stop; v += step {
+			elems = append(elems, &IntLit{Value: v})
+		}
+	}
+	return elems, true
+}
+
+// orderingSequenceArg is the ONE question the ordering builtins ask of an argument that is not a
+// container but an ITERABLE the reference builds one from: it answers the LIST the sequence denotes, in
+// the order the sequence yields it, for the three shapes this backend had no road for — a TEXT (the
+// one-character strings, in code-point order), a `range(...)` whose bounds are constants (the integers
+// `range` yields), and nothing else. ok is false for every argument the roads beside this already own
+// (a list literal, a name bound to one, a slice, a call that answers a list) and for every argument no
+// road can name, which is the walkability gate's answer rather than this one's.
+//
+// A DICT is deliberately absent. `sorted(d)` walks a dict for its KEYS and that walk has an owner
+// already — **ADR 0417**'s `sortedDictAnswers` and `@rt_dict_keys`, which stride the entry array by two
+// and stop at the entry count — and a second road pulling keys out of a dict would be a second stride
+// rule, which is the defect (**Gap R.426**) that road exists to prevent. What the dict was owed is the
+// element's KIND, and that is `forIterSortedElemKind` beside this, asked of the same records the dict
+// sort reads.
+//
+// Each answer is the sequence the REFERENCE yields, because the ordering, the loop and the print all
+// read it: an order that disagreed with `range`'s, or with the text road's per-rune list, is a program
+// printing one sequence through `for` and another through `print` (roadmap **Gap R.247**, **ADR 0258**'s
+// one table, **ADR 0472**'s three roads).
+func (g *irGen) orderingSequenceArg(a Expr) (Expr, bool) {
+	switch x := a.(type) {
+	case *StrLit:
+		return &ListLit{Elems: runeElems(x.Value), Src: x.Span()}, true
+	case *Name:
+		// A text the program NAMED is the same sequence: the record the front end keeps of the name's one
+		// text answers "what characters", exactly as **ADR 0417**'s key road asks the same record what kind
+		// of key it holds. A name the record cannot see is not a refusal here — the gate beside this one
+		// says no, and its sentence names the missing half.
+		if s, held := g.strVals[x.Value]; held {
+			return &ListLit{Elems: runeElems(s), Src: x.Span()}, true
+		}
+		return nil, false
+	case *Call:
+		nm, isName := x.Fn.(*Name)
+		if !isName || g.builtinShadowed(nm.Value) || nm.Value != "range" {
+			return nil, false
+		}
+		if elems, isRange := g.constRangeElems(x); isRange {
+			return &ListLit{Elems: elems, Src: x.Span()}, true
+		}
+		return nil, false
+	}
+	return nil, false
+}
+
 // reverseFlagIsSpellable reports whether the arguments after the iterable are spellable by
 // this backend's own ordering: nothing, or `reverse=<constant>`. A bare positional second
 // argument is the reference's `key`, and a third argument is neither.
@@ -274,6 +398,119 @@ func (g *irGen) containerSortBuiltin(e Expr) (fn string, arg Expr, ok bool) {
 	return name.Value, c.Args[0], true
 }
 
+// printRoadSeesAnOrderingArgument is the print door's question about the argument of one of the two
+// ordering builtins: does this argument reach the heap list `sortedRuntime` builds? A container does, and
+// so does one of the three iterables the ordering substitutes a list for — a TEXT (its characters), a DICT
+// (its keys) and a `range(...)` whose bounds the compiler can read (its integers). Asking a SPELLING test
+// instead (`isContainerExpr`, a record of what a NAME holds) is how `print(sorted("bca"))` and
+// `print(sorted(range(3)))` fell past the printer road to the numeric one, which printed the ordering's own
+// answer with `%d` — `0`, the interned index of "a", and the address of a compile-time global, both at the
+// exit code of success (roadmap **Gap R.247**, **ADR 0473**). `reversed` keeps the narrow gate: a text handed
+// to it is the TEXT road's reversal, and printing its iterator is roadmap **Gap R.251**'s row.
+func (g *irGen) printRoadSeesAnOrderingArgument(fn string, a Expr) bool {
+	if a == nil || (fn != "sorted" && fn != "reversed") {
+		return false
+	}
+	if g.isContainerExpr(a) {
+		return true
+	}
+	if fn != "sorted" {
+		return false
+	}
+	_, isSeq := g.orderingSequenceArg(a)
+	return isSeq
+}
+
+// orderingArgumentIsNameableSequence is the walkable half of the ordering pair: can this backend put in
+// front of @rt_sort / @rt_reverse the sequence the reference would build from this argument? Four shapes
+// reach it: the TEXT and the constant `range(...)` that `orderingSequenceArg` substitutes a list for, the
+// DICT whose keys `@rt_dict_keys` strides out, and an ordering handed ANOTHER ordering — `sorted(sorted(x))`
+// walks the very sequence the inner call walked, so it is walkable wherever that call is. Anything else — a
+// call the doors do not name, a generator, a number — is not, and the loop beside this refuses it by name
+// rather than walking the wrong object (roadmap **Gap R.247**, **ADR 0473**).
+func (g *irGen) orderingArgumentIsNameableSequence(a Expr) bool {
+	if a == nil {
+		return false
+	}
+	if _, isSeq := g.orderingSequenceArg(a); isSeq {
+		return true
+	}
+	if _, _, handled, derr := g.sortedDictAnswers(a); handled && derr == nil {
+		return true
+	}
+	if c, isCall := a.(*Call); isCall {
+		if _, _, isNested := g.containerSortBuiltin(c); isNested {
+			_, walkable := g.sortedReversedOverWalkableList(c)
+			return walkable
+		}
+	}
+	return false
+}
+
+// orderingDoorIsSorted names which of the two ordering doors a call goes to: `sorted` orders, `reversed`
+// flips. It is one word, and every road that has to know it has to know it the same way — the fold, the
+// comparator and the binding's element kind all read the same name through this question rather than each
+// writing `fn.Value == "sorted"` beside its own argument walk (**ADR 0258**'s one-table rule; roadmap
+// **Gap R.247**, **ADR 0473**).
+func (g *irGen) orderingDoorIsSorted(e Expr) bool {
+	fn, _, isCall := g.containerSortBuiltin(e)
+	return isCall && fn == "sorted"
+}
+
+// recordOrderingBinding writes what the roads look up for a name bound to the answer of `sorted` or
+// `reversed` — the three questions every container binding answers: which kind it is, whether the slots
+// describe themselves, and whether a static literal stands behind the name. The element kind is asked of
+// `forIterSortedElemKind`, the one door that also picks @rt_sort's comparator and the loop's slot, so
+// `xs = sorted("bca")` cannot be a text list at the print door and an unlabelled word at the subscript:
+// the binding used to record NOTHING, which is why `print(xs)` answered `['a', 'b', 'c']` while
+// `print(xs[0])` answered `2` — the interned index of "a" — and `for v in xs:` printed `2|0|1` where the
+// reference prints `a|b|c`, all at the exit code of success (roadmap **Gap R.247**, **ADR 0473**). A text's
+// list is BUILT tagged, with bit 8 set (**ADR 0232**), so the name claims `mixedLists`, the claim that sends
+// a reader to the slot tags; an integer list is the plain one, and the record that names it is the same
+// `listElemInt` an `xs = [1, 2]` assignment writes.
+func (g *irGen) recordOrderingBinding(name string, e Expr) bool {
+	fn, arg, isCall := g.containerSortBuiltin(e)
+	if !isCall || arg == nil {
+		return false
+	}
+	kind, known := g.forIterSortedElemKind(arg, fn == "sorted")
+	if !known {
+		return false
+	}
+	g.settleContainerKind(name, containerKindList)
+	switch kind {
+	case "text":
+		// Every slot holds an interned text — the same claim `xs = ["bb", "aa"]`'s builder writes through
+		// `heapListFrom`, and the reason both spellings of a text list now answer the subscript, the
+		// concatenation and the loop the same way (**ADR 0232**'s slots are the truth; roadmap **Gap R.247**).
+		g.mixedLists[name] = false
+		g.listElemStr[name] = true
+		g.listElemInt[name] = false
+	case "object":
+		// The builder wrote a tag with every slot and let the object speak for itself; the reader has to
+		// ask them, which is what the mixed claim does.
+		g.mixedLists[name] = true
+		g.listElemStr[name] = false
+		g.listElemInt[name] = false
+	case "number":
+		g.mixedLists[name] = false
+		g.listElemStr[name] = false
+		g.listElemInt[name] = true
+	default:
+		return false
+	}
+	delete(g.containerLits, name)
+	delete(g.noneVars, name)
+	delete(g.boolVars, name)
+	if g.strVals != nil {
+		delete(g.strVals, name)
+	}
+	if g.dictVals != nil {
+		delete(g.dictVals, name)
+	}
+	return true
+}
+
 // sortedReversedOverWalkableList is the container pair's question: is this expression a
 // `sorted` or `reversed` whose argument is a LIST this backend can put in front of @rt_sort /
 // @rt_reverse — a list literal, a list variable, a slice of a list, or a call that carries a
@@ -313,7 +550,15 @@ func (g *irGen) sortedReversedOverWalkableList(e Expr) (arg Expr, ok bool) {
 	}
 	kind, known := g.staticContainerKind(a)
 	if !known || kind != "list" {
-		return nil, false
+		// The container tables have no entry for the shapes the REFERENCE still walks element by element — a
+		// TEXT (its characters), a DICT (its keys), a constant `range(...)` (its integers), and an ordering
+		// handed another ordering (the sequence the inner call walked). Each is asked of the road that owns its
+		// sequence rather than of a table built from the shapes this backend already knew:
+		// `staticContainerKind` is a record of what a NAME holds, and an iterable the program handed the
+		// ordering has no name to look up (roadmap **Gap R.247**, **ADR 0473**).
+		if !g.orderingArgumentIsNameableSequence(a) {
+			return nil, false
+		}
 	}
 	if ll, isListLit := a.(*ListLit); isListLit && len(ll.Elems) == 0 {
 		// An empty literal has nothing to walk; the fold beside this answers it without building
@@ -361,6 +606,10 @@ func (g *irGen) forIterSortedElemKind(a Expr, sorts bool) (string, bool) {
 			return "number", true
 		}
 	case *Name:
+		// A name the ordering walks may hold a TEXT (its characters), a DICT (its keys) or a LIST, and each
+		// is asked of the record that owns it. The container records are asked FIRST — a name the tables
+		// claim holds a container is a container's business (**ADR 0273**'s rule that a gate may not cost a
+		// program that compiles) — and the text record only answers a name the front end saw hold one string.
 		if g.mixedLists[n.Value] {
 			return "", false
 		}
@@ -370,32 +619,106 @@ func (g *irGen) forIterSortedElemKind(a Expr, sorts bool) (string, bool) {
 		if g.listVars[n.Value] {
 			return "number", true
 		}
+		if mode, _, handled, err := g.sortedDictAnswers(n); handled {
+			// A dict's elements ARE its keys, in entry order — the fact **ADR 0417** paid for by striding the
+			// payload array by two and stopping at the entry count. The KIND comes from the very records that
+			// road reads, so `for k in sorted(d)` and `print(sorted(d))` cannot keep two answers about one
+			// dict (roadmap **Gap R.247**, **Gap R.426**). `handled` is that road's own "is this a dict";
+			// asked here it keeps the two roads from keeping two lists of dict shapes.
+			if err != nil {
+				return "", false
+			}
+			if mode == 1 {
+				return "text", true
+			}
+			return "number", true
+		}
+		if _, held := g.strVals[n.Value]; held {
+			// A TEXT the ordering was handed yields its CHARACTERS, which is what the reference's
+			// `sorted("bca")` builds a list of. The order is not spelled here — @rt_sort's text comparator
+			// orders them, the same comparator a text list is ordered by — so this backend keeps one text
+			// ordering rather than a compile-time copy of it that could drift (**ADR 0225**'s code-point rule).
+			return "text", true
+		}
 		return "", false
+	case *DictLit:
+		// A dict literal's elements are its KEYS, in the order the program wrote the entries: the same
+		// question **ADR 0417**'s sort road answers with `@rt_dict_keys`, asked here of the same records so
+		// the walk and the ordering cannot disagree about what a dict yields (roadmap **Gap R.247**,
+		// **Gap R.426**).
+		mode, keyTag, handled, err := g.sortedDictAnswers(n)
+		if !handled || err != nil {
+			return "", false
+		}
+		// The MODE is the comparator @rt_dict_keys will be asked to run (text keys compare as texts);
+		// the KEY TAG is what a slot holds, and it is what a one-entry dict's kind turns on —
+		// `sorted({"a": 1})` compares nothing and still has to say what its element IS, or the binding
+		// claims an integer slot over an interned text and `print(xs[0])` shows the index
+		// (**ADR 0232**'s slots-are-the-truth, roadmap **Gap R.247**).
+		switch {
+		case mode == 1, keyTag == elemTagStr:
+			return "text", true
+		case keyTag == elemTagInt:
+			return "number", true
+		default:
+			// A one-entry dict keyed by a verdict, None or a container: the sort compares nothing, but a
+			// slot still has to say what it holds, and "object" is the honest word for it.
+			return "object", true
+		}
+	case *StrLit:
+		// The characters of a text, in code-point order — the list the reference builds when you sort a
+		// string. `runeElems` is the road that spells them, the same one the loop's `for c in "abc"` walks.
+		return "text", true
 	case *Slice:
-		// A slice copies its base's slots and tags, so the base answers the question — except that
-		// @rt_sort chooses its comparator from the ARGUMENT's spelling (a Name's marker, a literal's
-		// elements) and a slice is neither: text sliced into `sorted` would be ordered by payload,
-		// which is arrival order. Only the numeric base is safe to walk; the text case is refused
-		// beside this and filed with the comparator's own row (roadmap Gap R.247).
+		// A slice copies its base's slots and tags, so the base answers the question. It used to be that
+		// only a NUMERIC base was safe to walk, because @rt_sort chose its comparator from the ARGUMENT's
+		// spelling (a Name's marker, a literal's elements) and a slice is neither — so a list of text sliced
+		// into `sorted` was ordered by payload, which is arrival order, and `xs = ["b", "a"]` /
+		// `print(sorted(xs[0:2]))` printed `['b', 'a']` at the exit code of success where the reference
+		// answers `['a', 'b']` (and `reverse=True` printed the OTHER wrong order). The comparator is asked of
+		// the OBJECT now — `sortedRuntime`'s default arm reads this very gate — which is what makes a text
+		// base walkable beside a numeric one (roadmap **Gap R.247**, **ADR 0473**).
 		kind, known := g.forIterSortedElemKind(n.Obj, sorts)
-		if !known || (sorts && kind != "number") {
+		if !known {
 			return "", false
 		}
 		return kind, true
 	case *Call:
+		// A `range(...)` whose bounds are constants is the integer list the reference's `sorted(range(3))`
+		// builds, and the gate asks the SAME road the fold asks, so the loop cannot walk a sequence the sort
+		// ordered by a different rule (**ADR 0258**'s one table; roadmap **Gap R.247**).
+		if nmRange, isRangeName := n.Fn.(*Name); isRangeName && !g.builtinShadowed(nmRange.Value) && nmRange.Value == "range" {
+			if _, isRange := g.constRangeElems(n); isRange {
+				return "number", true
+			}
+		}
 		// A call that answers a container answers it with a literal this scan already saw; one arm
-		// whose elements are visible is enough to name the kind (roadmap Gap R.67, ADR 0333).
-		// As above: @rt_sort's comparator is not chosen for a call's answer, so text is refused.
+		// whose elements are visible is enough to name the kind (roadmap Gap R.67, ADR 0333). The text
+		// answer is walkable now too, for the reason the slice arm above gives: the comparator is chosen
+		// from the object, not from the spelling of the call.
 		nm, isName := n.Fn.(*Name)
 		if !isName {
 			return "", false
+		}
+		// An ordering handed ANOTHER ordering walks the very sequence the inner call walked, so the KIND —
+		// and with it @rt_sort's comparator — is the INNER argument's. Asked of the outer call's spelling
+		// instead, the elements arrived as the intern table's INDICES, the numeric comparator ordered them by
+		// ARRIVAL, and `print(sorted(sorted("bca")))` answered `['b', 'c', 'a']` at the exit code of success
+		// where the reference answers `['a', 'b', 'c']` (roadmap **Gap R.247**, **ADR 0473**). The recursion
+		// follows the same argument `foldedIterableElems` folds, so a nest cannot be ordered one way and
+		// tagged another (**ADR 0258**'s one table).
+		if _, inner, isOrdering := g.containerSortBuiltin(n); isOrdering {
+			if inner == nil {
+				return "", false
+			}
+			return g.forIterSortedElemKind(inner, sorts)
 		}
 		ans, okAns := g.containerAnswerOf(nm.Value)
 		if !okAns || len(ans.arms) != 1 {
 			return "", false
 		}
 		kind, known := g.forIterSortedElemKind(ans.arms[0], sorts)
-		if !known || (sorts && kind != "number") {
+		if !known {
 			return "", false
 		}
 		return kind, true
@@ -425,6 +748,31 @@ func (g *irGen) containerSortHandle(b *strings.Builder, e Expr) (string, bool) {
 			return "", false
 		}
 		return h, true
+	}
+	// `reversed` over a DICT flips its KEYS, which is the one helper the dict's own sort road already uses
+	// to ask them: `@rt_dict_keys` strides the entry array by two and stops at the entry count, and hands
+	// back a FRESH list, which is what `@rt_reverse` may flip in place. Copying the dict itself — what this
+	// road did before the question was asked — would flip keys and values together, the defect **ADR 0417**
+	// closed on the sort side (roadmap **Gap R.247**, **Gap R.426**).
+	if _, keyTag, handled, derr := g.sortedDictAnswers(arg); handled && derr == nil {
+		dv, kerr := g.containerOperand(b, arg)
+		if kerr != nil {
+			return "", false
+		}
+		g.heapSeq++
+		keys := fmt.Sprintf("%%h%d", g.heapSeq)
+		// The helper is the sort road's own question — a dict's KEYS, in entry order, into a fresh list —
+		// asked with the keys' own tag, so the flip and the ordering read the same array (**ADR 0417**).
+		g.emitHeapHelperCall(b, keys, "rt_dict_keys", "i32 "+dv+", i32 "+fmt.Sprint(keyTag), Span{})
+		b.WriteString(fmt.Sprintf("  call void @rt_reverse(i32 %s)\n", keys))
+		g.heapUsed = true
+		return keys, true
+	}
+	// A TEXT and a constant `range(...)` are the sequences the reference builds a list from before it
+	// flips it; `orderingSequenceArg` spells that list, and the copy is made from it rather than from the
+	// iterable, which has no container handle to copy.
+	if seq, isSeq := g.orderingSequenceArg(arg); isSeq {
+		arg = seq
 	}
 	sv, err := g.containerOperand(b, arg)
 	if err != nil {
@@ -543,21 +891,30 @@ func (g *irGen) forIterableMissingHalf(e Expr) string {
 			return "its second POSITIONAL argument is the reference's key, which the reference itself refuses: sorted() takes one positional argument (roadmap Gap R.249)"
 		}
 	}
-	// What kind of thing the argument is.
-	kind, known := g.staticContainerKind(arg)
-	if !known {
-		switch arg.(type) {
-		case *StrLit:
-			return "its argument is a TEXT, which the reference sorts by building a list of one-character strings, and the sort that would order text needs the tag the value word carries (roadmap Gap R.247)"
+	// What kind of thing the argument is. A TEXT, a DICT, a constant `range(...)` and an ordering handed
+	// another ordering are sequences the door walks (**Gap R.247**, **ADR 0473**), so a refusal about one of
+	// them is never about its being one — it is about the ELEMENT the loop variable would have to hold, and
+	// the switch below says which. What is left over is an argument no door can put in front of the ordering
+	// at all: a generator, a number, a SET, a call the scan cannot see every arm of.
+	// A `range(...)` whose bound the program did not write is its own missing half: the fold that would
+	// spell its integers has no constant to read, and the value road keeps no table for a builtin call's
+	// answer (roadmap Gap R.250 — not the row that opened the text, the dict and the written-out range).
+	if rc, isRangeCall := arg.(*Call); isRangeCall {
+		if nm, isName := rc.Fn.(*Name); isName && !g.builtinShadowed(nm.Value) && nm.Value == "range" {
+			if _, isConst := g.constRangeElems(rc); !isConst {
+				return "its argument is a `range(...)` whose bound the program did not write, and the road" +
+					" that spells a range's integers has no constant to read (roadmap Gap R.250)"
+			}
 		}
-		return "its argument is not a container this backend can name: only a list literal, a list" +
-			" variable, a numeric slice and a call that answers a list can be put in front of @rt_sort /" +
-			" @rt_reverse (roadmap Gap R.247)"
+	}
+	kind, known := g.staticContainerKind(arg)
+	if !known && !g.orderingArgumentIsNameableSequence(arg) {
+		return "its argument is not a sequence this backend can put in front of @rt_sort / @rt_reverse: a list" +
+			" (literal, variable or slice), a TEXT (whose characters it sorts), a DICT (whose KEYS it sorts), a" +
+			" `range(...)` whose bounds the program wrote, and an ordering handed another ordering are what the" +
+			" compiled backend walks; anything else needs the value word that carries its own kind (roadmap Gap R.247)"
 	}
 	switch kind {
-	case "dict":
-		return "its argument is a DICT: sorted() would order its KEYS, which the runtime stores as" +
-			" [key, value] pairs the sort does not walk (roadmap Gap R.247)"
 	case "set":
 		return "its argument is a SET, whose members the runtime keeps in its own table and @rt_sort" +
 			" does not order (roadmap Gap R.247)"
@@ -581,9 +938,15 @@ func (g *irGen) forIterableMissingHalf(e Expr) string {
 				" word carries (roadmap Gap R.248)"
 		}
 		if fn == "sorted" {
-			return "@rt_sort chooses its comparator from the argument's spelled kind (a list variable's" +
-				" marker or a literal's elements), and this argument is neither, so text handed to it would" +
-				" be ordered by payload — that is, by arrival (roadmap Gap R.247)"
+			// The comparator is asked of the OBJECT since this row — the argument's spelling no longer decides
+			// it — so what is left for a call-shaped argument to be missing is the element kind itself. Say that,
+			// and say what the alternative answer was: @rt_sort handed elements of no kind orders them by payload
+			// alone, which for text is ARRIVAL order, the answer this contract ranks worst (roadmap **Gap R.247**,
+			// **ADR 0473**).
+			return "the sequence behind it is one whose elements no door can name, and @rt_sort handed elements of" +
+				" no kind would order them by payload alone — which for text is ARRIVAL order, the answer this" +
+				// contract ranks worst (roadmap Gap R.247, ADR 0473)
+				" backend refuses rather than prints"
 		}
 		return "the container inside it is the answer of a call this backend's scan cannot see every" +
 			" arm of, so the kind of its elements is not known (roadmap Gap R.250)"

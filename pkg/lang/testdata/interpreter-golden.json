@@ -1,5 +1,273 @@
 {
  "entries": {
+"print(sorted(\"bca\"))\nprint(sorted(\"café\"))\nprint(sorted(\"\"))\nprint(sorted(\"bca\", reverse=True))\nt = \"bca\"\nprint(sorted(t))\nprint(sorted(\"banana\"))\nfor v in sorted(\"bca\"):\n    print(v)\nprint(sorted({\"b\": 1, \"a\": 2}))\nprint(sorted({3: 1, 1: 2}))\nprint(sorted({\"b\": 1}))\nd = {\"b\": 1, \"a\": 2}\nprint(sorted(d))\nfor k in sorted(d):\n    print(k)\nfor v in reversed({1: 2}):\n    print(v)\nprint(sorted(range(3)))\nprint(sorted(range(2, 5)))\nprint(sorted(range(5, 2, -1)))\nprint(sorted(range(0)))\nprint(sorted(range(3), reverse=True))\nfor v in sorted(range(3)):\n    print(v)\nprint(\"a\" in sorted(\"bca\"))\nprint(1 in sorted(range(3)))\nprint(sorted({\"b\": 1, \"a\": 2}) == [\"a\", \"b\"])\nprint([sorted(\"bca\")])\nprint([sorted({\"b\": 1, \"a\": 2})])\nprint([sorted(range(2))])\nprint(sorted(sorted(\"bca\")))\nprint(sorted(sorted([3, 1, 2])))\nxs = [\"b\", \"a\"]\nprint(sorted(xs[0:2]))\nprint(sorted(xs[0:2], reverse=True))\nys = sorted(\"bca\")\nprint(ys)\nprint(ys[0])\nprint(ys[2])\nfor v in ys:\n    print(v)\nprint(ys[0:2])\nprint(ys[0] + \"x\")\nprint(ys == [\"a\", \"b\", \"c\"])\nprint(\"b\" in ys)\nprint(len(ys))\nzs = sorted(range(3))\nprint(zs)\nprint(zs[1])\nfor v in zs:\n    print(v)\nws = sorted({\"b\": 1, \"a\": 2})\nprint(ws)\nprint(ws[1])\ncs = sorted(\"café\")\nprint(cs)\nprint(cs[3])\nprint(sorted([3, 1, 2]))\nprint(sorted([3, 1, 2], key=lambda x: 0 - x))\nprint(len(sorted(range(2, 10, 3))))\nprint(sum(sorted([3, 1, 2])))\nprint(sorted([1, 2, 3]))\nprint(sorted({1, 2}))\n": {
+    "stdout": "['a', 'b', 'c']\n['a', 'c', 'f', 'é']\n[]\n['c', 'b', 'a']\n['a', 'b', 'c']\n['a', 'a', 'a', 'b', 'n', 'n']\na\nb\nc\n['a', 'b']\n[1, 3]\n['b']\n['a', 'b']\na\nb\n1\n[0, 1, 2]\n[2, 3, 4]\n[3, 4, 5]\n[]\n[2, 1, 0]\n0\n1\n2\nTrue\nTrue\nTrue\n[['a', 'b', 'c']]\n[['a', 'b']]\n[[0, 1]]\n['a', 'b', 'c']\n[1, 2, 3]\n['a', 'b']\n['b', 'a']\n['a', 'b', 'c']\na\nc\na\nb\nc\n['a', 'b']\nax\nTrue\nTrue\n3\n[0, 1, 2]\n1\n0\n1\n2\n['a', 'b']\nb\n['a', 'c', 'f', 'é']\né\n[1, 2, 3]\n[3, 2, 1]\n3\n6\n[1, 2, 3]\n[1, 2]\n",
+    "hasStdout": true
+   },
+"d = {\"b\": 1, \"a\": 2}\nprint(sorted(d))": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"d = {'b': 1, 'a': 2}\nfor k in sorted(d):\n    print(k)": {
+    "stdout": "a\nb\n",
+    "hasStdout": true
+   },
+
+"for k in sorted({\"b\": 1, \"a\": 2}):\n    print(k)": {
+    "stdout": "a\nb\n",
+    "hasStdout": true
+   },
+
+"for v in reversed({1: 2}):\n    print(v)": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"for v in sorted(\"bca\"):\n    print(v)": {
+    "stdout": "a\nb\nc\n",
+    "hasStdout": true
+   },
+
+"for v in sorted(\"café\"):\n    print(v)": {
+    "stdout": "a\nc\nf\né\n",
+    "hasStdout": true
+   },
+
+"for v in sorted(range(3)):\n    print(v)": {
+    "stdout": "0\n1\n2\n",
+    "hasStdout": true
+   },
+
+"for v in sorted(range(5, 2, -1)):\n    print(v)": {
+    "stdout": "3\n4\n5\n",
+    "hasStdout": true
+   },
+
+"print(\"a\" in sorted(\"bca\"))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(1 in sorted(range(3)))": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print([sorted(\"bca\")])": {
+    "stdout": "[['a', 'b', 'c']]\n",
+    "hasStdout": true
+   },
+
+"print([sorted(range(2))])": {
+    "stdout": "[[0, 1]]\n",
+    "hasStdout": true
+   },
+
+"print([sorted({\"b\": 1, \"a\": 2})])": {
+    "stdout": "[['a', 'b']]\n",
+    "hasStdout": true
+   },
+
+"print(len(sorted(range(2, 10, 3))))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"print(sorted(\"\"))": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"print(sorted(\"banana\"))": {
+    "stdout": "['a', 'a', 'a', 'b', 'n', 'n']\n",
+    "hasStdout": true
+   },
+
+"print(sorted(\"bca\"))": {
+    "stdout": "['a', 'b', 'c']\n",
+    "hasStdout": true
+   },
+
+"print(sorted(\"bca\", reverse=True))": {
+    "stdout": "['c', 'b', 'a']\n",
+    "hasStdout": true
+   },
+
+"print(sorted(\"café\"))": {
+    "stdout": "['a', 'c', 'f', 'é']\n",
+    "hasStdout": true
+   },
+
+"print(sorted(range(0)))": {
+    "stdout": "[]\n",
+    "hasStdout": true
+   },
+
+"print(sorted(range(2, 5)))": {
+    "stdout": "[2, 3, 4]\n",
+    "hasStdout": true
+   },
+
+"print(sorted(range(3)))": {
+    "stdout": "[0, 1, 2]\n",
+    "hasStdout": true
+   },
+
+"print(sorted(range(3), reverse=True))": {
+    "stdout": "[2, 1, 0]\n",
+    "hasStdout": true
+   },
+
+"print(sorted(range(5, 2, -1)))": {
+    "stdout": "[3, 4, 5]\n",
+    "hasStdout": true
+   },
+
+"print(sorted(reversed([3, 1, 2])) == [1, 2, 3])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(sorted(sorted(\"bca\")))": {
+    "stdout": "['a', 'b', 'c']\n",
+    "hasStdout": true
+   },
+
+"print(sorted({\"a\": 1}) == [\"a\"])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(sorted({\"b\": 1, \"a\": 2}) == [\"a\", \"b\"])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print(sorted({\"b\": 1, \"a\": 2}))": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"print(sorted({\"b\": 1}))": {
+    "stdout": "['b']\n",
+    "hasStdout": true
+   },
+
+"print(sorted({3: 1, 1: 2}))": {
+    "stdout": "[1, 3]\n",
+    "hasStdout": true
+   },
+
+"t = \"bca\"\nfor v in sorted(t):\n    print(v)": {
+    "stdout": "a\nb\nc\n",
+    "hasStdout": true
+   },
+
+"t = \"bca\"\nprint(sorted(t))": {
+    "stdout": "['a', 'b', 'c']\n",
+    "hasStdout": true
+   },
+
+"xs = [\"b\", \"a\"]\nfor v in sorted(xs[0:2]):\n    print(v)": {
+    "stdout": "a\nb\n",
+    "hasStdout": true
+   },
+
+"xs = [\"b\", \"a\"]\nprint(sorted(xs[0:2]))": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"xs = [\"b\", \"a\"]\nprint(sorted(xs[0:2], reverse=True))": {
+    "stdout": "['b', 'a']\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nprint(sorted(xs[0:2]))": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+
+"xs = [3, 1, 2]\nfor v in sorted(sorted(xs)):\n    print(v)": {
+    "stdout": "1\n2\n3\n",
+    "hasStdout": true
+   },
+
+"xs = sorted(\"banana\")\nprint(xs[3])": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
+
+"xs = sorted(\"bca\")\nfor v in xs:\n    print(v)": {
+    "stdout": "a\nb\nc\n",
+    "hasStdout": true
+   },
+
+"xs = sorted(\"bca\")\nprint(\"b\" in xs)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = sorted(\"bca\")\nprint(len(xs))": {
+    "stdout": "3\n",
+    "hasStdout": true
+   },
+
+"xs = sorted(\"bca\")\nprint(xs == [\"a\", \"b\", \"c\"])": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = sorted(\"bca\")\nprint(xs)": {
+    "stdout": "['a', 'b', 'c']\n",
+    "hasStdout": true
+   },
+
+"xs = sorted(\"bca\")\nprint(xs[0:2])": {
+    "stdout": "['a', 'b']\n",
+    "hasStdout": true
+   },
+
+"xs = sorted(\"bca\")\nprint(xs[0] + \"x\")": {
+    "stdout": "ax\n",
+    "hasStdout": true
+   },
+
+"xs = sorted(\"bca\")\nprint(xs[0])": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"xs = sorted(\"bca\")\nxs.append(\"z\")\nprint(xs)": {
+    "stdout": "['a', 'b', 'c', 'z']\n",
+    "hasStdout": true
+   },
+
+"xs = sorted(\"café\")\nprint(xs[3])": {
+    "stdout": "é\n",
+    "hasStdout": true
+   },
+
+"xs = sorted(range(3))\nfor v in xs:\n    print(v)": {
+    "stdout": "0\n1\n2\n",
+    "hasStdout": true
+   },
+
+"xs = sorted(range(3))\nprint(xs[1])": {
+    "stdout": "1\n",
+    "hasStdout": true
+   },
+
+"xs = sorted({\"b\": 1, \"a\": 2})\nfor v in xs:\n    print(v)": {
+    "stdout": "a\nb\n",
+    "hasStdout": true
+   },
+
+"xs = sorted({\"b\": 1, \"a\": 2})\nprint(xs[1])": {
+    "stdout": "b\n",
+    "hasStdout": true
+   },
 "def b():\n    return [3, 1, 2]\nprint([sorted(b())])": {
     "stdout": "[[1, 2, 3]]\n",
     "hasStdout": true

@@ -627,7 +627,16 @@ func (g *irGen) builtinPrint(b *strings.Builder, c *Call, fnName string) (string
 		if call, ok := a.(*Call); ok {
 			// reversed("abc") is a string reversal and takes its own path; only a
 			// container argument means this lowering produced a heap handle.
-			if cname, ok := call.Fn.(*Name); ok && (cname.Value == "sorted" || cname.Value == "reversed") && g.isContainerExpr(call.Args[0]) {
+			//
+			// The gate used to be a SPELLING test — `isContainerExpr(call.Args[0])`, true of a list, a dict, a
+			// name holding one — so `print(sorted("bca"))` and `print(sorted(range(3)))` fell past this road to
+			// the numeric one, which printed the ordering's own answer with `%d`: `0` (the interned index of
+			// "a") and the address of a compile-time global, both at the exit code of success. The argument is
+			// asked of the ordering's own question now — the sequence the substitution would build — so the
+			// print door, the loop and the fold all recognise the same three iterables (roadmap **Gap R.247**,
+			// **ADR 0473**). `reversed` keeps its narrow gate: a text handed to it is the TEXT road's, and
+			// printing its iterator is Gap R.251's row, not this one.
+			if cname, ok := call.Fn.(*Name); ok && len(call.Args) > 0 && g.printRoadSeesAnOrderingArgument(cname.Value, call.Args[0]) {
 				h, cerr := g.sortedRuntime(b, call)
 				if cerr != nil {
 					return "", cerr
