@@ -337,6 +337,7 @@ type pairScan struct {
 	// 0273 pinned (roadmap Gap R.164, ADR 0280). One predicate, two questions; the flag says which is being
 	// asked, so widening the answer for the return side cannot silently widen the gate for arguments.
 	readsCallAnswers bool
+
 }
 
 // pairCallSpecs is the program-wide decision: which functions take the pair across their call boundary.
@@ -510,6 +511,9 @@ func pairCallScan(prog *Program) (map[string]*pairFnSpec, map[string]map[int]boo
 			if !pairBodyIsFloatReturnRoad(fd) && s.anyPoppedSlot(args) {
 				needs[i] = true
 			}
+			if !pairBodyIsFloatReturnRoad(fd) && s.anyFloatAnswerCall(args) {
+				needs[i] = true
+			}
 		}
 		// A body emitted under a convention that already owns its return word owns its parameter words
 		// with it: ADR 0274's float return hands back a name the body bound to a double, and ADR 0174's
@@ -613,7 +617,7 @@ func pairCallScan(prog *Program) (map[string]*pairFnSpec, map[string]map[int]boo
 					continue // the caller hands a name it bound as a pair itself: read it back as one
 				}
 				if !s.exprNumberish(a, map[string]bool{}) {
-					if (s.readOfLiteralSlots(a) || s.poppedSlot(a)) && !pairBodyIsFloatReturnRoad(fd) {
+					if (s.readOfLiteralSlots(a) || s.poppedSlot(a) || s.floatAnswerCall(a)) && !pairBodyIsFloatReturnRoad(fd) {
 						// The pair door answers this read from the object, so both words travel (roadmap
 						// Gap R.220). The ordinary road's answer for such an argument is a payload with its
 						// kind left behind, which is why closing the position is not the safe choice here.
@@ -1372,6 +1376,33 @@ func (s *pairScan) exprNeedsWord(e Expr) bool {
 	return false
 }
 
+// anyFloatAnswerCall / floatAnswerCall are the same argument shape one table over: an argument that is a
+// call whose callee the FLOAT return road owns (ADR 0274's promotion), whose `define` therefore hands back
+// a `double`. Handed to a parameter the ordinary road emitted `call i32 @gy_g(i32 %t13)` with `%t13` a
+// `double`, which is not a wrong answer but a module `llc` refuses — exit 2, on a program the reference
+// prints (roadmap **Gap R.581**, **ADR 0166**). The question is the AST-side one the scan already uses to
+// DECLINE a body (**ADR 0273**'s convention reader), asked here of the callee the argument names.
+func (s *pairScan) anyFloatAnswerCall(es []Expr) bool {
+	for _, e := range es {
+		if s.floatAnswerCall(e) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *pairScan) floatAnswerCall(e Expr) bool {
+	c, isCall := e.(*Call)
+	if !isCall || c == nil {
+		return false
+	}
+	nm, isName := c.Fn.(*Name)
+	if !isName {
+		return false
+	}
+	return pairBodyIsFloatReturnRoad(s.fds[nm.Value])
+}
+
 // --- the arm that hands a read of a literal's slots across the call (roadmap Gap R.220, ADR 0389) ----
 
 // anyReadOfLiteralSlots is the needs half's second question: does any argument written to this position
@@ -1782,6 +1813,13 @@ func pairExprIsFloatBySpelling(e Expr) bool {
 		case "+", "-", "*", "//", "%":
 			return pairExprIsFloatBySpelling(n.L) || pairExprIsFloatBySpelling(n.R)
 		}
+	case *CondExpr:
+		// ADR 0357's road: both arms are doubles, so the merge is a `phi double` and the body is emitted
+		// `define double` — the same word ADR 0274's promotion picks, and the same reason a parameter handed
+		// one of these belongs to the pair road. One arm a double and the other not is NOT claimed: that
+		// shape refuses outright (`ternaryWordErr`, ADR 0166), and opening a position for an answer that never
+		// reaches a call would trade a refusal for a crash (roadmap Gap R.581).
+		return n.If != nil && n.Else != nil && pairExprIsFloatBySpelling(n.If) && pairExprIsFloatBySpelling(n.Else)
 	}
 	return false
 }
@@ -2410,6 +2448,25 @@ func (g *irGen) pairArgWords(b *strings.Builder, fnName string, idx int, a Expr)
 		return "", "", true, perr
 	} else if ok {
 		return p, t, true, nil
+	}
+	// An argument that is a call to a body ADR 0274's promotion emitted `define double`: the answer is a
+	// `double`, and one `i32` parameter word cannot hold it. The box is the one a float that changes its
+	// variable's mind already takes (`floatbind.go`'s `@rt_float_new` + tag), asked of the SAME emitter so a
+	// slot, an argument and a container element never disagree about what a boxed double looks like. Where
+	// the argument is a float by some other road the refusal below still stands, word for word (roadmap
+	// **Gap R.581**, **ADR 0166**: a `double` reaching an `i32` parameter slot is an `llc` failure at exit 2,
+	// which the contract reserves for a compiler bug).
+	if c, isCall := a.(*Call); isCall && c != nil {
+		if nm, isName := c.Fn.(*Name); isName && !g.answer.carries(nm.Value) && g.floatFuncs[nm.Value] {
+			d, derr := g.value(b, a)
+			if derr != nil {
+				return "", "", true, derr
+			}
+			g.heapUsed = true
+			h := g.newTmp()
+			g.emitRtFloatNew(b, h, d, a.Span())
+			return h, "1", true, nil
+		}
 	}
 	if g.isFloat(a) {
 		return "", "", true, fmt.Errorf("codegen: %s is a float the pair road cannot box, and parameter %d of %s arrives as a (payload, tag) pair whose payload is an i32: the ordinary road would truncate the double to that word, which is a wrong number rather than a refusal (roadmap L11.6, Gap P.1, ADR 0273)", exprSurface(a), idx, fnName)

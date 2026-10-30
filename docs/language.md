@@ -8018,6 +8018,42 @@ is emitted `i32`-returning whatever its body computes — the receiver's word an
 are fixed together — so a method with this body is refused the same way; that is a method
 limit, not a language one, and the record answers all of these.
 
+### An answer whose kind lives in a table crosses a call boundary (L11.1, Gap R.581, Gap R.584, ADR 0475)
+
+Some answers carry a kind the compiler knows only from a table it owns: a `double` because the body was promoted
+to a float return (**ADR 0274**, or **ADR 0357** when both arms of a returned ternary are doubles), or a container
+because the program spelled one out. Such an answer is a value, and a value needs a word that can say what it is.
+Handing one to a parameter is now the pair's business, and a `return`'s arm is the heap's:
+
+```gy
+def half(x):
+    return 1.5
+
+def show(v):
+    return v
+
+print(show(half(1)))        # 1.5 — the argument is boxed, the parameter is (payload, tag)
+
+def picks(x):
+    return [1, 2] if x else 0
+
+bound = picks(1)
+print(bound)                # [1, 2] — the arm is built in the heap, not named from the fold
+print(picks(0))             # 0     — the arm the test does not take keeps its own word
+```
+
+The box is the one a float that changes its variable's mind takes (`@rt_float_new`), and the copy is the one an
+argument of that shape has always taken, so a slot, a call argument and a container element cannot disagree about
+what a boxed double or a built list is. Before this, both programs reached `llc` — a `double` in an `i32` parameter
+slot, and a compile-time array in a typed `phi` — which is **exit 2**, the code the contract reserves for a
+compiler bug (**ADR 0166**), on programs CPython prints.
+
+What is still owed is stated rather than hidden: an answer whose kind is a **tag** — a text, a verdict, a `None`, a
+container handed back by a call — still crosses a parameter as a payload alone, so `print(g(f(1)))` prints the
+number that payload happens to be, and a tuple arm of a `return` answers the int road. Those are **Gap R.581**'s
+open half and **Gap R.585**, pinned shape by shape with the reference's answer beside this backend's in
+`pkg/lang/ternary_pair_arg_test.go::TestWhatTheCallArgumentDoorStillCannotAnswerIsFiledNotFixed`.
+
 ## Declaration order (ADR 0197)
 
 A `def` is a binding of the scope that contains it — not only of the text below its line.

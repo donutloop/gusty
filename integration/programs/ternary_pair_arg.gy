@@ -1,0 +1,43 @@
+# integration/programs/ternary_pair_arg.gy — an answer whose kind the compiler knows only from a
+# table crosses a call boundary: the float the ADR 0274 promotion emitted `define double` for,
+# handed to a parameter, and a `return` whose arm is a container literal the fold keeps in a
+# compile-time global. Both used to reach `llc` (exit 2); both answer now.
+# (roadmap Gap R.581's float arm, Gap R.584, ADR 0475)
+
+def half(x):
+    return 1.5
+
+def show(v):
+    return v
+
+print(show(half(1)))
+print(show(half(0)))
+
+def echo(v):
+    print(v)
+
+echo(half(1))
+
+def twice_away(w):
+    return show(w)
+
+print(twice_away(half(1)))
+
+def picks(x):
+    return [1, 2] if x else 0
+
+bound = picks(1)
+print(bound)
+print(picks(0))
+
+def built(x):
+    return [i * 2 for i in [1, 2]] if x else 0
+
+rows = built(1)
+print(rows)
+
+def entry(x):
+    return {"a": 1} if x else 0
+
+row = entry(1)
+print(row)

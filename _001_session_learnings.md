@@ -18259,3 +18259,54 @@ Process lesson: a one-line diff to a test harness needs the same witness discipl
 three stub-backed cases now all go through the one helper, and the retry is written so that the shape it tolerates
 is named by an error constant (`syscall.ETXTBSY`) rather than by a substring of a message — a flake fix keyed on
 `strings.Contains(err, "busy")` would have tolerated an unrelated failure with the same word in it.
+
+## Gap R.581's exit-2 half, Gap R.584, ADR 0475 — measuring a row instead of describing it, and the day `git checkout <path>` ate a cycle
+
+Two compiler bugs closed, one filed, and a process lesson that cost more than the feature did.
+
+**Measuring found a row the description missed.** `Gap R.581` was written as a wrong-answer row: nine shapes of
+`print(g(f(1)))`, six answering a payload where the reference answers a value. Running all nine against the pinned
+reference on the parent commit instead of trusting the row's prose turned three of them into **exit 2** — a `double`
+handed to an `i32` parameter slot, and a folded `@.lst1`/`@.set1` sitting in a typed `phi`. Nobody had ever filed
+those: the row described the answer, and the crash was only visible in the answer's column. `Gap R.584` exists
+because the measurement was made against a binary built from `HEAD` in a worktree rather than against the tree
+being edited — the two differ whenever the cycle has already touched code, and only the parent's answer can tell a
+pre-existing bug from this cycle's damage.
+
+**One door, one box.** The float argument could have gotten its own representation; it took `@rt_float_new`, the
+box `floatbind.go` already uses for a float that rebinds its own variable, so a slot, a call argument and a
+container element now answer "what is a boxed double?" with the same two words (**ADR 0232**). Same for the
+container arm: `argVal` has copied a folded `@.lstN` into the heap since **Gap J.5**, and the ternary arm asks that
+copy rather than writing a second one. Where the copy must be *emitted* mattered as much as which copy: inside the
+arm's own block, before the forwarding branch, so the handle dominates the merge — **ADR 0275**'s terminator
+discipline, re-derived rather than remembered.
+
+**A gate that opens a position must be asked where the answer cannot arrive.** The first version of the scan opened
+`g`'s parameter for any call whose callee "carries a kind", which for the row's program is nobody: a body whose
+single `return` is a conditional expression is answered by neither the answer direction (`answerKindPlanOf` returns
+`carry=false` for it) nor the pair road. The question the scan can actually answer from the AST is the one
+`pairExprIsFloatBySpelling` already asks to *decline* a body — extended for **ADR 0357**'s both-arms-doubles road,
+and deliberately not extended to a single float arm, because that shape is refused by `ternaryWordErr` before any
+call happens and opening a position for an answer that never exists trades a refusal for a crash.
+
+**Exit 2 → exit 1 is the ladder, and the row has to say so.** Boxed the float at a *condition* now refuses with
+**Gap R.146**'s sentence where the parent reached `llc`. The filed table records that row as a refusal with the
+reference's `big` beside it and the sentence "this was exit 2 before the box", because a reader who sees only
+"refuses" would think the cycle lost a program. **ADR 0166**'s ordering — right answer, then named refusal, then
+exit 2 — is only enforceable if the tracker keeps the rungs distinct.
+
+**Process lesson: `git checkout -- <path>` is not a diff viewer, and stale reads are not evidence.** Mid-cycle I
+needed to know whether an old debug hook was still in `pkg/lang/codegen_call.go`, so I read the file, patched a
+print into it, ran the CLI, and cleared it with `git checkout pkg/lang/codegen_call.go`. That file had ~100 lines of
+uncommitted work from the earlier half of the cycle, none of it in any commit, blob or stash — `git log --all -S`
+and `git fsck --lost-found` both came back empty — and the checkout replaced it with `HEAD`. The symptom was not a
+build failure (the tree was self-consistent without it) but a probe that had been fixed coming back unfixed, which
+is the worst possible time to discover that the tree is not what you think it is. Three rules came out of it: revert
+a file only after `git diff --stat` has been read for that path; keep a copy (`cp file file.bak`, or the index with
+`git add`) before any destructive command, even on a scratch edit; and when a measurement contradicts a remembered
+measurement, re-measure against `HEAD` in a worktree before touching code — the same discipline that found
+**Gap R.584** would have caught the loss in one command instead of an afternoon. Relatedly: several `read`s served
+contents for `pkg/lang/paircall.go` that its committed self does not contain (`pairSpecsOf`, `printPairArg`,
+`ternaryArmIsLiteralText`, `pairSlotWriteRecorder` are all absent from `HEAD`), which is how I came to describe
+machinery that does not exist. The cure is the same as the cure for a stale doc claim: `grep` for the *identifier*,
+and believe the artifact.

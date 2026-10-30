@@ -788,6 +788,18 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// container slot, a built container, the tag-discriminates pair (a text payload beside an integer
 		// haystack) and the verdict positions are all in this program, whose expectation is CPython's.
 		"membership_needle_pair",
+		// An ANSWER whose kind lives in a table the callee cannot read crosses a call boundary: the float
+		// ADR 0274's promotion emitted `define double` for, handed to a parameter, arrived as a `double` in an
+		// `i32` slot, and a `return` whose arm is a container literal the fold keeps in the compile-time global
+		// `@.lstN` arrived as that global in an `i32` `phi`. Both were **exit 2** — the code the contract
+		// reserves for a compiler bug (**ADR 0166**) — on programs `python3` prints: `'%t9' defined with type
+		// 'double' but expected 'i32'` and `global variable reference must have pointer type`. The argument now
+		// takes the box a float that changes its variable's mind already takes, and the arm takes the heap copy
+		// an argument of that shape already took (Gap J.5's rule, asked in the arm's own block so the handle
+		// dominates the merge). The tag still does not cross for the kinds that need it — those rows are
+		// **Gap R.581**'s open remainder and are filed with both legs' answers in
+		// `integration/ternary_pair_arg_test.go` (roadmap **Gap R.581**, **Gap R.584**, **ADR 0475**).
+		"ternary_pair_arg",
 		// A dict entry handed to a CALL is the same self-describing read the printer, the condition and the
 		// fold already ask of the object; what it lacked was the argument's second word. `print(id(d["a"]))`
 		// for `{"a": "x"}` printed `1` — the entry's `@str_tab` index — and a float entry printed its

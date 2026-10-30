@@ -238,6 +238,10 @@ func (g *irGen) ternaryBranch(b *strings.Builder, n *CondExpr, ty string, arm fu
 	if left == "" {
 		return "", false, nil
 	}
+	left = g.materialiseTernaryArm(&body, ty, left)
+	if left == "" {
+		return "", false, nil
+	}
 	fmt.Fprintf(&body, "  br label %%%s\n", thenFwd)
 	fmt.Fprintf(&body, "%s:\n  br label %%%s\n", thenFwd, merge)
 	fmt.Fprintf(&body, "%s:\n", elseBlk)
@@ -248,6 +252,10 @@ func (g *irGen) ternaryBranch(b *strings.Builder, n *CondExpr, ty string, arm fu
 	if right == "" {
 		return "", false, nil
 	}
+	right = g.materialiseTernaryArm(&body, ty, right)
+	if right == "" {
+		return "", false, nil
+	}
 	fmt.Fprintf(&body, "  br label %%%s\n", elseFwd)
 	fmt.Fprintf(&body, "%s:\n  br label %%%s\n", elseFwd, merge)
 	fmt.Fprintf(&body, "%s:\n", merge)
@@ -255,4 +263,67 @@ func (g *irGen) ternaryBranch(b *strings.Builder, n *CondExpr, ty string, arm fu
 	fmt.Fprintf(&body, "  %s = phi %s [ %s, %%%s ], [ %s, %%%s ]\n", out, ty, left, thenFwd, right, elseFwd)
 	b.WriteString(body.String())
 	return out, true, nil
+}
+
+// materialiseTernaryArm turns an arm's answer into a word of the type the `phi` declares. One shape needs it:
+// a container the program spelled out, which the fold answers with its compile-time global `@.lstN`. That
+// name is not an `i32` — it is an array — and the `phi` that took it verbatim is how
+//
+//	def f(x):
+//	    return [1, 2] if x else 0
+//
+// reached `llc` as `%t2 = phi i32 [ @.lst1, %tern.thenfwd3 ], [ 0, %tern.elsefwd4 ]`, `global variable
+// reference must have pointer type`, **exit 2** — the code the contract reserves for a compiler bug
+// (**ADR 0166**) — on a program `python3` prints as `[1, 2]`. The copy into the runtime heap is the one an
+// ARGUMENT of that shape already takes (`argVal`'s `@.lstN` rule, Gap J.5), asked here in the arm's own block
+// before the forwarding branch, so the handle dominates the merge that names it (roadmap **Gap R.581**).
+func (g *irGen) materialiseTernaryArm(b *strings.Builder, ty, word string) string {
+	if ty != "i32" || word == "" {
+		return word
+	}
+	if g.staticLists != nil {
+		if ln, ok := g.staticLists[word]; ok {
+			h, err := g.heapListFrom(b, ln, "")
+			if err != nil {
+				return ""
+			}
+			return h
+		}
+	}
+	// The same fold for the other two kinds it writes a global for: `@.dictN` and `@.setN`.
+	// `def f(x):` / `    return {1, 2} if x else 0` reached `llc` with the very same sentence and a different
+	// container — `%t2 = phi i32 [ @.set1, %tern.thenfwd3 ], [ 0, %tern.elsefwd4 ]` — and a dict arm is the
+	// third spelling of it (roadmap **Gap R.584**).
+	if g.staticDicts != nil {
+		if dl, ok := g.staticDicts[word]; ok {
+			h, err := g.heapDictFrom(b, dl, "")
+			if err != nil {
+				return ""
+			}
+			return h
+		}
+	}
+	if g.staticSets != nil {
+		if sl, ok := g.staticSets[word]; ok {
+			h, err := g.heapSetFrom(b, sl, "")
+			if err != nil {
+				return ""
+			}
+			return h
+		}
+	}
+	// `emitSet` keeps its own notebook — the literal it interned beside the global's name — and a set arm's
+	// word comes from THERE, not from the comprehension fold's `staticSets`. `return {1, 2} if x else 0` is
+	// the row's own program, so the reverse read of that notebook is what closes it (roadmap **Gap R.584**).
+	for sl, nm := range g.setNames {
+		if nm != word || sl == nil {
+			continue
+		}
+		h, err := g.heapSetFrom(b, sl, "")
+		if err != nil {
+			return ""
+		}
+		return h
+	}
+	return word
 }

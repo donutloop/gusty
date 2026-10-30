@@ -25082,3 +25082,137 @@ answer.
 The same program with the haystack built by `append` answers (`xs = []` / `xs.append(g()[1])` / `xs.append(3)` /
 `print(xs[0] in xs)` is `True` on both legs), which is the parity argument that makes this a defect rather than a
 missing feature. Pinned in the same filed table beside **Gap R.582**'s rows. Measured 2026-11-01 beside **ADR 0474**.
+
+<a id="gap-r-584"></a>
+
+### Gap R.584 — a `return` whose arm is a container literal puts the compile-time global in the ternary's `phi`, and `llc` rejects the module
+
+```python
+def f(x):
+    return [1, 2] if x else 0
+
+w = f(1)
+print(w)          # CPython [1, 2]  ·  this backend: exit 2
+```
+
+```text
+$ gustyc --eval 'def f(x):
+      return [1, 2] if x else 0
+
+  w = f(1)
+  print(w)'
+gustyc: jit: llc: exit status 1
+llc-20: error: /tmp/gusty-jit-1359584300/jit.ll:4581:19: global variable reference must have pointer type
+  %t2 = phi i32 [ @.lst1, %tern.thenfwd3 ], [ 0, %tern.elsefwd4 ]
+                  ^
+$ echo $?
+2
+```
+
+**Exit 2 is the code the contract reserves for a compiler bug** (**ADR 0166**), and the program is not a bug: the
+reference prints `[1, 2]`. The row was found sideways, while measuring **Gap R.581**'s nine shapes — three of the
+nine were not wrong answers at all, they were this.
+
+`ternaryBranch` (`pkg/lang/ternary_arms.go`) lowers `a if c else b` the way **ADR 0275** lowers the two operators
+that choose an operand: the test once, `br i1` on its truth, each arm lowered only inside the block the test
+enters, and one `phi` per answer in the merge. The `phi` is **typed**, because a `phi` is a value and a value has
+a word. What the fold hands an arm whose value is a spelled container is not a word — it is `@.lst1`, the name of
+a `private global` carrying a length beside an array, and the fold is right to hand that back where the consumer
+is the container road and wrong where the consumer is a `phi`. The same shape at the unpacking road is
+**Gap R.524** / **ADR 0454**; the assignment road got the same rule from **Gap J.5**; the ternary's merge was the
+fourth road and the one nobody had asked.
+
+Three kinds, one sentence each:
+
+| arm | the fold's global | `llc` |
+|---|---|---|
+| `[1, 2]` | `@.lst1` | `global variable reference must have pointer type` |
+| `{1, 2}` | `@.set1` | the same |
+| `[i * 2 for i in [1, 2]]` | `@.lst1` (the comprehension fold) | the same |
+
+The dict arm compiled because `emitDict` builds in the heap already; the list, set and comprehension arms did not.
+`emitSet` keeps its own notebook (`setNames`, the literal beside the name it interned) rather than the
+comprehension fold's `staticSets`, so the door reads that notebook backwards too — the row's own program is the
+set arm, and a door that only read `staticSets` would have closed two of the three shapes and left the third
+pinned as though it were answered.
+
+The copy is `heapListFrom` / `heapDictFrom` / `heapSetFrom`, asked **inside the arm's own block, before the
+forwarding branch**, so the handle the merge names dominates the terminator of the path that reaches it — the same
+dominance argument **ADR 0275** wrote for the pair and **ADR 0474** reused for a membership needle. An arm that
+cannot be built returns the empty string, which is this door's own "I answered nothing": the caller falls back to
+the road that refuses in words, never to a `phi` assembled from instructions that were not emitted.
+
+The fold was not touched where the ternary is not standing: a comprehension still emits `@.lstN`, and
+`print(len([1, 2, 3]))` still answers `3` with no object at all. Those two are asserted as controls, because the
+cheapest way to "fix" this row is to delete the fold, which would trade an exit-2 crash for a slower language and
+fail **ADR 0192**'s rule that a fix change only what it decides.
+
+Found because the row beside it was measured rather than described: **Gap R.581**'s nine shapes were run against
+`python3` one by one, and three of them answered `exit=2` rather than an answer. Pinned by
+`pkg/lang/ternary_pair_arg_test.go::TestTheTernaryMergeCarriesNoFoldedGlobal` (four modules scanned for a `phi i32`
+naming a `@.` global, each of which must reach `@rt_alloc(`) and at the CLI by the `--emit-llvm` scan and
+`--verify-llvm` in `integration/ternary_pair_arg_test.go`. Measured 2026-11-02 beside **ADR 0475**.
+
+<a id="gap-r-585"></a>
+
+### Gap R.585 — a tuple arm of a `return` answers the int road where the list, dict and set arms answer
+
+```python
+def f(x):
+    return (1, 2) if x else 0
+
+w = f(1)
+print(w)          # CPython (1, 2)  ·  this backend: 0  at exit 0
+```
+
+**Gap R.584** closed the arms whose fold writes a global the `phi` cannot name: the list, the nested list, the
+dict, the set and the comprehension all print CPython's bytes now. The tuple is the arm that never reaches `llc`
+at all — and that is what makes it worse, not better. There is no invalid module to reject, no exit 2 to blame:
+the value road's answer for a spelled tuple is a word, the `phi` accepts a word, and the word is read back as the
+container it is not. `print(w)` writes `0`, `print(f(0))` also writes `0`, and the program prints the same digit
+whichever branch the test takes.
+
+This is **ADR 0166**'s worst rung — a number-shaped answer at the exit code of success — with **Gap R.67**'s
+subject (a container answer is a value) and **L11.1**'s missing word (the tag that would make the four arms one
+question instead of four doors). The fix has a shape: a `heapTupleFrom` beside `heapListFrom`, emitted where the
+arm is emitted, and the tuple's own roads (print, `len`, `in`, `==`, a `for`) already read a bound tuple correctly
+today, so the answer needs no new reader. What it does not have is a witness: the row is pinned with today's bytes
+beside the reference's in
+`pkg/lang/ternary_pair_arg_test.go::TestWhatTheCallArgumentDoorStillCannotAnswerIsFiledNotFixed`, and it moves out
+by deletion. Measured 2026-11-02 beside **ADR 0475**.
+
+## Gap R.581 — closed half (2026-11-02, ADR 0475)
+
+The row's nine shapes were re-measured against the pinned reference on the commit that lands **ADR 0475**. Two of
+the three exit-2 shapes are gone; the tag half is untouched. Read as a table, the row is now the difference between
+what crosses and what does not:
+
+| shape | parent (29831a4) | this commit | CPython |
+|---|---|---|---|
+| `def f(x): return 1.5` … `print(g(f(1)))` | **exit 2** `'%t9' defined with type 'double' but expected 'i32'` | `1.5` | `1.5` |
+| `def f(x): return 1.5` … callee prints its parameter | **exit 2** | `1.5` | `1.5` |
+| the same, forwarded through a second `def` | **exit 2** | `1.5` | `1.5` |
+| `def f(): return 2.5` … `print(g(f()))` | **exit 2** | `2.5` | `2.5` |
+| `return 1.5 if x else 2.5` … both arms read | **exit 2** | `1.5 2.5` | `1.5 2.5` |
+| `return [1, 2] if x else 0` … bound, printed | **exit 2** `global variable reference must have pointer type` | `[1, 2]` | `[1, 2]` |
+| `return {1, 2} if x else 0` … bound, printed | **exit 2** | `{1, 2}` | `{1, 2}` |
+| `return "x" if x else 0` … `print(g(f(1)))` | `0` | `0` | `x` |
+| `return True if x else 0` … `print(g(f(1)))` | `1` | `1` | `True` |
+| `return None if x else 0` … `print(g(f(1)))` | `0` | `0` | `None` |
+| `return [1, 2] if x else 0` … `print(g(f(1)))` | `0` | `0` | `[1, 2]` |
+| `return "x" if x else 0` … `print([g(f(1))])` | `[0]` | `[0]` | `['x']` |
+| `return (1, 2) if x else 0` … bound, printed | `0` | `0` | `(1, 2)` ← **Gap R.585** |
+| `return 2.5` … `if g(f(1)) > 2.0:` | **exit 2** | refuses (Gap R.146) | `big` |
+
+Two things in that table are worth stating plainly. The float arm's exit 2 closed by **boxing the answer**, not by
+widening the gate: `pairArgWords` asks `@rt_float_new` — the box a float that rebinds its own variable already
+takes (`floatbind.go`) — so a slot, a call argument and a container element cannot disagree about what a boxed
+double looks like (**ADR 0232**). And the boxed float at a *condition* now **refuses** where it used to reach
+`llc`: that is **ADR 0166**'s ladder climbed, not a program lost, and the row that owns the answer is
+**Gap R.146**'s one-word position, not this one.
+
+What did NOT close is the tag. The scan opens the parameter and the door answers a pair for the kinds whose word
+this backend can box; a text, a verdict, a `None` and a container still cross as a payload and print the number the
+payload happens to be. Those rows are pinned, with both legs read inside the case, in
+`TestWhatTheCallArgumentDoorStillCannotAnswerIsFiledNotFixed`, and the row stays 🟨 `PARTIAL` until they leave by
+deletion. Measured 2026-11-02 beside **ADR 0475**.
