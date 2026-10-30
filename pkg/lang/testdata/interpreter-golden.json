@@ -1,5 +1,206 @@
 {
  "entries": {
+"# The slice road asks what its BASE is (roadmap Gap R.234, ADR 0466).\n#\n# A set has no position to slice from, and a dict hashes the slice and reports the miss by naming the key\n# it missed. Both raise, so the program takes the raise with its own `except` and runs to completion —\n# every line below is the reference's bytes, and the doors beside it (a list's bounds, a dict read by a\n# real key, a text's slice) keep the answers they always gave.\n\ns = {1, 2}\nd = {1: 2}\nxs = [1, 2, 3]\n\nprint(xs[0:2], xs[1:], xs[::-1])\nprint((1, 2)[0:1])\nprint(\"abcdef\"[1:3])\nprint(d[1], len(d), 1 in d)\nprint(len(s), 2 in s)\n\ntry:\n    print(s[0:1])\nexcept TypeError as err:\n    print(\"set\", err)\n\ntry:\n    print(d[0:1])\nexcept KeyError as err:\n    print(\"dict\", err)\n\ntry:\n    print({1, 2}[\"a\":\"b\"])\nexcept TypeError as err:\n    print(\"object\", err)\n\ntry:\n    print({1: 2}[[1]:2])\nexcept TypeError as err:\n    print(\"hash\", err)\n\ntry:\n    print({1: 2}[0:1:0])\nexcept KeyError as err:\n    print(\"step\", err)\n\ntry:\n    print({1: 2}[(1, \"a\"):2])\nexcept KeyError as err:\n    print(\"tuple\", err)\n\nprint(xs[0:1], len(xs[0:2]), xs[0:2][1])\nprint(d[1], 0 in d)\n": {
+    "stdout": "[1, 2] [2, 3] [3, 2, 1]\n(1,)\nbc\n2 1 True\n2 True\nset 'set' object is not subscriptable\ndict slice(0, 1, None)\nobject 'set' object is not subscriptable\nhash unhashable type: 'list'\nstep slice(0, 1, 0)\ntuple slice((1, 'a'), 2, None)\n[1] 2 2\n2 False\n",
+    "hasStdout": true
+   },
+"a, b = {1, 2}, 0\nprint(a[0:1])": {
+    "err": "TypeError: 'set' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'set' object is not subscriptable"
+   },
+
+"d = {\"k\": [1, 2, 3]}\nprint(d[0:1])": {
+    "err": "KeyError: slice(0, 1, None)",
+    "exnType": "KeyError",
+    "exnMsg": "slice(0, 1, None)"
+   },
+
+"d = {1: 2}\nprint(d[0:1])": {
+    "err": "KeyError: slice(0, 1, None)",
+    "exnType": "KeyError",
+    "exnMsg": "slice(0, 1, None)"
+   },
+
+"d = {1: 2}\nprint(d[0:[1]])": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"d = {1: 2}\ntry:\n    print(d[0:1])\nexcept KeyError as err:\n    print(err)": {
+    "stdout": "slice(0, 1, None)\n",
+    "hasStdout": true
+   },
+
+"d = {1: 2}\ntry:\n    print(d[0:1])\nexcept KeyError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"d = {1: 2}\ntry:\n    print(d[0:1])\nexcept KeyError:\n    print(\"missed\")\nprint(d[1])": {
+    "stdout": "missed\n2\n",
+    "hasStdout": true
+   },
+
+"d = {1: 2}\ntry:\n    print(d[[1]:2])\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"def m():\n    return {1, 2}\n\nprint(m()[0:1])": {
+    "err": "TypeError: 'set' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'set' object is not subscriptable"
+   },
+
+"def m():\n    return {1, 2}\n\ns = m()\nprint(s[0:1])": {
+    "err": "TypeError: 'set' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'set' object is not subscriptable"
+   },
+
+"def m():\n    return {1: 2}\n\nprint(m()[0:1])": {
+    "err": "KeyError: slice(0, 1, None)",
+    "exnType": "KeyError",
+    "exnMsg": "slice(0, 1, None)"
+   },
+
+"print({1, 2}[\"a\":\"b\"])": {
+    "err": "TypeError: 'set' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'set' object is not subscriptable"
+   },
+
+"print({1, 2}[0:1])": {
+    "err": "TypeError: 'set' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'set' object is not subscriptable"
+   },
+
+"print({1, 2}[1.5:2])": {
+    "err": "TypeError: 'set' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'set' object is not subscriptable"
+   },
+
+"print({1, 2}[::2])": {
+    "err": "TypeError: 'set' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'set' object is not subscriptable"
+   },
+
+"print({1, 2}[:])": {
+    "err": "TypeError: 'set' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'set' object is not subscriptable"
+   },
+
+"print({1, 2}[[1]:2])": {
+    "err": "TypeError: 'set' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'set' object is not subscriptable"
+   },
+
+"print({1: 2}[\"a\":\"b\"])": {
+    "err": "KeyError: slice('a', 'b', None)",
+    "exnType": "KeyError",
+    "exnMsg": "slice('a', 'b', None)"
+   },
+
+"print({1: 2}[(1, \"a\"):2])": {
+    "err": "KeyError: slice((1, 'a'), 2, None)",
+    "exnType": "KeyError",
+    "exnMsg": "slice((1, 'a'), 2, None)"
+   },
+
+"print({1: 2}[(1, [2]):1])": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"print({1: 2}[0:1:0])": {
+    "err": "KeyError: slice(0, 1, 0)",
+    "exnType": "KeyError",
+    "exnMsg": "slice(0, 1, 0)"
+   },
+
+"print({1: 2}[0:1])": {
+    "err": "KeyError: slice(0, 1, None)",
+    "exnType": "KeyError",
+    "exnMsg": "slice(0, 1, None)"
+   },
+
+"print({1: 2}[1.5:True])": {
+    "err": "KeyError: slice(1.5, True, None)",
+    "exnType": "KeyError",
+    "exnMsg": "slice(1.5, True, None)"
+   },
+
+"print({1: 2}[:])": {
+    "err": "KeyError: slice(None, None, None)",
+    "exnType": "KeyError",
+    "exnMsg": "slice(None, None, None)"
+   },
+
+"print({1: 2}[False:True])": {
+    "err": "KeyError: slice(False, True, None)",
+    "exnType": "KeyError",
+    "exnMsg": "slice(False, True, None)"
+   },
+
+"print({1: 2}[None:None])": {
+    "err": "KeyError: slice(None, None, None)",
+    "exnType": "KeyError",
+    "exnMsg": "slice(None, None, None)"
+   },
+
+"print({1: 2}[[1]:2])": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"print({1: 2}[{1: 2}:1])": {
+    "err": "TypeError: unhashable type: 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'dict'"
+   },
+
+"print({1: 2}[{1}:1])": {
+    "err": "TypeError: unhashable type: 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'set'"
+   },
+
+"print({True: 2}[True:False])": {
+    "err": "KeyError: slice(True, False, None)",
+    "exnType": "KeyError",
+    "exnMsg": "slice(True, False, None)"
+   },
+
+"s = {1, 2}\nprint(s[0:1])": {
+    "err": "TypeError: 'set' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'set' object is not subscriptable"
+   },
+
+"s = {1, 2}\nprint(s[::-1])": {
+    "err": "TypeError: 'set' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'set' object is not subscriptable"
+   },
+
+"s = {1, 2}\ntry:\n    print(s[0:1])\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nxs = [1, 2, 3]\ntry:\n    print(s[0:1])\nexcept TypeError:\n    print(xs[0:2])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
 "print(bool((lambda: [1, 2])()))\n": {
     "stdout": "True\n",
     "hasStdout": true

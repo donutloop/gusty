@@ -11474,21 +11474,23 @@ with the reference's answer beside what the toolchain says today:
 
 <a id="gap-r-234"></a>
 
-### Gap R.234 — the slice road never asked what kind the base is (OPEN, found by ADR 0335)
+### Gap R.234 — the slice road never asked what kind the base is (CLOSED by ADR 0466; found by ADR 0335)
 
 ```python
 print({1, 2}[0:1])    # TypeError: 'set' object is not subscriptable
                       # this backend before ADR 0335: exit 2 — llc rejected the module
-                      # this backend today:           exit 1, a refusal that names the missing record
+                      # this backend between 0335 and 0466: exit 1, a refusal naming the missing record
+                      # this backend since ADR 0466: exit 3, the reference's own sentence, catchable
 print({1: 2}[0:1])    # KeyError: slice(0, 1, None)
                       # this backend before ADR 0335: exit 2 — llc rejected the module
-                      # this backend today:           exit 1, a refusal that names the missing record
+                      # this backend between 0335 and 0466: exit 1, a refusal naming the missing record
+                      # this backend since ADR 0466: exit 3, the reference's own miss, catchable
 s = {1, 2}
 print(s[0:1])         # TypeError: 'set' object is not subscriptable
-                      # before ADR 0335: [1]  (exit 0);  today: exit 1, a refusal
+                      # before ADR 0335: [1]  (exit 0);  0335: exit 1;  since ADR 0466: exit 3, the set's words
 d = {1: 2}
 print(d[0:1])         # KeyError: slice(0, 1, None)
-                      # before ADR 0335: [1]  (exit 0);  today: exit 1, a refusal
+                      # before ADR 0335: [1]  (exit 0);  0335: exit 1;  since ADR 0466: exit 3, the dict's miss
 ```
 
 Four shapes, one missing question. A set has no position to slice from, and a dict — which hashes its keys —
@@ -11511,6 +11513,82 @@ job is to raise both, the same move Gap R.222 made for a subscript asked with a 
 R.217 made for a key a dict cannot hash. Four rows of
 `integration/slice_answer_test.go::TestAPositionThatCannotSliceRefusesThroughTheCLI` are pinned as exit-1
 refusals today and move to the raise tables when this row lands; none of them may arrive at exit 2 on the way.
+
+## Closed by ADR 0466 (2026-10-31): the object answers before a bound is lowered
+
+The row's premise held: one missing question, and the four shapes answered as soon as it was asked. What the row
+did not know when it was written is that the question has an **order** to it, and the order is the reference's
+rather than the road's. `pkg/lang/slice_base_kind.go` asks `staticContainerKind` — the predicate the comparison,
+the membership test and the loop decide with — at the top of `valueSlice`, before a single bound is lowered:
+
+| the program | the reference | this backend before | this backend now |
+|---|---|---|---|
+| `print({1, 2}[0:1])` | `TypeError: 'set' object is not subscriptable` | exit 1 refusal | exit 3, catchable |
+| `print({1: 2}[0:1])` | `KeyError: slice(0, 1, None)` | exit 1 refusal | exit 3, catchable |
+| `s = {1, 2}` / `print(s[0:1])` | the set's sentence | exit 1 refusal | exit 3, catchable |
+| `d = {1: 2}` / `print(d[0:1])` | the dict's miss | exit 1 refusal | exit 3, catchable |
+| `print({1, 2}[1.5:2])` | the set's sentence — **not** the bounds' | exit 1 refusal | exit 3, `'set'` |
+| `print({1, 2}[[1]:2])` | the set's sentence — hashing never reached | exit 1 refusal | exit 3, `'set'` |
+| `print({1: 2}[[1]:2])` | `TypeError: unhashable type: 'list'` — hashing BEFORE the miss | exit 1 refusal | exit 3, unhashable |
+| `print({1: 2}[0:1:0])` | `KeyError: slice(0, 1, 0)` — no step-of-zero complaint | exit 1 refusal | exit 3, the key's repr |
+| `print({1: 2}[(1, "a"):2])` | `KeyError: slice((1, 'a'), 2, None)` | exit 1 refusal | exit 3, the tuple's own commas |
+| `print({1: 2}[False:True])` | `KeyError: slice(False, True, None)` | exit 1 refusal | exit 3, `True`/`False`, not `1`/`0` |
+| `d = {1: 2}` / `d = [1, 2]` / `print(d[0:1])` | `[1]` | `[1]` | `[1]` — the record decides, not the spelling |
+| `def m(): return {1, 2}` / `print(m()[0:1])` | the set's sentence | exit 1 refusal | exit 3, catchable |
+
+Three things about that table are the reason the gate is a gate and not an `if`.
+
+**The object is asked before the bounds.** `print({1, 2}[1.5:2])` says `'set' object is not subscriptable` and
+never says `slice indices must be integers or None or have an __index__ method`: a float bound is a complaint
+about a container that COUNTS, and a set has nothing to count with. The bounds door ADR 0336 built stays exactly
+where it was — `print([1, 2]["a":"b"])` still raises its sentence — and the gate sits in front of it, which is
+what the reference's own order requires.
+
+**A dict hashes its key before it is asked whether it holds it.** `print({1: 2}[[1]:2])` is
+`TypeError: unhashable type: 'list'`, not a miss, and `print({1: 2}[(1, [2]):1])` says `'list'` rather than
+`'tuple'` because the tuple hash walks left to right and names the first member it cannot hash — the same rule
+**ADR 0328** wrote for the subscript door, paid here for the slice door. The consequence for the code is an order
+inside the dict arm: `unhashableSliceBound` runs first and `sliceAsDictKey` renders only a key that could have
+been hashed. (The first draft had them the other way round, and the unhashable rows fell through to the road's
+refusal — the gate declined to answer a question whose answer it could have printed. The reference's order is the
+one that compiles to the right sentence.)
+
+**A step of zero is only hashed.** `print({1: 2}[0:1:0])` is `KeyError: slice(0, 1, 0)` while
+`print([1, 2][0:1:0])` is **ADR 0337**'s complaint. The same bound is two different questions depending on the
+base, which is the clearest evidence the row produces that the base has to be asked at all.
+
+The kind is read, never inferred, and where no record answers, the row's own gate declines and the road keeps
+ADR 0335's refusal: `print(set([1, 2])[0:1])`, `print(d[i:i+1])` over a dict, and `print({1, 2}[0:1][0])` are
+refusals today, each filed with its own number below (**Gap R.554**, **Gap R.555**, **Gap R.556**). That is also
+why a rebinding changes the answer: `d = {1: 2}` / `d = [1, 2]` / `print(d[0:1])` slices, because the gate asked
+the binding and not the syntax.
+
+The witnesses are three, and every row is asked of all three. `pkg/lang/slice_base_kind_test.go` holds 29 raise
+rows — each one asked of `jitTrap` for the compiled leg AND of `goldenRunError` for the record leg, so a raise can
+not be witnessed by the compiler's opinion alone — 6 catchable rows asked of the compiler AND the record, an order
+table that writes ONE bound over three bases and then fails if the bases collapse onto one sentence, a rebinding
+table, an untouched-door table (a list's copy, a tuple's slice, a text's slice, a dict read by a real key, `len`
+and `in` over a set), and a module witness: the raise's two strings, the exception code, and the ABSENCE of any
+`call i32 @rt_slice(` — the call that made `llc` reject these programs is the thing the row forbids.
+`integration/slice_base_kind_test.go` runs 29 raises through the CLI with the expectation read out of a live
+CPython per row (class, sentence, exit 3, empty stdout, a traceback frame naming the line) and 9 handler rows
+compared byte for byte, then asks the emitted module for a global in a value position — the shape this row's
+history is made of. `tools/recmerge` wrote **35 entries (10714 → 10749)**, none refused, and the corpus gained
+`integration/programs/slice_base_kind.gy` as a parity row (matrix 273 → 274, parity-asserted 237 → 238, oracle
+`match` 223 → 224, `fail` 0).
+
+The rows that pinned these shapes as refusals failed, which is how this repository knows a door grew:
+`TestAPositionThatCannotSliceRefusesThroughTheCLI` lost two rows, and
+`TestWhatTheSliceDoorStillCannotReachIsFiledNotFixed` / `TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed` lost
+six between them (four and two). Each emptied slot carries a comment naming the file the rows moved to, so a later reader cannot
+mistake the deletion for coverage that was dropped.
+
+One measurement this row made on the way is NOT its own defect and is filed as **Gap R.557**: with the refusal
+removed, `c = 1` / `x = {1, 2} if c else [1, 2]` / `print(x[0:1])` reaches `llc`'s
+`global variable reference must have pointer type` at **exit 2** — the phi of a set literal's global and a list
+literal's global, the class **Gap R.128** named and **ADR 0405** closed for the arms it walked. `print(x)` over
+the same ternary is exit 2 on this commit's parent too: the gate did not create the defect, it stopped masking it,
+and the row that owns the set arm is where the fix belongs.
 
 <a id="gap-r-235"></a>
 
@@ -23816,3 +23894,182 @@ it): a name that exists on disk *is* `--file`, and a `.gy` name that does not is
 an `undefined name` blamed on the user's code. The row asks for that one rule at the flags, or for the flags to say in
 words that they will not follow it, and for the comment to be quoted by a test so it cannot drift again.
 
+
+<a id="gap-r-554"></a>
+
+### Gap R.554 — a set spelled by its constructor is still refused, because no record names what the call hands back
+
+```python
+$ python3 -c 'print(set([1, 2])[0:1])'
+TypeError: 'set' object is not subscriptable
+$ gustyc --eval 'print(set([1, 2])[0:1])'
+gustyc: jit: codegen: cannot slice *lang.Call: the copy is a list whose slots are the base's payloads with
+their tags, and the base is not a list the records describe — a literal, a variable a binding recorded as a
+list, a call that hands back a list, or a slice of one (roadmap Gap R.235, ADR 0335)
+$ echo $?
+1
+```
+
+**ADR 0466**'s gate asks one predicate, and the predicate answers where a record names the kind. The literal
+`{1, 2}` carries its own node, a name carries the binding that wrote it, and a call carries the answer record
+**ADR 0333** fills for a `def` whose `return` the scan can read. `set([1, 2])` is a call to a builtin that has no
+such record: the road knows how to BUILD the object (the print door, `len` and `in` all answer it) and does not
+know how to NAME its kind to the doors that ask first.
+
+So the two spellings of one set now differ by a record rather than by a rule:
+
+| program | the reference | this backend |
+|---|---|---|
+| `print({1, 2}[0:1])` | the set's sentence | exit 3, catchable |
+| `print(set([1, 2])[0:1])` | the set's sentence | exit 1, a refusal that names the missing record |
+
+The refusal is the honest shape — a gate that named `set` here would be naming a kind it read out of a
+constructor's NAME, which is **ADR 0232**'s rule broken politely — and the fix has a name: the builtin container
+calls already answer `emptyContainerCall` when the missing-key door needs a repr (`set()`, `[]`, `{}`), which is
+the same reading of the same spelling, asked by a different door. Filling the answer record for the builtin whose
+name the source spells is the row's next concrete action; where the callee is the program's own `def`, there is
+nothing to add — **ADR 0333**'s record already answers, and `def m(): return {1, 2}` / `print(m()[0:1])` raises
+the reference's sentence today.
+
+Measured 2026-10-31 while landing **ADR 0466**, in which it is one of the three refusals
+`TestAPositionThatCannotSliceRefusesThroughTheCLI` keeps.
+
+<a id="gap-r-555"></a>
+
+### Gap R.555 — a dict sliced by bounds the compiler cannot read is refused rather than missed
+
+```python
+$ python3 -c 'd = {1: 2}
+i = 0
+print(d[i:i+1])'
+KeyError: slice(0, 1, None)
+$ gustyc --eval 'd = {1: 2}
+i = 0
+print(d[i:i+1])'
+gustyc: jit: codegen: cannot slice d: … the base is not a list the records describe … (roadmap Gap R.235, ADR 0335)
+$ echo $?
+1
+```
+
+The base is not the problem here: `staticContainerKind` answers `dict` for `d`, and the gate fires. The problem is
+that the sentence this row exists to emit — `KeyError: slice(0, 1, None)` — names a KEY, and the key is three
+expressions. `sliceAsDictKey` renders a repr only from what the notebooks already hold (**ADR 0273**: an invented
+repr is a fabricated answer, and a traceback that names a key the program did not write is worse than a refusal),
+so it declines and the road keeps ADR 0335's sentence.
+
+The reference has no such gap because it does not render at compile time: it builds a `slice` OBJECT, hashes it,
+misses, and the traceback's repr comes off the object. That is the missing piece, and it is the same object
+**Gap R.558** needs on the store side — a `slice` that can BE a key is **L11.1**'s tagged value word arriving at
+the dict door, with `unhashableSliceBound` already in place to answer the hashability question first.
+
+The literal-bounds spelling is fully answered (`print({1: 2}[0:1])`, `[:]`, `[1.5:True]`, `["a":"b"]`,
+`[(1, "a"):2]`, `[0:1:0]` — see the table under **Gap R.234**), which is what makes this row narrow: the bounds
+have to be unreadable for the shape to refuse.
+
+The same door answers for a bound whose evaluation would itself have raised first: `print({1: 2}[1//0:1])` is
+`ZeroDivisionError: integer division or modulo by zero` in the reference and the copy's refusal here, because the
+gate fires only where every bound is a value the compiler can read — and it must stay that way. A gate that raised
+the miss without evaluating the bound would answer a program whose evaluation the reference stops at the division,
+which is the ordering error in the other direction (**ADR 0273**'s point about a trap that lives inside an operand).
+
+Measured 2026-10-31 while landing **ADR 0466**.
+
+<a id="gap-r-556"></a>
+
+### Gap R.556 — the word a slice-base raise hands back has no kind, so a second read of it refuses
+
+```python
+$ python3 -c 'print({1, 2}[0:1][0])'
+TypeError: 'set' object is not subscriptable
+$ gustyc --eval 'print({1, 2}[0:1][0])'
+gustyc: jit: codegen: index requires an inline list/dict/set literal
+$ gustyc --eval 'print(len({1, 2}[0:1]))'
+gustyc: jit: codegen: len requires an inline list/dict/set literal
+```
+
+The inner slice raises correctly: `raiseTo` stores the exception, branches to the handler (or the function's raise
+exit) and opens a continuation, and the road returns a word for the value that will never be produced. The OUTER
+read — the `[0]`, the `len(...)` — is lowered in that reopened block, sees a bare word, asks the slot road for a
+record, and refuses the program for a shape the reference never evaluates. The reference evaluates the inner slice
+first, raises, and never reaches the subscript at all; the front end is answering a question the run time does not
+ask.
+
+The neighbour that shows the fix is not "hand back a container": `print([1][9][0])` already raises
+`IndexError: list index out of range` because the inner read returns a REAL list handle on its way to its trap,
+and the outer door can ask that handle what it holds. A raise has no such handle — and inventing one would be an
+object the program cannot reach, rooted nowhere (**ADR 0181**), collected as soon as anything allocates
+(**ADR 0347**). The row's action is therefore to make the word un-readable rather than kindless: a door asked to
+read a position, a length or a tag of a value whose producer raised should end the block the way its producer did.
+
+Control that keeps the fix honest when it lands: `print([1, 2][0:1][0])` answers `1` today and must go on
+answering it.
+
+Measured 2026-10-31 while landing **ADR 0466**.
+
+<a id="gap-r-557"></a>
+
+### Gap R.557 — a ternary with a SET arm puts the literal's global in a value position again (exit 2, Gap R.128's class)
+
+```python
+$ gustyc --eval 'c = 1
+x = {1, 2} if c else [1, 2]
+print(x)'
+gustyc: jit: llc: exit status 1
+llc-20: error: global variable reference must have pointer type
+  %t2 = phi i32 [ @.set1, %tern.thenfwd3 ], [ @.lst1, %tern.elsefwd4 ]
+$ echo $?
+2
+```
+
+**Gap R.128** and **Gap R.385** were closed by **ADR 0405** with one rule: an arm is a program the test runs, so
+each arm's container is BUILT inside the block the branch enters and the merge phis the two HANDLES — never a
+module-level global in a value position, which is the instruction `llc` rejects. The rule reached the arms
+`containerOperand`'s `*CondExpr` case can build. A LIST arm is built; a SET arm still hands the merge the
+literal's global, and the assembler dies on the program's second line with the exit code that says the compiler is
+broken.
+
+What brought this row to light is **ADR 0466**: before it, `print(x[0:1])` over that ternary was refused by the
+copy's gate (exit 1) and the module was never handed to `llc`, so the shape looked like a missing feature. With
+the base question asked, the refusal goes away and the assembler's complaint arrives — **exit 2 where the parent
+had exit 1**, and the same exit 2 that `print(x)` had on the parent already. That distinction is why the row is
+filed rather than fixed inside ADR 0466: the defect is the ternary's, it predates the row, and it is reproducible
+with no slice anywhere in the program.
+
+Same family, unmeasured and worth pinning when the row is taken: a DICT arm beside the list arm
+(`x = {1: 2} if c else [1, 2]`) takes the same branch of `containerOperand`, and a set arm in a `lambda` body,
+which is where **ADR 0401** found its twin.
+
+Measured 2026-10-31 while landing **ADR 0466**.
+
+<a id="gap-r-558"></a>
+
+### Gap R.558 — a slice is not an assignment target, so a store under a slice key is a parse error
+
+```python
+$ python3 -c 'd = {1: 2}
+d[0:1] = 3
+print(d)'
+{1: 2, slice(0, 1, None): 3}
+$ python3 -c 'xs = [1, 2, 3]
+xs[0:1] = [9]
+print(xs)'
+[9, 2, 3]
+$ gustyc --eval 'xs = [1, 2, 3]
+xs[0:1] = [9]
+print(xs)'
+gustyc: parse error at 2:3: cannot assign to this target; assignment needs a name, attribute, tuple or
+subscript target
+```
+
+The parser accepts a `Slice` on the read side — every row of **Gap R.234** is a slice in an expression position —
+and rejects it on the write side, so the same four characters are subscript syntax in one position and garbage in
+another. The reference makes the two readings agree: a subscript target is a key, and a slice is a key at a dict
+door (the exact key **ADR 0466**'s raise names in its sentence) and a splice at a list door.
+
+Two neighbours of this row already have numbers, and the row is written so it does not swallow them: the list
+arm's `TypeError` for a base that does not support item assignment is **Gap R.229**'s family (the item-assignment
+road takes a variable on the left), and the dict arm's run-time key is **Gap R.555**'s missing `slice` object.
+What is genuinely this row's own is the front end: a program cannot be rejected for a shape the parser has already
+accepted one position to the left.
+
+Measured 2026-10-31 while landing **ADR 0466**.

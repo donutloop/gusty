@@ -3999,6 +3999,27 @@
     },
     {
       "case": {
+        "id": "programs/slice_base_kind",
+        "name": "slice_base_kind.gy",
+        "source": "# The slice road asks what its BASE is (roadmap Gap R.234, ADR 0466).\n#\n# A set has no position to slice from, and a dict hashes the slice and reports the miss by naming the key\n# it missed. Both raise, so the program takes the raise with its own `except` and runs to completion —\n# every line below is the reference's bytes, and the doors beside it (a list's bounds, a dict read by a\n# real key, a text's slice) keep the answers they always gave.\n\ns = {1, 2}\nd = {1: 2}\nxs = [1, 2, 3]\n\nprint(xs[0:2], xs[1:], xs[::-1])\nprint((1, 2)[0:1])\nprint(\"abcdef\"[1:3])\nprint(d[1], len(d), 1 in d)\nprint(len(s), 2 in s)\n\ntry:\n    print(s[0:1])\nexcept TypeError as err:\n    print(\"set\", err)\n\ntry:\n    print(d[0:1])\nexcept KeyError as err:\n    print(\"dict\", err)\n\ntry:\n    print({1, 2}[\"a\":\"b\"])\nexcept TypeError as err:\n    print(\"object\", err)\n\ntry:\n    print({1: 2}[[1]:2])\nexcept TypeError as err:\n    print(\"hash\", err)\n\ntry:\n    print({1: 2}[0:1:0])\nexcept KeyError as err:\n    print(\"step\", err)\n\ntry:\n    print({1: 2}[(1, \"a\"):2])\nexcept KeyError as err:\n    print(\"tuple\", err)\n\nprint(xs[0:1], len(xs[0:2]), xs[0:2][1])\nprint(d[1], 0 in d)\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[1, 2] [2, 3] [3, 2, 1]\n(1,)\nbc\n2 1 True\n2 True\nset 'set' object is not subscriptable\ndict slice(0, 1, None)\nobject 'set' object is not subscriptable\nhash unhashable type: 'list'\nstep slice(0, 1, 0)\ntuple slice((1, 'a'), 2, None)\n[1] 2 2\n2 False\n",
+      "python_ok": true,
+      "python_stdout": "[1, 2] [2, 3] [3, 2, 1]\n(1,)\nbc\n2 1 True\n2 True\nset 'set' object is not subscriptable\ndict slice(0, 1, None)\nobject 'set' object is not subscriptable\nhash unhashable type: 'list'\nstep slice(0, 1, 0)\ntuple slice((1, 'a'), 2, None)\n[1] 2 2\n2 False\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/minus_operator",
         "name": "minus_operator.gy",
         "source": "# The minus between two expressions is the operator, not the sign of the next\n# literal (roadmap Gap R.242, ADR 0338).\n#\n#   x = 5\n#   y = x-1\n#   print(y)\n#\n# printed `5` at exit 0: the lexer read `-1` as one integer wherever a digit\n# followed the minus, so the program became `y = x` and an expression statement\n# `-1`. `print(1-1)` did not even parse (`expected \")\"`), and with it every\n# `len(xs)-1`, `xs[2-1]`, `range(3-1)` and `return n-1`. The same rule is why\n# `print(-1)`, `xs[-1]`, `{-1: \"neg\"}` and `f(-1)` must keep answering exactly as\n# they did — which is the other half of this program.\n#\n# This file's expectation is what CPython printed for it, line for line.\n\nx = 5\ny = x-1\nprint(y, x-1, x - 1)\nprint(1-1, 3-1, 1-1-1, 10-3*2)\nprint(5*-1, 5--1, 5- -1, 2*-3+1)\nprint(-1, -1.5, -0, abs(-3), 2 ** -1)\n\nxs = [1, 2, 3]\nprint(xs[-1], xs[0-1], xs[2-1], xs[len(xs)-1])\nprint(len(xs)-1, int(\"5\")-1, max(1, 2)-1, min(3, 1, 2)-1)\nprint(xs[1-1:3-1], [1, 2, 3][1-1])\n\nd = {-1: \"neg\", 1: \"pos\"}\nprint(d[-1], d[1])\nw = {\"a\": 1}\nprint(w[\"a\"]-1)\n\nprint(True-1, False-1, True-True)\nprint(3.5-1, 2-2.0, 10//3-1)\n\ndef step(n):\n    return n-1\n\ndef dflt(a=x-1):\n    return a\n\nprint(step(5), step(0), step(5)-1)\nprint(dflt(), dflt(2))\n\nfor i in range(3-1):\n    print(i, i-1)\n\nk = 0\nwhile k-1 \u003c 2:\n    print(k, k-1)\n    k = k+1\n\nprint(-1 if True else 1, (1)-1, --1, -(1))\n\nclass Counter:\n    def __init__(self):\n        self.n = 5\n\n    def last(self):\n        return self.n-1\n\nprint(Counter().last(), Counter().last()-1)\n",
@@ -6469,11 +6490,11 @@
       ]
     }
   ],
-  "rows": 273,
+  "rows": 274,
   "skipped": 36,
-  "pass": 237,
+  "pass": 238,
   "fail": 0,
-  "oracle_match": 223,
+  "oracle_match": 224,
   "oracle_debt": 24,
   "oracle_not_applicable": 26,
   "oracle_drift": 0

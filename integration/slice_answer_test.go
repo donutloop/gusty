@@ -185,7 +185,9 @@ func TestASliceTrapStillRaisesThroughTheCLI(t *testing.T) {
 // over whatever word the base lowered to and the caller printed that word — `print(m()["k"][0:1])` answered
 // the copy's heap handle as `3`, and `print({1, 2}[0:1])` handed a set literal's i32 global to a helper whose
 // argument is an i32 register, which `llc` rejected: exit 2, the code the contract reserves for a compiler bug
-// (ADR 0166). Both are refusals now, and each row says which door owes the answer.
+// (ADR 0166). The gate stands; the base question has since been asked too, so a base the records NAME as a set
+// or a dict raises the reference's own sentence at exit 3 (**roadmap Gap R.234**, **ADR 0466**) and is witnessed
+// in `integration/slice_base_kind_test.go`. What this table keeps is the shape whose base no record describes.
 func TestAPositionThatCannotSliceRefusesThroughTheCLI(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
@@ -196,16 +198,31 @@ func TestAPositionThatCannotSliceRefusesThroughTheCLI(t *testing.T) {
 		// Two rows this table used to file left with **ADR 0459** — a copy of a slot that is itself a list,
 		// and a copy of a comprehension's answer. Both answer now, and they are witnessed as answered rows
 		// in `sliceAnswerAnswered` above, each against a live `python3`.
+		//
+		// A third pair left with **ADR 0466**: `print({1, 2}[0:1])` and `d = {1: 2}` / `print(d[0:1])` no longer
+		// arrive here, because the slice road asks the base's kind first and raises the reference's sentence for
+		// them. They are refused no longer, so they are not filed here; `TestASliceOfASetOrADictRaisesThroughTheCLI`
+		// in `integration/slice_base_kind_test.go` is where they are judged, exit 3 beside a live `python3`.
 		{
-			// A set literal has no copy road at all: the slice of one is neither a list nor a text, and the
-			// door that would answer it owns no set arm (roadmap Gap R.540).
-			name:    "a slice of a set literal",
-			src:     "print({1, 2}[0:1])",
+			// The base is a set, but spelled by its CONSTRUCTOR: no record names what the call hands back, so the
+			// gate declines to name a kind and the road keeps its own refusal rather than raise a sentence the
+			// compiler invented (roadmap Gap R.554; the reference raises 'set' object is not subscriptable).
+			name:    "a slice of a set spelled by its constructor",
+			src:     "print(set([1, 2])[0:1])",
 			mustSay: "cannot slice",
 		},
 		{
-			name:    "a slice of a dict kept in a name",
-			src:     "d = {1: 2}\nprint(d[0:1])",
+			// The base IS described as a dict, but the bounds are expressions, so there is no key repr to name and
+			// the miss would have to be built at run time (roadmap Gap R.555; the reference raises
+			// KeyError: slice(0, 1, None)).
+			name:    "a slice of a dict whose bounds the compiler cannot read",
+			src:     "d = {1: 2}\ni = 0\nprint(d[i:i+1])",
+			mustSay: "cannot slice",
+		},
+		{
+			// Gap R.540: the name holds a slot the records only describe through the object it was read out of.
+			name:    "a slice taken from a name bound by a slot read",
+			src:     "def m():\n    return {\"k\": [1.5]}\n\nd = m()[\"k\"]\nprint(d[0:1])",
 			mustSay: "cannot slice",
 		},
 	} {

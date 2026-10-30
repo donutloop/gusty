@@ -3056,6 +3056,55 @@ print("abcdef"[2:])        # cdef         — a text slice belongs to the text r
 print([1, 2, 3][0])        # 1            — a subscript belongs to the element road
 ```
 
+**The base is asked what it is before any bound is asked anything** (**Gap R.234**, **ADR 0466**). A slice is a
+read of something that HAS positions, and two of the containers this language has do not have any — and the
+reference does not refuse them with one sentence, it answers each with its own:
+
+```
+print({1, 2}[0:1])   # TypeError: 'set' object is not subscriptable — a set has no position to cut
+print({1: 2}[0:1])   # KeyError: slice(0, 1, None)  — a dict HASHES the slice and names the key it missed
+s = {1, 2}
+print(s[0:1])        # the set's sentence again — the base, not the bounds, is the complaint
+d = {1: 2}
+print(d[0:1])        # KeyError: slice(0, 1, None)
+```
+
+Both are traps the program can catch (`except TypeError:` / `except KeyError:`), both leave stdout untouched and
+exit **3**, and `except … as err` binds what the reference binds: the key's repr, without the `KeyError: ` caption.
+
+The order is the content of the rule, because the same bounds mean three different things over three different
+bases:
+
+```
+print([1, 2]["a":"b"])     # TypeError: slice indices must be integers or None or have an __index__ method
+print({1, 2}["a":"b"])     # TypeError: 'set' object is not subscriptable — a set has nothing to count WITH
+print({1: 2}["a":"b"])     # KeyError: slice('a', 'b', None)               — a text hashes; the miss is the answer
+print({1: 2}[[1]:2])       # TypeError: unhashable type: 'list'            — hashing, asked BEFORE the lookup
+print({1: 2}[(1, [2]):1])  # TypeError: unhashable type: 'list'            — a tuple names the member, not itself
+print({1: 2}[0:1:0])       # KeyError: slice(0, 1, 0)   — a dict hashes the step; it never divides by it
+print({1: 2}[(1, "a"):2])  # KeyError: slice((1, 'a'), 2, None)            — a key is named by its own repr
+```
+
+so a set never earns the bounds sentence above, and a dict never earns the step-of-zero `ValueError` below — those
+belong to a base that counts. The kind is READ from the binding rather than guessed at the spelling, which is why
+the same name answers differently once it holds something else, and why a base no record describes keeps its
+refusal instead of being accused of a kind nobody wrote:
+
+```
+d = {1: 2}
+d = [1, 2]
+print(d[0:1])      # [1]   — the kind the name holds NOW decides which door answers
+def m():
+    return {1, 2}
+print(m()[0:1])    # TypeError: 'set' object is not subscriptable
+```
+
+Three shapes are refused at exit 1 rather than raised, each because no record names what the reference would have
+to name, and each filed with its number: a base spelled by a constructor (`print(set([1, 2])[0:1])`, **Gap
+R.554**), a dict sliced by bounds the compiler cannot read (`d[i:i+1]`, which would need a `slice` object to hash
+at run time, **Gap R.555**), and a second read of the word a raise hands back (`print({1, 2}[0:1][0])`, **Gap
+R.556**).
+
 Slice parts are all optional and negative bounds count from the end, as they do in the reference. The compiled
 form allocates a fresh heap object and copies **payload and tag together** (**ADR 0335**): an element whose value
 is an interned text, a float or a nested container prints the same way in the copy as in the original. That

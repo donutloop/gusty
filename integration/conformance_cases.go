@@ -826,6 +826,17 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// five of the raises taken by the program's own `except TypeError` are in this one program, whose expectation
 		// is what CPython printed for it (roadmap Gap R.233, ADR 0336).
 		"slice_bounds",
+		// The slice road asks its BASE before it asks its bounds: a set has no position to slice from, so
+		// `print(s[0:1])` over `s = {1, 2}` raises `TypeError: 'set' object is not subscriptable`, and a dict
+		// HASHES the slice and reports the miss by naming the key, so `print(d[0:1])` over `d = {1: 2}` raises
+		// `KeyError: slice(0, 1, None)` — while `print({1: 2}[[1]:2])` never reaches the miss, because hashing a
+		// key asks only whether the key is hashable. Both shapes reached `rt_slice` before this row: the literal
+		// spelling handed `llc` a global in an i32 argument (exit 2) and the bound spelling printed the list `[1]`
+		// at the exit code of success. The raises are taken here by the program's own `except … as err`, which also
+		// prints what the reference binds, and the doors beside them — a list's copy, a tuple's slice, a text's
+		// slice, a dict read by a real key, `len` and `in` over a set — keep their answers (roadmap Gap R.234,
+		// ADR 0466).
+		"slice_base_kind",
 		// The minus between two expressions is the SUBTRACTION operator and the minus before a literal in
 		// an expression position is its SIGN — one question the lexer used to answer from the character after
 		// the minus alone, so `x = 5` / `y = x-1` / `print(y)` wrote `5` at exit 0 where the reference writes

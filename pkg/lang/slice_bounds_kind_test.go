@@ -477,18 +477,13 @@ func TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 			"[1, 2]", "TypeError: slice indices must be integers or None or have an __index__ method",
 			"roadmap Gap R.237 (the same one-word position, reached through a call: ADR 0333's answer carries its tags and this door asks for one static kind)",
 		},
-		{
-			"a slice of a set literal",
-			"print({1, 2}[0:1])",
-			"", "TypeError: 'set' object is not subscriptable",
-			"roadmap Gap R.234 (the base question, asked before the bounds question — which is the right order: the reference complains about the set first)",
-		},
-		{
-			"a slice of a dict kept in a name",
-			"d = {1: 2}\nprint(d[0:1])",
-			"", "KeyError: slice(0, 1, None)",
-			"roadmap Gap R.234 (the dict hashes the slice and reports the miss by naming the key)",
-		},
+		// The two shapes this table filed for **Gap R.234** — a slice of a set literal and a slice of a dict kept
+		// in a name — are DELETED by their own text. The base question is now asked BEFORE the bounds question,
+		// which is the reference's order: a set complains about the object (`TypeError: 'set' object is not
+		// subscriptable`) and a dict hashes the slice and names the key it missed
+		// (`KeyError: slice(0, 1, None)`), so neither shape reaches the bounds sentence at all. They are witnessed
+		// in `pkg/lang/slice_base_kind_test.go`, including the ORDER itself: a set sliced by a float or by a list
+		// still says `'set'`, never the slice-indices words this file owns (**roadmap Gap R.234**, **ADR 0466**).
 		// The two shapes this table used to file — a slot of a copy read directly, and a copy of a slot that
 		// is itself a list — left with **ADR 0459**: the door that names what the run time built answers them,
 		// and they are witnessed as answered rows in `pkg/lang/slice_answer_test.go` rather than here.

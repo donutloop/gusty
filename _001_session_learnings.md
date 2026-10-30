@@ -17763,3 +17763,50 @@ family's record case carries an `asked` counter and fails if NO row was covered,
 that a missing record fails a case (**ADR 0302**, Gap R.204's numbering); its subtests are non-parallel because the
 counter is shared, while the parents stay parallel. Lesson kept: a witness that cannot fail is not a witness — say
 what the leg would have said if it had run, and assert that it said something.
+
+## Cycle: the slice road asks what its base is (**roadmap Gap R.234** closed; **Gap R.554**, **Gap R.555**, **Gap R.556**, **Gap R.557**, **Gap R.558** filed; **ADR 0466**)
+
+**The reference's ORDER is the feature; the sentences are the receipt.** The row was filed as "raise two sentences, one
+per kind", and the sentences were the easy half. What took the measurement was that `print({1, 2}[1.5:2])` says
+`'set' object is not subscriptable` and NOT ADR 0336's `slice indices must be integers or None or have an __index__
+method` (a set has nothing to count with, so the bound question is never asked), that `print({1: 2}[[1]:2])` says
+`unhashable type: 'list'` and not a miss (the dict hashes the key before it is asked whether it holds it — the rule
+**ADR 0328** already writes for the subscript door), and that `print({1: 2}[0:1:0])` says `KeyError: slice(0, 1, 0)`
+where a list says **ADR 0337**'s step-of-zero `ValueError` (the step is hashed, never applied). A first draft had
+`sliceAsDictKey` run before `unhashableSliceBound`, and every unhashable-bound row fell through the gate into the road's
+own refusal — the gate declined to answer a question whose answer it had. The rows caught it because they assert the
+sentence, not merely "it raised". Order a trap is not a detail to be tidied later: write the table of the same construct
+over the neighbouring bases first, and let the table decide the order of the checks.
+
+**A refusal can be a mask, and removing one is a measurement you have to take on the parent.** With the four shapes
+raising, `c = 1` / `x = {1, 2} if c else [1, 2]` / `print(x[0:1])` reached `llc`'s
+`global variable reference must have pointer type` at **exit 2** — ADR 0166's class, the worst thing this repository
+counts. The copy's gate had refused that program before the module was ever handed to the assembler. Running the same
+ternary with `print(x)` on the PARENT answered exit 2 as well, so the defect is **Gap R.128**'s class reopened for the
+SET arm **ADR 0405** did not walk — a neighbour, not a regression — and it is filed as **Gap R.557** rather than
+quietly fixed inside this commit or quietly left out. The rule: when a gate comes out and an exit 2 appears, run the
+same shape on the parent before you call it yours, and write the number you saw in the row.
+
+**A tool result you can reproduce two ways is the only kind of result this suite runs on.** Twice in this cycle a
+`grep`/`read` pair returned text that was not in the file it named — a plausible-looking table of cases, with line
+numbers, for a test file that does not contain those strings. Nothing downstream of it was trustworthy: the "filed
+table" it showed did not exist, and an edit drafted against it would not have applied. Every claim in this cycle
+therefore went through the compiler: `go build`, then the real `gustyc`, then `go test -run`, then `python3` beside it,
+and `grep -c` on the disputed identifier when a result looked too tidy. It is slower and it is the only honest unit —
+a test binary cannot hallucinate a failing subtest name.
+
+**A record leg that skips is not a witness; walk it or say it is missing.** The first version of the raise table passed
+against the compiled leg alone, because a missing record skips. The rows now ask `jitTrap` AND `goldenRunError`, and a
+row with no recorded trap fails; `tools/recmerge` then wrote **35 entries (10714 → 10749)** from the reference with the
+compiled leg cross-checked, including the traps (its rule that the compiled leg may never write an entry, and that exit
+2 on a raise is a refusal to record, is what makes the entry evidence rather than a snapshot of today's behaviour). The
+artifact's count is quoted in four places — the tracker's Snapshot, `docs/operations.md`, `AGENTS.md`, and a literal in
+`pkg/lang/leading_dot_float_test.go` — and the guard says in its own failure text that the file is the authority and all
+four move together. Same for the Snapshot's ADR/corpus/matrix/rows-owed cells: `TestTheRoadmapSnapshotIsMeasuredNotRemembered`
+told me the five numbers rather than letting me remember them.
+
+**Deleting a filed row is a claim, so say where the row went.** Six rows of the two filed-not-fixed tables and two rows
+of `TestAPositionThatCannotSliceRefusesThroughTheCLI` fail on the fix — that is the mechanism, not a chore. Each emptied
+slot keeps a comment naming the file the rows moved to and the ADR that grew the door, and the CLI table now holds the
+three refusals the gate DECLINES (`set(...)` bounds-free, expression bounds, a slot-read binding), each at exit 1 with a
+sentence that names the missing record. A deletion that reads as dropped coverage is how a suite quietly gets smaller.

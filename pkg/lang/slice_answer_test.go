@@ -365,30 +365,14 @@ func TestWhatTheSliceDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 		// the copy of a slot that holds a list (both writings) and the copy of a comprehension's brace all
 		// answer the reference now, and they sit in `slicePrograms` and the raise tables above with the rest
 		// (roadmap Gap R.235, closed by ADR 0459).
-		{
-			"a slice of a set literal",
-			"print({1, 2}[0:1])",
-			"", "TypeError: 'set' object is not subscriptable",
-			"roadmap Gap R.234 (a set has no position to slice from; at the commit before this one the literal's i32 global went to `rt_slice` and `llc` rejected the module — exit 2, ADR 0166's worst class, which this row's gate turned into a refusal)",
-		},
-		{
-			"a slice of a dict literal",
-			"print({1: 2}[0:1])",
-			"", "KeyError: slice(0, 1, None)",
-			"roadmap Gap R.234 (the same missing question, asked of a dict — and a dict's answer is a miss, not a type complaint: a slice of integers is hashable, so the reference hashes it and raises the KeyError that names it)",
-		},
-		{
-			"a slice of a set kept in a name",
-			"s = {1, 2}\nprint(s[0:1])",
-			"", "TypeError: 'set' object is not subscriptable",
-			"roadmap Gap R.234 (a set's words sliced are not a list: the reference raises, and until this row's gate the toolchain printed `[1]` at exit 0)",
-		},
-		{
-			"a slice of a dict kept in a name",
-			"d = {1: 2}\nprint(d[0:1])",
-			"", "KeyError: slice(0, 1, None)",
-			"roadmap Gap R.234 (the dict half of the same road, answered `[1]` at exit 0 before the gate; the reference's miss is the same one it would raise for any key the dict does not hold)",
-		},
+		// The four shapes this table filed for **Gap R.234** — a slice of a set literal, of a dict literal, of a
+		// set kept in a name and of a dict kept in a name — are DELETED by their own text: the slice road asks
+		// `staticContainerKind` of the base before it lowers a bound, so a set raises
+		// `TypeError: 'set' object is not subscriptable` and a dict raises
+		// `KeyError: slice(0, 1, None)` — the reference's own two sentences, catchable, at exit 3. They live in
+		// `pkg/lang/slice_base_kind_test.go`, where each row is asked of the compiled leg, the record leg AND the
+		// reference, and a row that stops raising fails (**ADR 0466**). What the row still leaves here is the
+		// shape the gate declines because no record names the base's kind, filed in that file's own table.
 		// The bounds neighbour of these four — `xs = [1, 2]` / `print(xs["a":"b"])`, filed here as Gap R.233 with
 		// the wrong answer `[1]` pinned — is answered by ADR 0336: the shape now raises the reference's
 		// `TypeError: slice indices must be integers or None or have an __index__ method`. It is witnessed in

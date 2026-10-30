@@ -1021,6 +1021,14 @@ func (g *irGen) valueIndex(b *strings.Builder, e Expr, n *Index) (string, error)
 // valueSlice is the road a slice takes: the three optional bounds, the fold that answers them at
 // compile time, and `rt_slice` when the compiler cannot (the index arithmetic is fold.go's).
 func (g *irGen) valueSlice(b *strings.Builder, e Expr, n *Slice) (string, error) {
+	// The object is asked before its bounds: a set has no position to slice from and a dict does not
+	// count at all, so for those two bases the reference never reaches the bound question — it complains
+	// about the object (`TypeError: 'set' object is not subscriptable`) or hashes the slice as a key and
+	// reports the miss by naming it (`KeyError: slice(0, 1, None)`). Both answers name a kind only where
+	// a record names one, and every other base keeps the road it has always had (roadmap Gap R.234).
+	if g.sliceRaisesWhatTheBaseIs(b, n) {
+		return "0", nil
+	}
 	// A slice of a call's container answer asks the road that slices a container variable, by naming the
 	// slot the answer was recorded under. `rt_slice` copies the slots with their tags and the binding road
 	// records the copy, so `print(build()[0:2])` and `ys = build(); print(ys[0:2])` are one program written

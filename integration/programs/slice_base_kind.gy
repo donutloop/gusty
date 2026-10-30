@@ -1,0 +1,49 @@
+# The slice road asks what its BASE is (roadmap Gap R.234, ADR 0466).
+#
+# A set has no position to slice from, and a dict hashes the slice and reports the miss by naming the key
+# it missed. Both raise, so the program takes the raise with its own `except` and runs to completion —
+# every line below is the reference's bytes, and the doors beside it (a list's bounds, a dict read by a
+# real key, a text's slice) keep the answers they always gave.
+
+s = {1, 2}
+d = {1: 2}
+xs = [1, 2, 3]
+
+print(xs[0:2], xs[1:], xs[::-1])
+print((1, 2)[0:1])
+print("abcdef"[1:3])
+print(d[1], len(d), 1 in d)
+print(len(s), 2 in s)
+
+try:
+    print(s[0:1])
+except TypeError as err:
+    print("set", err)
+
+try:
+    print(d[0:1])
+except KeyError as err:
+    print("dict", err)
+
+try:
+    print({1, 2}["a":"b"])
+except TypeError as err:
+    print("object", err)
+
+try:
+    print({1: 2}[[1]:2])
+except TypeError as err:
+    print("hash", err)
+
+try:
+    print({1: 2}[0:1:0])
+except KeyError as err:
+    print("step", err)
+
+try:
+    print({1: 2}[(1, "a"):2])
+except KeyError as err:
+    print("tuple", err)
+
+print(xs[0:1], len(xs[0:2]), xs[0:2][1])
+print(d[1], 0 in d)
