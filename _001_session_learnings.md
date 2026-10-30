@@ -18337,3 +18337,38 @@ silently overwritten:
 * **Correct the row, do not quietly rewrite it.** The wrong wording is quoted in `docs/roadmap-details.md` with the
   IR that refutes it, because the record of a wrong diagnosis is what teaches the next reader to ask for the
   artifact. Item IDs are permanent and so is what was first written under them.
+
+## 2026-11-02 — a row that never left the queue (Gap R.144 closed; the guard that reads a Definition of done)
+
+`Gap R.144` ("a tuple-unpacking target does not take the pair road") sat ⏳ `OPEN` with a `Blocked on` cell naming
+two closed rows. It had been paid by **ADR 0367**: the program prints `8`, CPython prints `8`, and the harness's
+matrix lists it as `asserted` with `oracle: match`. Nothing was wrong with the language; the tracker was lying
+about the language, and the loop takes its next feature out of that file.
+
+The suite already guards the two directions people think about — a closed row must not silently reopen, and the
+Snapshot's counts must be the artifacts' own. Nobody guarded *"an open row whose work is finished"*, because
+finishing is a judgement and judgements do not scan. They do, when the row writes its own definition of done as a
+sentence about an artifact: `programs/probe_pair_from_a_tuple_unpack` **leaves the debt ledger** is a claim the
+matrix artifact can answer, and it had been answering "it did" for many cycles.
+
+Four things came out of building the guard:
+
+* **A Definition-of-done cell is spec, and specs are testable.** The narrow rule that works: check the *clause*
+  ("<program> leaves the debt ledger"), not every program name in the cell. The first version matched any
+  corpus-looking identifier anywhere in the cell and instantly "found" **L11.1** stale — its Definition of done
+  names `programs/slot_order_object.gy` and a dozen other witnesses it has already bought, mentioned as evidence,
+  not as debt. A guard with a false positive on the queue's own umbrella row is a guard someone deletes.
+* **A guard that cannot match anything passes everything.** The first regex demanded whitespace after the program
+  name; the name lives in a markdown code span, so a backtick sat in that position, nothing ever matched, and the
+  green first run looked like a clean tracker. Both of the guard's halves had to be earned by watching it fail on
+  the real stale row first.
+* **A negative control can fail for the wrong reason and still look informative.** The "reopen a closed row and
+  point it at a promoted program" control failed while the row was still open, which felt like the expected
+  red — it was actually appending the clause *after the row's final pipe*, so the phrase landed in an eighth cell
+  the guard rightly ignores. Rebuilding the doctored row from its own cells is what makes the control test the
+  guard. The control also refuses to certify a doctored run while the *shipped* file trips, or the two reds are
+  indistinguishable.
+* **Re-measure a stale row; do not infer its state from its neighbours.** "The status says OPEN and ADR 0367
+  exists" is still an inference. Running the binary, running CPython, and reading `asserted`/`oracle` out of
+  `conformance-matrix.json` costs three commands and is what the closure text quotes — the same rule ADR 0317's
+  `-count=1` enforces for tests, applied to the tracker.

@@ -7140,7 +7140,7 @@ fifteen lines all three engines agree on, and the family's rows became parity ro
 
 Three things came out of the same measurement and are rows, not fixes:
 
-### Gap R.144 — a tuple-unpacking target does not take the pair road (OPEN, owner L11.1, measured landing ADR 0267)
+### Gap R.144 — a tuple-unpacking target does not take the pair road (CLOSED by ADR 0367; owner L11.1, measured landing ADR 0267, re-measured closed 2026-11-02)
 
 ```
 xs = []
@@ -7156,6 +7156,23 @@ tag) pair in order to hand it to the tuple constructor, so the pair the binding 
 binds the names in a different function from the one that owns the plain assignment, next to the for-loop
 targets, which will want the same door for the same reason (`for v in xs` where `xs` was built at run time).
 The fix is to walk the road once, from a helper both bindings call.
+
+**Closed.** ADR 0367 (`0367-tuple-unpacking-takes-the-pair-road.md`) is that helper, and it shipped: the program
+above prints `8` at exit 0 and CPython prints `8`, the elements it was written to cover span `unpack_pair_binds_by_its_tag`
+(a slot read, arithmetic over a slot, a dict-entry read, a text/`None`/`bool` element, the answer of a call, a swap
+of two pair-bound names), and the probe has been an **asserted** member of the conformance corpus with `oracle:
+match` ever since — which is the row's own second clause, discharged, and was never read back into the tracker.
+
+The interesting part of this closure is that nobody could have noticed. The suite has a guard that a closed row
+must not silently reopen, and a guard that the Snapshot's numbers are the artifacts' own; it had no guard reading
+the other direction, and so a row whose Definition of done is a sentence **about an artifact** (`… leaves the debt
+ledger`) sat in the queue counting as owed work long after the artifact answered it. The cost is not the stale
+line: AGENTS.md's loop takes the top of this queue as the next feature, and the published "Rows owed" cell counts
+whatever a scan of Status cells finds. `pkg/lang/roadmap_open_row_test.go` now asks the clause and the matrix
+together — and only the clause, because L11.1's own Definition of done names a dozen witnesses it has already
+bought, and a guard that reads every program name in a cell would "find" the umbrella row stale and be ignored
+inside a cycle. The guard is checked by reopening a closed row in memory (`TestThatGuardCanFail`), not by a
+remembered row id, which would rot exactly the way this row did.
 
 ### Gap R.145 — an interned-text binding survives the rebinding that replaced it (CLOSED by ADR 0270 on 2026-10-05; owner L11.3 with Gap Q.1's table, measured landing ADR 0267)
 
