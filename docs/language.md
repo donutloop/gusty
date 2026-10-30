@@ -933,10 +933,16 @@ What still refuses in the compiled backend refuses *with the list spelling's wor
 tagged element retires the category), and a non-integer iterable, element or key (L11.5, L11.6).
 A container **returned** from a function is a value, as of ADR 0333: `return [1, 2]`, `return {1, 2}`,
 `return {"a": 1}`, `return set()`, a container the body built (`xs = []` / `xs.append(1)` / `return xs`), a
-loop-filled list, a comprehension and a forwarded answer (`return build()`) are all materialised at the
-`return` and read back as the object they are — `print(f())`, `str(f())`, `len(f())`, `2 in f()`,
+loop-filled list, a comprehension, a forwarded answer (`return build()`) and — as of **ADR 0465**, roadmap
+**Gap R.238** — **a copy the body cut** (`xs = [1, 2, 3]` / `return xs[1:3]`, with an open bound, a stride, or a
+base that is itself a call's answer) are all materialised at the `return` and read back as the object they are —
+`print(f())`, `str(f())`, `len(f())`, `2 in f()`,
 `not f()`, `if f():`, `for v in f():` and `f() == [1, 2]` answer the way the bound form `ys = f()` always
-did, because they are the same read of the same handle. The function is treated as a container only when
+did, because they are the same read of the same handle. A copy is a list exactly when what it was cut from is a
+list, and it carries per-slot tags exactly when its base does — `rt_slice` copies the slots WITH their tags, so the
+claim is imported from the writer and never invented here (**ADR 0294**, **ADR 0232**); `bool(f())` is the same
+question as `if f():`, answered by the object's length, because a handle is never zero and the empty copy is
+CPython's `False`. The function is treated as a container only when
 **every** `return` in its body answers one and the same kind and the body cannot fall off its end; a body
 whose arms disagree keeps the one-word road it always had. A subscript of the answer is a value too, as of
 ADR 0334: `print(f()[0])` prints `1`, `print(f()[-1])` counts from the end, `print(f()[7])` raises the
@@ -3188,11 +3194,19 @@ message in the module. What the door still declines, and why, is filed rather th
 - **the length of a slice of a text** — `print(len(s[1:3]))` over `s = "abcd"` is `2` in the reference and refuses
   with `len requires an inline list/dict/set literal`, although `len(s)` answers `4`, `len(xs[0:2])` of a list copy
   answers `2`, and the fold that prints `s[1:3]` holds the characters it would count: **Gap R.240**;
-- **a slice handed back by a function** — `def n(): return xs[1:3]` with `print(n())` answers `1` (and `3` over a
-  mixed base, the copy's handle) where the reference prints `[2, 3]`, and `for v in n():` prints a single `0`:
-  **Gap R.238**, because the scan that decides whether a function hands back a container has no arm for a
-  `return` that is a slice — ADR 0333's decision one construct further out. `ys = n()` prints the list correctly,
-  which is what makes it a missing record rather than a missing object.
+- **a slice handed back by a function ANSWERS** — `def n(): return xs[1:3]` with `print(n())` prints `[2, 3]`, the
+  mixed base prints `[1.5, 'a']`, `for v in n():` walks the copy, `len(n())` answers `2`, `n() == [2, 3]` answers
+  `True` and `bool()` of the empty copy answers `False` (**Gap R.238**, paid by **ADR 0465**): the scan that decides
+  whether a function hands back a container now has the `return`-of-a-slice arm its binding road (`ys = xs[0:2]`,
+  **ADR 0230**) always had, asked of the base. Two shapes on the way there are owed, and pinned with today's answer
+  beside the reference's:
+- **one call read twice in a statement, the `+` door first** — `print(n() + [4], bool(n()), str(n()))` writes
+  `[2, 3] True [2, 3]` for CPython's `[2, 3, 4] True [2, 3]`, while the same program split into three statements
+  answers all three: **Gap R.551**, the materialised name keyed per call rather than per occurrence (a body that
+  FORWARDS a literal answer does the same thing on this row's parent, which is why the class is its own row);
+- **a slice of a PARAMETER handed back** — `def n(xs): return xs[0:2]` with `print(n([1, 2, 3]))` writes `1` where
+  the reference prints `[1, 2]`: **Gap R.552**, because the arm asks what the BODY bound a name to and a parameter's
+  object belongs to the caller (**Gap R.154**'s question, one construct out).
 
 ### An ordering between kinds that do not order
 

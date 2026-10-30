@@ -11695,7 +11695,7 @@ one word), reached from the slice door: one predicate, three doors, and it shoul
 
 <a id="gap-r-238"></a>
 
-### Gap R.238 — a slice handed back by a function answers one word (OPEN, found by ADR 0336)
+### Gap R.238 — a slice handed back by a function answers one word (CLOSED by ADR 0465)
 
 ```python
 def n():
@@ -11730,6 +11730,79 @@ Five rows are pinned with their wrong answers today, in
 `pkg/lang/slice_bounds_kind_test.go::TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed`: the two print shapes,
 the loop, and the two refusals. They move into the answered tables when the scan grows the arm, and the row cannot
 be closed by deleting them.
+
+**Closed 2026-10-30 by ADR 0465.** The arm went in where the row said it belonged — `containerKindOfIn`'s `ask` — and
+it asks the **base**: a copy is a list exactly when what it was cut from is a list, so `case *Slice:` returns
+`listAnswer` for a list base and nothing for a set, a dict or a text (the reference raises on the first two and the
+third is not a container), leaving an un-nameable base on the roads it always had. Two more arms were required to make
+the answer readable rather than merely named, and both are the same question the binding road had been asking since
+**Gap R.230**:
+
+- `containerAnswerSlotReader.slot` asks a slice of its base — the copy's slots ARE the base's slots, copied WITH their
+  tags by `rt_slice` (**ADR 0294**) — and gained a `*Call` case, so a copy cut from `build()`'s answer reads the
+  callee's own notebooks rather than being refused for want of them. Without this half, `print(n())` answers and
+  `len(n())`, `n() == [2, 3]` and `for v in n():` still refuse, because `takesRead` sends those positions to the
+  described answer alone (**ADR 0344**).
+- `containerAnswerCarriesTags` asks a slice arm with `containerSlotsCarryTags`, the predicate the copy's own builder
+  asked, instead of the `return true` that is right for a name and wrong here: a copy of an untagged base has no tag
+  array to read, and sending the mixed printer at it is how `[1, "a"]` becomes `[1, 0]` (**Gap R.67**).
+
+The fourth change is the one the row's own risk demanded and no table would have caught: **`bool(x)` asks a container
+answer the condition's question** (`containerReadShape`, the door `if build():` asks, in `builtinBool`). With the scan
+arm alone, `bool(n())` over the EMPTY copy compiled to `icmp ne i32 %handle, 0` and answered `True` where CPython
+answers `False` — a silent wrong answer at exit 0 that the parent reached by luck and the new build would have reached
+by design — while the non-empty case, which printed the right bytes on the parent, would have been refused for being a
+one-word position. **ADR 0273**'s rule (a gate may not cost a program that compiles today) is why that is one commit and
+not a filing: `TestTheSliceAnswersWhatTheReferenceAnswers` now pins `bool(n())` → `True` and `bool(none())` → `False`.
+
+What the family answers, all of it in the suite (23 answered rows in `sliceBoundsAnswered`, asked of the compiler, the
+reference, the module verifier and the record; 11 more at the CLI against a live `python3`; a `match` row,
+`programs/returned_list_slice.gy`; **27 record entries** from the reference with the compiled leg cross-checked):
+`print(n())` → `[2, 3]`, the mixed base → `[1.5, 'a']`, the loop → `2`/`3`, `len` → `2`, `==` → `True`, the empty copy →
+`[]`, an index into the copy, a stride, an open bound on either side, a concatenation, a text's copy (which stays a
+TEXT — the arm does not claim a list it cannot see), two arms where one returns a literal and the other a copy, and a
+copy cut from a call's answer (`cut(), len(cut()), cut()[0], cut() == [7, 8]` → `[7, 8] 2 7 True`). The five filed rows
+are DELETED by their own text, and the refusals that stayed refusals — a slice of a dict, of a set, of a base the
+records do not describe — are byte-identical on the parent build and this one.
+
+Two neighbours came out of the measurement and are filed with their numbers rather than folded in:
+
+<a id="gap-r-551"></a>
+
+### Gap R.551 — one call that answers a container is read once per statement, and the `+` door loses the concatenation (OPEN, found by ADR 0465)
+
+```python
+def n():
+    xs = [1, 2, 3]
+    return xs[1:3]
+
+print(n() + [4], bool(n()), str(n()))   # [2, 3, 4] True [2, 3]   this backend: [2, 3] True [2, 3]  (exit 0)
+```
+
+Split into three statements the same three reads all answer; written together, the concatenation is lost and the first
+argument prints the copy. The materialised name is keyed per call, so the `+` door is handed the register another read
+of the same `Call` node filled. This is **not** ADR 0465's defect: the same bytes come out of that ADR's parent for a
+body that FORWARDS a literal answer (`def b(): return b2()` above `print(b() + [4], str(b()))` writes
+`[1, 2, 3] [1, 2, 3]` for `[1, 2, 3, 4] [1, 2, 3]`), which is what makes it a class the container-answer door has
+carried since **ADR 0333** rather than a regression. Pinned in
+`TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed` with today's answer beside the reference's.
+
+<a id="gap-r-552"></a>
+
+### Gap R.552 — a slice of a PARAMETER handed back answers one word (OPEN, found by ADR 0465)
+
+```python
+def n(xs):
+    return xs[0:2]
+
+print(n([1, 2, 3]))    # [1, 2] in the reference;  this backend: 1  (exit 0)
+```
+
+The row's own arm asks a slice's base, and asks a base that is a NAME by reading what the BODY bound it to — a
+parameter has no binding in the callee's frame, so the arm declines and the copy leaves as one word. The caller knows
+`[1, 2, 3]` is a list, and the argument expression it hands over IS the base the slice was cut from; carrying that
+record into the callee for the duration of the call is **Gap R.154**'s pair-parameter question one construct out.
+Byte-identical on ADR 0465's parent, and pinned in the same filed table.
 
 <a id="gap-r-239"></a>
 

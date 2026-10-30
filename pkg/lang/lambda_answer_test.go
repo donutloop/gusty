@@ -53,6 +53,12 @@ func lambdaAnswerPrograms() []lambdaAnswerRow {
 		{"the answer bound to a name", "x = (lambda: [1, 2])()\nprint(x)\n", "[1, 2]\n"},
 		{"the bound answer measured", "x = (lambda: [1, 2])()\nprint(len(x))\n", "2\n"},
 		{"measured without the name", "print(len((lambda: [1, 2])()))\n", "2\n"},
+		// `bool(x)` is `len(x) != 0` for a container, and the door that asks it is the `if build():` door
+		// (`containerReadShape`, **ADR 0333**). It came into this table from the refusal table with **Gap R.238**'s
+		// `bool` arm — the one-word position stopped being one-word once the answer could be asked its shape — and
+		// the EMPTY answer below is the reason the arm is a truth question and not a word test (**ADR 0465**).
+		{"the truthiness builtin asked of the answer", "print(bool((lambda: [1, 2])()))\n", "True\n"},
+		{"the truthiness builtin asked of the empty answer", "print(bool((lambda: [])()))\n", "False\n"},
 		{"membership in the answer", "print(1 in (lambda: [1, 2])())\n", "True\n"},
 		{"membership in a dict answer asks the keys", "print(\"a\" in (lambda: {\"a\": 1})())\n", "True\n"},
 		{"a loop over the answer", "for v in (lambda: [7, 8])():\n    print(v)\n", "7\n8\n"},
@@ -213,7 +219,6 @@ func lambdaAnswerRefusals() []struct{ name, src string } {
 		{"a container literal element", "print([1, (lambda: [1, 2])()])\n"},
 		{"a call argument", "def g(v):\n    return v\n\nprint(g((lambda: [1, 2])()))\n"},
 		{"a dict value", "print({\"k\": (lambda: [1, 2])()})\n"},
-		{"the truthiness builtin", "print(bool((lambda: [1, 2])()))\n"},
 		{"arithmetic", "print((lambda: [1, 2])() + 1)\n"},
 	}
 }

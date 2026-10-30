@@ -1,5 +1,53 @@
 # Session Learnings
 
+## Cycle: a copy handed back by a function is the copy the program bound (**roadmap Gap R.238** closed; **Gap R.551**, **Gap R.552** filed; **ADR 0465**)
+
+**The queue row was the top actionable one, and getting there meant naming what blocked the rows above it.** The Open
+queue's `⏳ PLANNED` head is **Gap R.1** (deferred coroutines), whose own `Blocked on` cell says **L11.1**; L11.1 is
+🟢 `IN PROGRESS` and L11.7 🟨 `PARTIAL` are umbrella rows, not cycles. **Gap R.324** — the next concrete row — cites
+L11.1 *and* **Gap R.146** (🟨 PARTIAL, itself blocked on L11.1); I measured its five shapes before deciding, and
+two of the five (`g(f(1))` into a parameter, a mixed-kind class method) **already answer today**, twelve days after the
+row was measured, so its pin table in `integration/mixed_answer_kind_test.go` is stale on those two rows and the row's
+remaining halves are the float tag (**L11.1**'s own) and a run-time word for a conditional `return`. **Gap R.238** was
+the top row whose `Blocked on` cell named only paid ADRs, so it went first — and it closed with **three arms in one
+file**. The lesson is the measurement, not the order: a row's age is not evidence, and a `PLANNED` row's shapes have
+to be re-run before you build for them.
+
+**A missing record is a wrong answer at a door nobody wrote, and the asymmetry is the diagnosis.** `ys = n()` printed
+`[2, 3]`; `print(n())` printed `1`. Same object, same callee, one door with a record and one without. When one spelling
+of a program answers and its twin prints a word, do not go looking for a broken object — go looking for the table one
+road asks and the other does not. Here it was `containerKindOfIn`, which had an arm for a literal, a comprehension, a
+`list()` and a forwarded call, and not for a slice; the binding road (`recordContainerSlice`) had had its own version of
+that question since **Gap R.230**, which is why the fix is three arms that all *ask somebody else's predicate* rather
+than one new judgement (**ADR 0232**).
+
+**The bug the tests could not have caught, found by writing the conformance program.** With the scan arm in, every
+answered row passed — and `print(bool(n()))` over the EMPTY copy said `True` where CPython says `False`, because
+`bool(x)` lowered to `icmp ne i32 %handle, 0` and a handle is never zero. The parent had the same latent wrong answer by
+luck; the new build would have had it by design, and the alternative — the answer table refusing the one-word position —
+would have cost a program (`bool(n())` over a non-empty copy) that printed the right bytes on the parent. **ADR 0273**
+(a gate may not cost a program that compiles today) turned a would-be filing into `builtinBool` asking
+`containerReadShape`, the question `if build():` already asks. Two rules fell out of it: a truth question belongs to the
+object, never to the word under it; and **write the conformance program while the change is still open**, because it is
+the only artifact that walks into positions the answered tables never proposed.
+
+**Ranking what a change newly exposes.** Three shapes the arm made reachable answered wrongly or refused:
+the `bool` case (fixed, above), `print(n() + [4], bool(n()), str(n()))` losing the concatenation, and
+`def n(xs): return xs[0:2]` printing `1`. Each was measured against the **parent binary** before it was
+classified — and the first two are the *same* answer on a body that forwards a literal answer on the parent, so they
+are classes the container door has carried since **ADR 0333**: filed as **Gap R.551**/**Gap R.552** with the numbers
+written down and pinned in the filed table, not folded into this commit. "Pre-existing" is a claim about two builds and
+needs both binaries in the same sentence, every time.
+
+**House mechanics that keep earning their keep:** four loops over ONE table (`sliceBoundsAnswered` → compiler, live
+reference, module verifier, record) means 25 new rows arrived with four witnesses each; `tools/recmerge` wrote the 25
+entries only where CPython answered first and the compiled leg agreed second; and the artifact guards named every
+digit I had to write (`10687 → 10714`, ADRs `453 → 454`, corpus `286 → 287`, matrix `272 → 273`, oracle `match` `223`,
+rows owed `265 → 266 of 456`) after `TestTheRoadmapSnapshotIsMeasuredNotRemembered` failed twice on numbers I had not
+edited yet. One new-row trap worth recording: the queue-row scanner requires `Pri` to match `^[0-9]+[a-z]?$`, and a
+`26za`-style Pri silently truncates the whole queue count (it read 56 rows where the file held 456) — the guard failed
+loudly, which is the only reason it was found.
+
 ## Cycle: the float with no integer part is a literal (**roadmap Gap R.245** closed; **ADR 0464**)
 
 **The row was one character wide and the wrong fix fits it perfectly.** `print(.5)` refused at the front end while

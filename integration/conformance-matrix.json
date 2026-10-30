@@ -5028,6 +5028,27 @@
     },
     {
       "case": {
+        "id": "programs/returned_list_slice",
+        "name": "returned_list_slice.gy",
+        "source": "# The copy a function hands back is the copy the program bound (roadmap Gap R.238, ADR 0465).\n#\n# `def n(): xs = [1,2,3]` / `    return xs[1:3]` / `print(n())` printed the digit `1` — the handle `rt_slice`\n# returned — where the reference prints `[2, 3]`, and `2` over a base whose slots mix kinds. The same call's\n# answer BOUND to a name (`ys = n()`) printed `[2, 3]` all along: the scan that decides whether a function hands\n# back a container read a `return` of a literal, a comprehension or a `list()` (**ADR 0333**) and had no arm for\n# a `return` of a SLICE, so the object travelled as one word and the caller's doors had nothing to read.\n#\n# The arm asks the BASE — a copy is a list exactly when what it was cut from is a list — and asks the base's own\n# tag question with it, because `rt_slice` copies the slots WITH their tags (**ADR 0294**, **ADR 0187**). That is\n# why the mixed base below prints `[1.5, 'a']` rather than `[1.5, 0]`: the tag is imported from the writer, never\n# invented here (**ADR 0232**).\n#\n# What is NOT in this program is what the reference does not answer: a slice of a set or a dict, and a copy of a\n# base the records do not describe (a module name read inside a `def`, a parameter) — those are refusals, pinned\n# as refusals in `pkg/lang/slice_bounds_kind_test.go`, and a conformance program lists what the toolchain answers.\n\n# The five shapes the row measured: the print door, the loop, the length door, the equality door, and a base\n# whose slots do not share a kind.\ndef n():\n    xs = [1, 2, 3]\n    return xs[1:3]\n\nprint(n())\nfor v in n():\n    print(v)\nprint(len(n()), n() == [2, 3], n()[1])\n\ndef mixed():\n    xs = [1.5, \"a\", [7]]\n    return xs[0:2]\n\nprint(mixed())\n\n# The control that answered all along, kept beside the shape that did not: one object, two positions.\nys = n()\nprint(ys, ys[0], len(ys), ys == [2, 3])\n\n# The bounds a copy is cut with are the bounds a literal is cut with: an open low, an open high, a stride.\ndef head():\n    xs = [1, 2, 3, 4]\n    return xs[:2]\n\ndef tail():\n    xs = [1, 2, 3, 4]\n    return xs[2:]\n\ndef stride():\n    xs = [1, 2, 3, 4]\n    return xs[0:4:2]\n\nprint(head(), tail(), stride())\n\n# A copy of an empty range is the empty list, and a copy of nothing is still a list the doors can read.\ndef none():\n    xs = [1, 2, 3]\n    return xs[5:9]\n\nprint(none(), len(none()), none() == [])\n\n# A copy is a value: it concatenates, it is asked for its truth, it is handed to `str` — one statement each, because a\n# container answer read TWICE in one statement is a separate defect (it loses the concatenation: `print(n() + [4],\n# len(n()))` writes `[2, 3] 2` for CPython's `[2, 3, 4] 2`), and this program is a list of things the toolchain\n# ANSWERS. That shape — which the same measurement shows on this row's parent for a returned LITERAL too — is filed\n# as **Gap R.551** and pinned in `pkg/lang/container_answer_repeat_test.go`, not here.\nprint(n() + [4])\nprint(bool(n()), str(n()))\n\n# The base's kind is the copy's kind, at the two doors this row must not confuse: a TEXT copied is a text (the\n# reference returns a string, and this backend answers a string rather than claiming a list), and a copy of a\n# CONTAINER element is a container that prints itself.\ndef copy_of_text():\n    s = \"abcdef\"\n    return s[1:3]\n\ndef copy_of_containers():\n    xs = [[1, 2], [3, 4]]\n    return xs[0:1]\n\nprint(copy_of_text(), copy_of_containers())\n\n# A copy of an answer is a copy of a value the callee built: the base question is asked of the call's record.\ndef build():\n    return [7, 8, 9]\n\ndef cut():\n    return build()[0:2]\n\nprint(cut(), len(cut()), cut() == [7, 8])\n\n# Two arms, two spellings of the same kind: one returns a literal, the other a copy. Both are lists, and neither\n# arm is allowed to answer the other's payload.\ndef either(flag):\n    if flag:\n        return [9, 9]\n    xs = [1, 2, 3]\n    return xs[0:2]\n\nprint(either(False), either(True), len(either(False)) + len(either(True)))\n\n# The tag claim is the base's: an untagged copy keeps the plain printer and a tagged copy the mixed one, in one\n# program, with the same entry points.\ndef tagged():\n    xs = [1.5, \"a\", 3]\n    return xs[0:2]\n\ndef untagged():\n    xs = [1, 2, 3]\n    return xs[0:2]\n\nprint(tagged(), untagged(), tagged() == [1.5, \"a\"], untagged() == [1, 2])\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "[2, 3]\n2\n3\n2 True 3\n[1.5, 'a']\n[2, 3] 2 2 True\n[1, 2] [3, 4] [1, 3]\n[] 0 True\n[2, 3, 4]\nTrue [2, 3]\nbc [[1, 2]]\n[7, 8] 2 True\n[1, 2] [9, 9] 4\n[1.5, 'a'] [1, 2] True True\n",
+      "python_ok": true,
+      "python_stdout": "[2, 3]\n2\n3\n2 True 3\n[1.5, 'a']\n[2, 3] 2 2 True\n[1, 2] [3, 4] [1, 3]\n[] 0 True\n[2, 3, 4]\nTrue [2, 3]\nbc [[1, 2]]\n[7, 8] 2 True\n[1, 2] [9, 9] 4\n[1.5, 'a'] [1, 2] True True\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "merged/ctrl",
         "name": "ctrl_a+b+c",
         "source": "acc = 0\nfor i1 in range(1, 6):\n    acc = acc + i1\nprint(\"acc\", acc)\nacc2 = 0\nfor i2 in range(0, 10, 2):\n    acc2 = acc2 + i2\nprint(\"acc2\", acc2)\nacc3 = 0\nfor i3 in range(10, 0, -2):\n    acc3 = acc3 + i3\nprint(\"acc3\", acc3)\n\nw1 = 0\nw2 = 0\nwhile w1 \u003c 20:\n    w1 = w1 + 1\n    if w1 == 5:\n        continue\n    if w1 == 15:\n        break\n    w2 = w2 + w1\nprint(\"while\", w2)\nw3 = 0\nw4 = 0\nwhile w3 \u003c 8:\n    w3 = w3 + 2\n    w4 = w4 + w3\nprint(\"while2\", w4)\n\ndef classify(n):\n    if n == 1:\n        return 1\n    elif n == 2:\n        return 2\n    elif n == 3:\n        return 3\n    else:\n        return 0\nprint(\"cls\", classify(2), classify(9), classify(3))\ntot = 0\nfor j1 in range(3):\n    for j2 in range(3):\n        tot = tot + j2\nprint(\"nested\", tot)\ntot2 = 0\nfor k1 in range(5):\n    tot2 = tot2 + k1\n    if k1 == 2:\n        continue\n    tot2 = tot2 + 1\nprint(\"cont\", tot2)\n",
@@ -6448,11 +6469,11 @@
       ]
     }
   ],
-  "rows": 272,
+  "rows": 273,
   "skipped": 36,
-  "pass": 236,
+  "pass": 237,
   "fail": 0,
-  "oracle_match": 222,
+  "oracle_match": 223,
   "oracle_debt": 24,
   "oracle_not_applicable": 26,
   "oracle_drift": 0

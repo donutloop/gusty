@@ -76,6 +76,41 @@ var sliceBoundsAnswered = []struct {
 	{"def z(n):\n    return n\nxs = [1, 2, 3, 4]\nprint(xs[::z(2)])", "[1, 3]"},
 	{"xs = [1, 2, 3, 4]\nprint(xs[0:4:2])", "[1, 3]"},
 	{"xs = [1, 2, 3, 4]\nk = 3\nprint(xs[::k])", "[1, 4]"},
+	// A `return` whose value is a slice — **Gap R.238**, **ADR 0465**. The copy `rt_slice` builds is a list like
+	// any other (its slots are the base's payloads copied WITH their tags, **ADR 0294**), and every position below
+	// already answered for a `return` that spelled a LITERAL (**ADR 0333**); what was missing was the scan's arm, so
+	// the answer travelled as one word and the caller printed the handle. The five shapes the row measured first
+	// (`print`, a loop, `len`, `==`, a mixed base) are the first five rows; the rest are the positions a copy has to
+	// reach once it is a value at all — an open bound, a stride, an index into the answer, a text's copy (which
+	// stays a TEXT), a copy of another call's answer, a nested copy, a concatenation, the empty copy, a condition,
+	// `str`, and two arms where one returns a literal and the other a copy.
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(n())", "[2, 3]"},
+	{"def n():\n    xs = [1.5, \"a\", [7]]\n    return xs[0:2]\nprint(n())", "[1.5, 'a']"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nfor v in n():\n    print(v)", "2\n3"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(len(n()))", "2"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(n() == [2, 3])", "True"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nys = n()\nprint(ys)", "[2, 3]"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[0:3:2]\nprint(n())", "[1, 3]"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:]\nprint(n())", "[2, 3]"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[:2]\nprint(n())", "[1, 2]"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(n()[0])", "2"},
+	{"def n():\n    s = \"abcd\"\n    return s[0:2]\nprint(n())", "ab"},
+	{"def build():\n    return [7, 8, 9]\n\ndef n():\n    return build()[0:2]\nprint(n())", "[7, 8]"},
+	{"def n():\n    xs = [[1, 2], [3, 4]]\n    return xs[0:1]\nprint(n())", "[[1, 2]]"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(n() + [4])", "[2, 3, 4]"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[5:9]\nprint(n())", "[]"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nif n():\n    print(\"truthy\")", "truthy"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(str(n()))", "[2, 3]"},
+	{"def n(f):\n    if f:\n        return [9, 9]\n    xs = [1, 2, 3]\n    return xs[0:2]\nprint(n(False))\nprint(n(True))", "[1, 2]\n[9, 9]"},
+	{"def n():\n    xs = [1.5, \"a\", 3]\n    return xs[0:2]\nprint(n() == [1.5, \"a\"])", "True"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(n(), len(n()), n()[1], n() == [2, 3])", "[2, 3] 2 3 True"},
+	// `bool(build())` is the condition door asked as a call, and the copy a returned slice is a container the
+	// object — not the handle — answers. The empty copy is the row's real risk: `rt_slice`'s handle is never zero,
+	// so the word under test made CPython's `False` into `True` at the exit code of a success, and the verdict now
+	// comes from the same `rt_heap_len` the `if build():` road asks (**roadmap Gap R.238**, **ADR 0465**).
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(bool(n()))", "True"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[5:9]\nprint(bool(n()))", "False"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(bool(n()), str(n()), n() + [4])", "True [2, 3] [2, 3, 4]"},
 }
 
 // TestABoundThatIsNotAPositionRaisesWhatTheReferenceRaises covers the bounds the compiler can name the kind of.
@@ -457,40 +492,13 @@ func TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 		// The two shapes this table used to file — a slot of a copy read directly, and a copy of a slot that
 		// is itself a list — left with **ADR 0459**: the door that names what the run time built answers them,
 		// and they are witnessed as answered rows in `pkg/lang/slice_answer_test.go` rather than here.
-		// The return road, beside the bounds door: a function whose `return` is a slice hands back the copy's
-		// word, so the caller's print door has nothing to read — the same answer ADR 0333 gave a returned
-		// *literal*, withheld from a returned copy. A name bound to the call prints the list correctly, which is
-		// what makes it a missing record rather than a missing object.
-		{
-			"a slice handed back by a function",
-			"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(n())",
-			"1", "[2, 3]",
-			"roadmap Gap R.238 (the scan that decides whether a function hands back a container has no arm for a slice, so the copy travels as one word)",
-		},
-		{
-			"a mixed slice handed back by a function",
-			"def n():\n    xs = [1.5, \"a\", [7]]\n    return xs[0:2]\nprint(n())",
-			"3", "[1.5, 'a']",
-			"roadmap Gap R.238 (the same word, and here it is a heap handle wearing the program's answer)",
-		},
-		{
-			"a slice handed back by a function, looped over",
-			"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nfor v in n():\n    print(v)",
-			"0", "2\n3",
-			"roadmap Gap R.238 (the loop asks a length of a word the records never named)",
-		},
-		{
-			"a slice handed back by a function, measured",
-			"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(len(n()))",
-			"", "2",
-			"roadmap Gap R.238 (the same missing record, at the length door)",
-		},
-		{
-			"a slice handed back by a function, compared",
-			"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(n() == [2, 3])",
-			"", "True",
-			"roadmap Gap R.238 (the equality door asks for the pair the answer never carried)",
-		},
+		//
+		// The five rows that stood here — a `return` of a slice printed the copy's HANDLE as a number (`1`, and `3`
+		// over a mixed base), and the same call's answer looped, measured or compared refused or walked one member —
+		// are DELETED by their own text: `containerKindOfIn` gained the `*Slice` arm and
+		// `containerAnswerSlotReader.slot` asks the copy's base, so all five answer the reference now (**roadmap
+		// Gap R.238**, **ADR 0465**). They live in `sliceBoundsAnswered` beside the rest of the door, where every
+		// answered row is asked of the compiler, the reference, the module verifier AND the record.
 		{
 			"a float handed to a parameter that slices by it",
 			"def at(k):\n    xs = [1, 2, 3]\n    return xs[0:k]\nprint(at(1.5))",
@@ -518,6 +526,20 @@ func TestWhatTheBoundDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 			"s = \"abcd\"\nk = 2\nprint(s[::k])",
 			"", "ac",
 			"roadmap Gap R.243 (`rt_str_slice` takes a low and a high and no stride, so the fold answers a constant step and refuses any other; `s[i:i+2]` — the same road without a step — has answered since ADR 0229)",
+		},
+		// The two neighbours **Gap R.238** measured on the way and left standing, each with the answer this
+		// backend gives today beside the reference's, so the day a door opens the row fails rather than rots.
+		{
+			"a copy handed back, concatenated in a statement that reads the call again",
+			"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(n() + [4], bool(n()), str(n()))",
+			"[2, 3] True [2, 3]", "[2, 3, 4] True [2, 3]",
+			"roadmap Gap R.551 (one call read at two positions in one statement: the `+` door is handed the operand the OTHER read materialised, so the concatenation is lost — and the same bytes come out of this row's parent for a body that FORWARDS a literal answer, `def b():` / `    return b2()`, which is what makes this a neighbour and not this row's defect)",
+		},
+		{
+			"a slice of a PARAMETER handed back",
+			"def n(xs):\n    return xs[0:2]\nprint(n([1, 2, 3]))",
+			"1", "[1, 2]",
+			"roadmap Gap R.552 (the scan asks what the BODY bound a name to, and a parameter's object is the CALLER'S — the record the copy's kind needs is not in this frame: Gap R.154's pair-parameter question one construct out, and the byte-identical answer on this row's parent)",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

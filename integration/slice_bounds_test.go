@@ -64,6 +64,22 @@ var sliceBoundsAnswered = []struct {
 	// A text's bounds are positions too, and the fold that answers them is left alone.
 	{"s = \"abcdef\"\nprint(s[1:3])", "bc"},
 	{"s = \"abcdef\"\nprint(s[::-1])", "fedcba"},
+	// A copy handed back by a function is the copy the program bound (**roadmap Gap R.238**, **ADR 0465**): the
+	// scan that decides what a call hands back read a literal, a comprehension and a `list()` and had no arm for a
+	// slice, so `print(n())` printed `rt_slice`'s handle as the digit `1` at the exit code of success while
+	// `ys = n()` printed `[2, 3]`. Every row below is the bytes CPython prints, read off the reference inside the
+	// case, and no row may end at a refusal — the failure mode of a gate that asks too much.
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(n())", "[2, 3]"},
+	{"def n():\n    xs = [1.5, \"a\", [7]]\n    return xs[0:2]\nprint(n())", "[1.5, 'a']"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nfor v in n():\n    print(v)", "2\n3"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(len(n()))", "2"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:3]\nprint(n() == [2, 3])", "True"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[0:3:2]\nprint(n())", "[1, 3]"},
+	{"def n():\n    xs = [1, 2, 3]\n    return xs[1:]\nprint(n() + [4])", "[2, 3, 4]"},
+	{"def n():\n    s = \"abcd\"\n    return s[0:2]\nprint(n())", "ab"},
+	{"def build():\n    return [7, 8, 9]\n\ndef n():\n    return build()[0:2]\nprint(n())", "[7, 8]"},
+	{"def n():\n    xs = [[1, 2], [3, 4]]\n    return xs[0:1]\nprint(n())", "[[1, 2]]"},
+	{"def n(f):\n    if f:\n        return [9, 9]\n    xs = [1, 2, 3]\n    return xs[0:2]\nprint(n(False))\nprint(n(True))", "[1, 2]\n[9, 9]"},
 }
 
 // TestTheBoundsTheReferenceAnswersStillAnswerThroughTheCLI is the gate's negative control at this altitude:

@@ -1,0 +1,111 @@
+# The copy a function hands back is the copy the program bound (roadmap Gap R.238, ADR 0465).
+#
+# `def n(): xs = [1,2,3]` / `    return xs[1:3]` / `print(n())` printed the digit `1` — the handle `rt_slice`
+# returned — where the reference prints `[2, 3]`, and `2` over a base whose slots mix kinds. The same call's
+# answer BOUND to a name (`ys = n()`) printed `[2, 3]` all along: the scan that decides whether a function hands
+# back a container read a `return` of a literal, a comprehension or a `list()` (**ADR 0333**) and had no arm for
+# a `return` of a SLICE, so the object travelled as one word and the caller's doors had nothing to read.
+#
+# The arm asks the BASE — a copy is a list exactly when what it was cut from is a list — and asks the base's own
+# tag question with it, because `rt_slice` copies the slots WITH their tags (**ADR 0294**, **ADR 0187**). That is
+# why the mixed base below prints `[1.5, 'a']` rather than `[1.5, 0]`: the tag is imported from the writer, never
+# invented here (**ADR 0232**).
+#
+# What is NOT in this program is what the reference does not answer: a slice of a set or a dict, and a copy of a
+# base the records do not describe (a module name read inside a `def`, a parameter) — those are refusals, pinned
+# as refusals in `pkg/lang/slice_bounds_kind_test.go`, and a conformance program lists what the toolchain answers.
+
+# The five shapes the row measured: the print door, the loop, the length door, the equality door, and a base
+# whose slots do not share a kind.
+def n():
+    xs = [1, 2, 3]
+    return xs[1:3]
+
+print(n())
+for v in n():
+    print(v)
+print(len(n()), n() == [2, 3], n()[1])
+
+def mixed():
+    xs = [1.5, "a", [7]]
+    return xs[0:2]
+
+print(mixed())
+
+# The control that answered all along, kept beside the shape that did not: one object, two positions.
+ys = n()
+print(ys, ys[0], len(ys), ys == [2, 3])
+
+# The bounds a copy is cut with are the bounds a literal is cut with: an open low, an open high, a stride.
+def head():
+    xs = [1, 2, 3, 4]
+    return xs[:2]
+
+def tail():
+    xs = [1, 2, 3, 4]
+    return xs[2:]
+
+def stride():
+    xs = [1, 2, 3, 4]
+    return xs[0:4:2]
+
+print(head(), tail(), stride())
+
+# A copy of an empty range is the empty list, and a copy of nothing is still a list the doors can read.
+def none():
+    xs = [1, 2, 3]
+    return xs[5:9]
+
+print(none(), len(none()), none() == [])
+
+# A copy is a value: it concatenates, it is asked for its truth, it is handed to `str` — one statement each, because a
+# container answer read TWICE in one statement is a separate defect (it loses the concatenation: `print(n() + [4],
+# len(n()))` writes `[2, 3] 2` for CPython's `[2, 3, 4] 2`), and this program is a list of things the toolchain
+# ANSWERS. That shape — which the same measurement shows on this row's parent for a returned LITERAL too — is filed
+# as **Gap R.551** and pinned in `pkg/lang/container_answer_repeat_test.go`, not here.
+print(n() + [4])
+print(bool(n()), str(n()))
+
+# The base's kind is the copy's kind, at the two doors this row must not confuse: a TEXT copied is a text (the
+# reference returns a string, and this backend answers a string rather than claiming a list), and a copy of a
+# CONTAINER element is a container that prints itself.
+def copy_of_text():
+    s = "abcdef"
+    return s[1:3]
+
+def copy_of_containers():
+    xs = [[1, 2], [3, 4]]
+    return xs[0:1]
+
+print(copy_of_text(), copy_of_containers())
+
+# A copy of an answer is a copy of a value the callee built: the base question is asked of the call's record.
+def build():
+    return [7, 8, 9]
+
+def cut():
+    return build()[0:2]
+
+print(cut(), len(cut()), cut() == [7, 8])
+
+# Two arms, two spellings of the same kind: one returns a literal, the other a copy. Both are lists, and neither
+# arm is allowed to answer the other's payload.
+def either(flag):
+    if flag:
+        return [9, 9]
+    xs = [1, 2, 3]
+    return xs[0:2]
+
+print(either(False), either(True), len(either(False)) + len(either(True)))
+
+# The tag claim is the base's: an untagged copy keeps the plain printer and a tagged copy the mixed one, in one
+# program, with the same entry points.
+def tagged():
+    xs = [1.5, "a", 3]
+    return xs[0:2]
+
+def untagged():
+    xs = [1, 2, 3]
+    return xs[0:2]
+
+print(tagged(), untagged(), tagged() == [1.5, "a"], untagged() == [1, 2])

@@ -311,6 +311,28 @@ func containerKindOfIn(fd *FuncDef, funcs map[string]*FuncDef, defines map[strin
 			k := answerOf(nm.Value, callee, seen).kind
 			delete(seen, nm.Value)
 			return k
+		case *Slice:
+			// `return xs[1:3]` — the copy is a list like any other, and the row that said so is **Gap R.230**'s:
+			// `rt_slice` builds a fresh heap list whose slots are the base's payloads copied WITH their tags
+			// (**ADR 0294**, applied by **ADR 0187**'s pairing rule), which is why `ys = xs[0:2]` has been recorded
+			// as a list by `recordContainerSlice` since then. What this row withholds one construct further out is
+			// the SAME object handed back instead of bound: the scan read a `return` of a literal, a comprehension
+			// or a `list()` and had no arm for a `return` of a slice, so `def n(): xs = [1,2,3]` /
+			// `    return xs[1:3]` / `print(n())` printed the word `rt_slice` returned — the digit **`1`** at the
+			// exit code of success — while `ys = n()` printed `[2, 3]` all along (**roadmap Gap R.238**).
+			//
+			// The kind is asked of the base and nowhere else, with `recordContainerSlice`'s one judgement: a copy
+			// is a list exactly when what it was cut from is a list. A set, a dict or a text answers nothing here —
+			// the reference raises on the first two and the third is not a container — and a base the scan cannot
+			// name leaves the body on the roads it has always had, refusal included, rather than carrying a handle
+			// the caller would print as a number (**ADR 0335**'s gate, **ADR 0273**'s ranking).
+			if n == nil || n.Obj == nil {
+				return notAContainerAnswer
+			}
+			if bk := ask(n.Obj, seen); bk == listAnswer {
+				return listAnswer
+			}
+			return notAContainerAnswer
 		case *Name:
 			if fd == nil {
 				return notAContainerAnswer
@@ -516,6 +538,46 @@ func (r containerAnswerSlotReader) slot(e Expr, depth int) bool {
 				continue
 			}
 			if !r.slot(val, depth+1) {
+				return false
+			}
+		}
+		return true
+	case *Slice:
+		// The copy's slots ARE the base's slots, copied with their tags by `rt_slice` (**ADR 0294**), so the
+		// slot question of a slice is the slot question of its base — asked here rather than answered with a
+		// `true` that would let an undescribable base through the gate, or a `false` that would deny a described
+		// copy its notebooks and send `len(n())`, `n() == [2, 3]` and `for v in n()` to a word nobody wrote
+		// (**roadmap Gap R.238**, **ADR 0344**'s two readers with one question).
+		if v.Obj == nil {
+			return false
+		}
+		return r.slot(v.Obj, depth+1)
+	case *Call:
+		// A copy cut from a CALL's answer — `def cut(): return build()[0:2]` — has the base callee's slots, copied
+		// with their tags, exactly as a copy cut from a name does; the row that said so for a binding is
+		// `recordContainerSlice` (**Gap R.230**), and the answer table has to ask it too or `len(cut())`,
+		// `cut() == [7, 8]` and `for v in cut():` are refused for want of notebooks that the callee's own entry
+		// already holds (**roadmap Gap R.238**, **ADR 0344**'s two readers with one question).
+		//
+		// The permission is the ONE the table already grants a forwarding `return build()`: the callee is in this
+		// table's own described set, and the arguments are values this body can write down. A callee that is not
+		// in the set — a builtin, an opaque body, a generator — answers `false`, which is the side that refuses
+		// rather than sending a reader to a tag array nobody filled (**ADR 0273**'s ranking).
+		nm, isName := v.Fn.(*Name)
+		if !isName || !r.defines[nm.Value] {
+			return false
+		}
+		if _, ok := r.out[nm.Value]; !ok {
+			return false
+		}
+		for _, a := range v.Args {
+			if kw, isKw := a.(*KeywordArg); isKw {
+				if !r.slot(kw.Value, depth+1) {
+					return false
+				}
+				continue
+			}
+			if !r.slot(a, depth+1) {
 				return false
 			}
 		}
@@ -1387,6 +1449,17 @@ func (g *irGen) containerAnswerCarriesTags(ans containerAnswer) bool {
 		return true
 	}
 	for _, arm := range ans.arms {
+		if s, isSlice := arm.(*Slice); isSlice {
+			// A copy is tagged exactly when the base it was cut from is: `rt_slice` copies the slots WITH their
+			// tags, so a copy of an untagged base has no tag array to read and the plain printer is its printer.
+			// The `return true` below — "the object is behind a frame, so ask it" — is right for a name, a
+			// comprehension and another call, and wrong here, because this object's tags are a fact the scan can
+			// read off the base with the same predicate the copy's builder asked (**roadmap Gap R.238**, **ADR 0232**).
+			if g.containerSlotsCarryTags(s) {
+				return true
+			}
+			continue
+		}
 		lit, isList := arm.(*ListLit)
 		if !isList {
 			return true // a name, a comprehension, another call: the object is behind a frame, so ask it

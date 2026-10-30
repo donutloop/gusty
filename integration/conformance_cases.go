@@ -1158,6 +1158,16 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// half: the five refusals, the spellings that already worked (so an addition to the number grammar replaces
 		// none of it), and the positions a literal has to reach once it exists.
 		"leading_dot_float",
+		// A copy handed back by a function is the copy the program bound: the scan that decides what a call hands
+		// back read a `return` of a literal, a comprehension or a `list()` and had no arm for a `return` of a SLICE,
+		// so `print(n())` printed `rt_slice`'s handle as the digit `1` at the exit code of a success where the
+		// reference prints `[2, 3]` (roadmap **Gap R.238**, **ADR 0465**). The arm asks the base — a copy is a list
+		// exactly when what it was cut from is a list — and asks the base's own tag question with it, because
+		// `rt_slice` copies the slots WITH their tags (**ADR 0294**), which is why the mixed base prints
+		// `[1.5, 'a']` and not `[1.5, 0]`. Every line is what CPython prints for it; the shapes that are NOT here
+		// (a slice of a set, a copy of an undescribable base, one call read twice in a statement with the `+` door
+		// first) are refusals or owed answers pinned in `pkg/lang/slice_bounds_kind_test.go`, not answers.
+		"returned_list_slice",
 	}
 
 	cases := make([]lang.ConformanceCase, 0, len(names))

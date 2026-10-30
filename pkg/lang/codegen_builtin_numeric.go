@@ -29,6 +29,22 @@ func (g *irGen) builtinBool(b *strings.Builder, c *Call, fnName string) (string,
 	if len(c.Args) != 1 {
 		return "", fmt.Errorf("bool expects one argument")
 	}
+	// `bool(build())` is the CONDITION door asked as a call. The answer is a container the callee built, and
+	// whether it holds anything is the object's fact and never the handle's, so the question is asked with the
+	// same read `if build():` asks (**ADR 0333**, `containerReadShape`) and the verdict is written by the same
+	// truth road. It joins here because **Gap R.238**'s arm made the answer describable: before it, `bool(n())`
+	// over a returned copy lowered the raw `rt_slice` handle into `icmp ne i32 %h, 0` and answered `True` for the
+	// EMPTY copy too — a silent wrong answer at exit 0 — and once the answer table can name the container it
+	// refuses the one-word position instead, which would have cost a program that printed the right bytes for the
+	// non-empty case (**ADR 0273**'s rule: a gate may not cost a program that compiles today). One door, both
+	// spellings of "is it empty" (**ADR 0294**'s one-question rule).
+	if ansName, _, okAns := g.containerAnswerOperandRead(b, c.Args[0], containerReadShape); okAns {
+		i1, terr := g.truthOperandErr(b, ansName)
+		if terr != nil {
+			return "", terr
+		}
+		return g.asBoolI32(b, i1), nil
+	}
 	// A self-describing subscript asks the same question in the same table as an `if`, an f-string and `and`/`or`.
 	// Its payload is meaningless on its own: a text's intern index and a container's heap handle are both nonzero,
 	// while a float box for `0.0` is also nonzero and `None` is zero for reasons that have nothing to do with the
