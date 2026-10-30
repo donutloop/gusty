@@ -111,8 +111,15 @@ func TestTheToolchainNamedByOneRunIsNotTheOneAnotherRunReads(t *testing.T) {
 	log := filepath.Join(dir, "cc-was-here.log")
 	stub := filepath.Join(dir, "stub-cc")
 	body := "#!/bin/sh\nprintf 'used\\n' >> '" + log + "'\nexec cc \"$@\"\n"
-	if err := os.WriteFile(stub, []byte(body), 0o755); err != nil {
+	// Written under a name nothing execs and RENAMED into place: a fresh 0755 file can still answer
+	// `fork/exec …: text file busy` on a loaded machine, and this case runs the two compiles side by side on
+	// purpose, which is exactly when the window opens (roadmap **Gap R.553**).
+	tmp := stub + ".writing"
+	if err := os.WriteFile(tmp, []byte(body), 0o755); err != nil {
 		t.Fatalf("write stub cc: %v", err)
+	}
+	if err := os.Rename(tmp, stub); err != nil {
+		t.Fatalf("publish stub cc: %v", err)
 	}
 
 	var wg sync.WaitGroup

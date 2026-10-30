@@ -18,8 +18,18 @@ func writeStubLLC(t *testing.T, dir, message string) string {
 	t.Helper()
 	path := filepath.Join(dir, "stub-llc")
 	body := "#!/bin/sh\nprintf '%s\\n' '" + message + "' >&2\nexit 1\n"
-	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+	// Published by RENAMED-into-place, never written at the name it will be execed under. A fresh 0755 file
+	// can still answer `fork/exec …: text file busy` on a loaded machine — the write's last `fput` can be
+	// deferred past the `Close` that returned — and this stub is execed by a run that then reads its stderr
+	// back as the report. When the exec is refused the report is EMPTY, which is the shape this family of
+	// cases mistakes for the toolchain's own silence (roadmap **Gap R.553**, measured again on the
+	// **Gap R.581** gate: `the stub's own words did not reach the report: ""`).
+	tmp := path + ".writing"
+	if err := os.WriteFile(tmp, []byte(body), 0o755); err != nil {
 		t.Fatalf("write stub: %v", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		t.Fatalf("publish stub: %v", err)
 	}
 	return path
 }
