@@ -3099,11 +3099,39 @@ def m():
 print(m()[0:1])    # TypeError: 'set' object is not subscriptable
 ```
 
+**A base with nothing to slice into names itself** (**Gap R.559**, **ADR 0468**). A number, a verdict and the
+void have no slots for a slice to copy, so the reference does not refuse them in words and does not borrow the
+bounds sentence either — it refuses the object, naming its kind:
+
+```
+print(1[0:1])       # TypeError: 'int' object is not subscriptable
+print(1.5[:])       # TypeError: 'float' object is not subscriptable
+print(True[0:1])    # TypeError: 'bool' object is not subscriptable — a verdict is an int WHERE A POSITION IS
+                    #  ASKED (`[1, 2][True:2]` is `[2]`) and a verdict where the OBJECT is asked
+print(None[::])     # TypeError: 'NoneType' object is not subscriptable
+b = True
+print(b[0:1])       # TypeError: 'bool' object is not subscriptable — the same object, read through a binding
+void = None
+print(void[1.5:2])  # TypeError: 'NoneType' object is not subscriptable — the bound is never asked anything
+print([1, 2][0][0:1])   # TypeError: 'int' object is not subscriptable — the element the compiler can read
+```
+
+Each is catchable (`except TypeError:` — and `except TypeError as err` binds `'int' object is not
+subscriptable`, the message without the caption), each leaves stdout untouched, and an uncaught one exits **3**.
+The kind comes from the same doors the subscript road already asks (**ADR 0420**), so `print(1[0])` and
+`print(1[0:1])` are one complaint rather than two, and from the last-binding records for a name — which is why
+`xs = 1.5` / `xs = [1, 2]` / `print(xs[0:1])` still prints `[1]`: the container claims are asked first, because
+nothing clears a scalar claim when a container takes a name over, and a gate may not cost a program that compiles
+(**ADR 0273**).
+
 Three shapes are refused at exit 1 rather than raised, each because no record names what the reference would have
 to name, and each filed with its number: a base spelled by a constructor (`print(set([1, 2])[0:1])`, **Gap
 R.554**), a dict sliced by bounds the compiler cannot read (`d[i:i+1]`, which would need a `slice` object to hash
 at run time, **Gap R.555**), and a second read of the word a raise hands back (`print({1, 2}[0:1][0])`, **Gap
-R.556**).
+R.556**). The bases whose kind only the run time knows are refused beside them, and filed: a name the program
+bound to an int (`n = 1` / `print(n[0:1])` — no int binding record exists, **Gap R.560**), a name a container
+bound and a scalar rebound (`xs = [1, 2]` / `xs = 1.5`, **Gap R.561**), and a scalar the compiler never saw
+written — a call's answer or a slot of a named list (`print(m(1)[0:1])`, `print(xs[0][0:1])`, **Gap R.562**).
 
 Slice parts are all optional and negative bounds count from the end, as they do in the reference. The compiled
 form allocates a fresh heap object and copies **payload and tag together** (**ADR 0335**): an element whose value

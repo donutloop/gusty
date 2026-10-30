@@ -24073,3 +24073,199 @@ What is genuinely this row's own is the front end: a program cannot be rejected 
 accepted one position to the left.
 
 Measured 2026-10-31 while landing **ADR 0466**.
+
+<a id="gap-r-559"></a>
+
+### Gap R.559 — a base with no slots at all was refused by the slice road, where the reference names the kind (CLOSED by ADR 0468)
+
+```python
+$ python3 -c 'print(1[0:1])'
+TypeError: 'int' object is not subscriptable
+$ python3 -c 'print(1.5[:])'
+TypeError: 'float' object is not subscriptable
+$ python3 -c 'b = True
+print(b[0:1])'
+TypeError: 'bool' object is not subscriptable
+$ python3 -c 'void = None
+print(void[::])'
+TypeError: 'NoneType' object is not subscriptable
+
+$ gustyc --eval 'print(1[0:1])'
+gustyc: jit: codegen: cannot slice 1: the copy is a list whose slots are the base's payloads with their tags,
+and the base is not a list the records describe — a literal, a variable a binding recorded as a list, a call
+that hands back a list, or a slice of one (roadmap Gap R.235, ADR 0335)                          # exit 1
+```
+
+**ADR 0466** put a base question at the top of the slice road and answered it for the two containers that have no
+positions — a set, which complains about itself, and a dict, which hashes the slice and names the key it missed.
+Three families of base stayed on the copy road, and the copy road's sentence is about a LIST:
+
+| base | the reference | this row's parent | now |
+|---|---|---|---|
+| `1`, `(1)`, `[1, 2][0]` (folded) | `'int' object is not subscriptable` | exit 1 — `cannot slice 1` / `cannot slice *lang.IntLit` / `cannot slice *lang.Index` | exit 3, catchable |
+| `1.5`, `f = 1.5`, `half = 1 / 2` | `'float' object is not subscriptable` | exit 1 | exit 3, catchable |
+| `True`, `False`, `b = True`, `flag = 1 == 1` | `'bool' object is not subscriptable` | exit 1 | exit 3, catchable |
+| `None`, `void = None` | `'NoneType' object is not subscriptable` | exit 1 | exit 3, catchable |
+| `print(1["a":"b"])`, `print(1[0:1:0])` | the OBJECT's sentence, never the bounds' | exit 1 | exit 3 — the bounds are never asked |
+| `[1, 2][True:2]` | `[2]` | `[2]` | `[2]` (a verdict is a position) |
+| `xs = 1.5` / `xs = [1, 2]` / `print(xs[0:1])` | `[1]` | `[1]` | `[1]` (the safety order, pinned) |
+| `xs = [1, 2]` / `xs = 1.5` / `print(xs[0:1])` | `'float' …` | exit 1 | exit 1 — **Gap R.561** |
+| `n = 1` / `print(n[0:1])` | `'int' …` | exit 1 | exit 1 — **Gap R.560** |
+| `def m(v): return v` / `print(m(1)[0:1])`, `xs = [1, 2]` / `print(xs[0][0:1])` | `'int' …` | exit 1 | exit 1 — **Gap R.562** |
+
+Three things made it a row rather than a bullet inside ADR 0466. The refusal describes a program the author did
+not write (there is no list in `print(1[0:1])`), and two of its spellings printed the compiler's own AST —
+`*lang.IntLit`, `*lang.Index`, `*lang.Call` — which is **Gap R.232**'s disease in `exprSnippet`'s default arm and
+is itself filed (**Gap R.563**). The subscript door beside it had answered the same object for two ADRs
+(`print(1[0])` → `'int' object is not subscriptable`, **ADR 0420**), so one object got an exception at `[0]` and a
+compiler refusal at `[0:1]`. And a verdict is the row's test case: a bool is an int WHERE A POSITION IS ASKED and
+a bool where the OBJECT is asked, which is the difference between reading `constantSubscriptKind`'s `int` arm and
+reading its `bool` arm.
+
+The fix is an arm of the SAME gate — `sliceBaseWithNoSlots` inside `sliceRaisesWhatTheBaseIs` — because the row's
+claim is that there is one place where a slice road decides anything about its base. The kinds come from doors
+that already own them: **ADR 0420**'s `constantSubscriptKind` for what the source wrote (which brings the folded
+element read for free), and the last-binding records `boolVars`/`noneVars`/`floatVars` for a name.
+
+The one decision worth rereading is the ORDER of those two reads. The natural reading of **ADR 0172** is "the
+last binding decides", which means asking the scalar records first. That version was built and measured, and it
+broke a program that answers today: `xs = 1.5` / `xs = [1, 2]` / `print(xs[0:1])` printed
+`'float' object is not subscriptable` instead of `[1]`, because nothing clears `floatVars` when a container takes
+the name over. **ADR 0273** settles that argument in one word: a gate may not cost a program that compiles. So the
+container notebooks are asked first, and the residue of that order — `xs = [1, 2]` / `xs = 1.5`, which the
+reference traps and this backend refuses because the container notebook still claims the name — is
+**Gap R.561**, whose own definition of done is that the order stops mattering.
+
+Witnesses: 15 raise rows asked of `jitTrap` AND `goldenRunError`, 4 handler rows asked of the compiler AND the
+record, the order table with a distinctness check across bases (the list earns **ADR 0336**'s bounds sentence, the
+set the object's, the dict hashing or the miss, a scalar its own kind — a collapse onto one sentence fails), the
+soundness table that asks the door with no notebooks at all and of records the binding road wrote, the untouched
+table on both legs, the IR witness that forbids `rt_slice` for a refused base and REQUIRES it for `[1, 2][0:1]` so
+the forbidding cannot be earned by deleting the helper (`pkg/lang/slice_scalar_base_test.go`); 28 raises + 9
+handler rows + 8 served bases + 5 refusals at the CLI against a live `python3`, and the emitted module asked for a
+global in a value position (`integration/slice_scalar_base_test.go`); `integration/programs/slice_scalar_base.gy`
+as a parity row. `tools/recmerge` wrote **37 entries (10749 → 10786)**, every one from the reference with the
+compiled leg cross-checked.
+
+Measured 2026-10-31 while landing **ADR 0466**; closed the same day by **ADR 0468**.
+
+<a id="gap-r-560"></a>
+
+### Gap R.560 — a name the program bound to an int has no binding record, so the slice road cannot ask what it holds
+
+```python
+$ python3 -c 'n = 1
+print(n[0:1])'
+TypeError: 'int' object is not subscriptable
+$ gustyc --eval 'n = 1
+print(n[0:1])'
+gustyc: jit: codegen: cannot slice n: the copy is a list whose slots are the base's payloads with their tags,
+and the base is not a list the records describe …                                                  # exit 1
+```
+
+**ADR 0468**'s arm reads a NAME from three notebooks — `boolVars`, `noneVars`, `floatVars` — and there is no
+fourth, because those three exist for a reason the fourth does not share: a float, a verdict and the void need a
+claim in order to be PRINTED (`print(n)` needs to know whether to write `None`, `True` or a word), and an int is
+the default word. The literal `print(1[0:1])` raises; the named spelling refuses.
+
+`foldConstInt`/`constBindings` is the tempting door and the wrong one, and it is named here so the next reader
+does not spend an hour on it: it is a comprehension's constant walk, not a binding record, it is not cleared by a
+rebinding, and it flattens `True` to `1` — which would turn this row's `'bool'` sibling into a wrong claim about a
+kind the source did spell. The action is to write the record where the scalar records are written, with the same
+clearing rule, and the control row is `n = 1` / `n = [1, 2]` / `print(n[0:1])` → `[1, 2]`.
+
+Measured 2026-10-31 landing **ADR 0468**.
+
+<a id="gap-r-561"></a>
+
+### Gap R.561 — the last-binding rule stops at the container/scalar boundary
+
+```python
+$ python3 -c 'xs = [1, 2]
+xs = 1.5
+print(xs[0:1])'
+TypeError: 'float' object is not subscriptable
+$ gustyc --eval 'xs = [1, 2]
+xs = 1.5
+print(xs[0:1])'
+gustyc: jit: codegen: cannot slice xs: … the base is not a list the records describe …            # exit 1
+```
+
+The mirror case answers, which is what localises the defect to the records rather than to the door:
+`xs = 1.5` / `xs = [1, 2]` / `print(xs[0:1])` prints `[1]` — and prints it only because **ADR 0468** asks the
+container notebooks FIRST. Asked the other way round during this cycle, that same program raised `'float' object
+is not subscriptable`, because a container binding never clears `floatVars`. Two record pairs, two roads that do
+not clear each other's claims, and a gate that must choose which wrong to be: **ADR 0172**'s rule is true within
+the scalar family and untrue across the boundary.
+
+The fix is symmetrical and belongs to the binding roads, not to the gate: a binding that is not a container
+clears the container claims for that name, and a container binding clears the scalar claims. The row's own
+definition of done is that the gate's order stops mattering, and the two rebinding directions move into the raise
+table beside each other.
+
+Measured 2026-10-31 landing **ADR 0468**, both directions.
+
+<a id="gap-r-562"></a>
+
+### Gap R.562 — a scalar the compiler never saw written has no kind: a call's answer, and a slot of a named list
+
+```python
+$ python3 -c 'def m(v):
+    return v
+
+print(m(1)[0:1])'
+TypeError: 'int' object is not subscriptable
+$ python3 -c 'xs = [1, 2]
+print(xs[0][0:1])'
+TypeError: 'int' object is not subscriptable
+$ gustyc --eval 'print(m(1)[0:1])'
+gustyc: jit: codegen: cannot slice *lang.Call: …         # exit 1
+$ gustyc --eval 'xs = [1, 2]
+print(xs[0][0:1])'
+gustyc: jit: codegen: cannot slice *lang.Index: …        # exit 1
+```
+
+`constantSubscriptKind` answers the element of a LITERAL (**Gap R.227**'s fold), which is why
+`print([1, 2][0][0:1])` raises and the named spelling refuses; **ADR 0333**'s answer record describes the CONTAINER
+a call hands back (`kind`), and has nothing to say about a scalar. Where the kind is a run-time fact the gate stays
+silent, and **ADR 0232**/**ADR 0273** are the reason it is silent rather than confident.
+
+Two records would close it, both half-written elsewhere: a scalar kind for an answer whose `return`s are all one
+kind (the census **ADR 0254** already runs for a return's WORD, asked for a kind), and an element kind for a list
+the compiler holds in a name (the literal that filled it knows its elements). Where the two disagree — one arm
+answers a float, another answers anything — the answer stays silent, because a kind claim that survives a merge is
+**Gap R.324**'s class. The real answer is **L11.1**'s tagged word: the slot carries its kind, and the compiler
+never needs to have seen it written.
+
+Measured 2026-10-31 landing **ADR 0468**.
+
+<a id="gap-r-563"></a>
+
+### Gap R.563 — the copy road still hands the reader a Go type name (`exprSnippet`'s `%T` default)
+
+```
+$ gustyc --eval 'print((1)[0:1])'
+gustyc: jit: codegen: cannot slice *lang.IntLit: the copy is a list whose slots …
+$ gustyc --eval 'xs = [1, 2]
+print(xs[0][0:1])'
+gustyc: jit: codegen: cannot slice *lang.Index: the copy is a list whose slots …
+$ gustyc --eval 'def m(v):
+    return v
+print(m(1)[0:1])'
+gustyc: jit: codegen: cannot slice *lang.Call: the copy is a list whose slots …
+```
+
+`heapargs.go`'s `exprSnippet` has arms for the container and literal shapes it was written for and ends with
+`return fmt.Sprintf("%T", e)`. The door has been repaired four times for four constructs — **Gap R.232** (a
+membership needle), **Gap R.249** (an `FString`, a comprehension), **Gap R.360** (a container call) — each repair
+adding one `case` and leaving the default arm exactly as leaky as it was. That is the row: not the three
+sentences above, which are cosmetic, but the ABSENCE of a guard, which is why the same defect keeps being
+re-discovered at whatever door the cycle happens to stand at.
+
+The action is therefore the test rather than the switch: walk every AST node type through `exprSnippet` and fail
+on any answer containing `*lang.`, `%!s(` or other Go-diagnostic text, then close the default arm so an unnamed
+node is reported by the door's QUESTION rather than by its Go type. `exprSurface` (`ternary_number.go`) is the
+sibling that already renders source text where it knows the node and a neutral phrase where it does not; the two
+doors should not disagree about one construct (**ADR 0232**).
+
+Measured 2026-10-31 landing **ADR 0468**.

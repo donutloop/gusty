@@ -44,6 +44,12 @@ import (
 //     nobody wrote (ADR 0273's rule that a gate may not cost a program that compiles today, and
 //     ADR 0232's rule that a kind claim is imported from a writer, never invented here).
 //
+//   - a value with NO slots to slice — a number, a bool, the singleton — gets `'int' object is not
+//     subscriptable` and its three siblings, asked through the subscript road's own classifier so
+//     `print(1[0])` and `print(1[0:1])` are one complaint rather than two doors' (**Gap R.559**,
+//     **ADR 0420**); yesterday the copy road refused those programs with a sentence about a list nobody
+//     wrote.
+//
 // A bound that would itself raise (`d[1//0:1]`, the reference's ZeroDivisionError) is a question the
 // gate does not reach: it fires only where every bound is a value the compiler can read, so the
 // raise it emits can never outrank a raise that lives inside a bound the reference evaluates first.
@@ -55,6 +61,19 @@ import (
 func (g *irGen) sliceRaisesWhatTheBaseIs(b *strings.Builder, n *Slice) bool {
 	if n == nil {
 		return false
+	}
+	// The base that has NO slots is asked first, because it is the base that never gets to the question
+	// the two containers above answer: a set complains about the object and a dict hashes the slice, but a
+	// number, a bool and the singleton have nothing to slice INTO, so their complaint is the object's and
+	// nothing else. It is asked through the subscript road's own door, so `print(1[0])` and `print(1[0:1])`
+	// are one program's complaint rather than two doors' (roadmap **Gap R.559**, **ADR 0420**'s one question
+	// asked once, beside **ADR 0466**'s base-first order).
+	if kind, noSlots := g.sliceBaseWithNoSlots(n.Obj); noSlots {
+		g.heapUsed = true
+		g.raiseTo(b, exnCode("TypeError"), "TypeError", notSubscriptableSentence(kind), n.Span())
+		cont := g.newLabel("sbb.ns")
+		b.WriteString(fmt.Sprintf("%s:\n", cont))
+		return true
 	}
 	kind, known := g.staticContainerKind(n.Obj)
 	if !known {
@@ -95,6 +114,77 @@ func (g *irGen) sliceRaisesWhatTheBaseIs(b *strings.Builder, n *Slice) bool {
 		return true
 	}
 	return false
+}
+
+// sliceBaseWithNoSlots names the kind of a base that has no slots to slice at all: a number, a bool, the
+// singleton. The reference refuses every one of them by naming the kind — `print(1[0:1])` is
+// `TypeError: 'int' object is not subscriptable`, `print(None[::2])` is `'NoneType' object is not
+// subscriptable` — and this backend refused the same program with the copy road's complaint about a list the
+// program never wrote, which is a refusal where the program raises (roadmap **Gap R.559**):
+//
+//	print(1[0:1])       # TypeError: 'int' object is not subscriptable
+//	print(1.5[0:1])     # TypeError: 'float' object is not subscriptable
+//	b = True            # TypeError: 'bool' object is not subscriptable
+//	print(b[0:1])
+//	o = None            # TypeError: 'NoneType' object is not subscriptable
+//	print(o[:])
+//
+// The kinds are read from the doors that already own them, never from the spelling:
+//
+//   - `constantSubscriptKind` is the subscript road's own classifier — the one that already raises
+//     `'int' object is not subscriptable` for `print(1[0])` (**ADR 0420**, Gap R.227's folded element read
+//     included, so `xs = [1, 2]` / `print(xs[0][0:1])` is the same complaint as `print(1[0:1])`). Asking it
+//     again here is the point: a second classifier would be a second answer.
+//   - the last-binding records `nonIntIndexTypeName` reads (**ADR 0336**'s classifier, **ADR 0172**/ADR 0257's
+//     rule) answer for a NAME the program last filled with a float, a bool or the singleton. There is no
+//     record for a name last filled with an INT — ints are the default word, and nothing writes a claim — so
+//     `n = 1` / `print(n[0:1])` stays the copy road's refusal rather than being accused of a kind nobody
+//     wrote, and **Gap R.560** owns it.
+//
+// A base any container door answers, and a text, answer nothing here: those are the bases the slice road
+// serves, and the ones ADR 0466 already words.
+func (g *irGen) sliceBaseWithNoSlots(e Expr) (string, bool) {
+	if g == nil || e == nil {
+		return "", false
+	}
+	// The container notebooks are asked FIRST, and that order is a safety rule rather than a preference:
+	// `floatVars`/`boolVars`/`noneVars` are written by the scalar binding road but a container binding that
+	// takes the name over does not clear them (`recordNoneAndBool`'s `delete` clears the pair for the
+	// singleton family only when the binding is not a container rebind, and `bindFloatValue` clears the
+	// tagged pair, not `listVars`). Asking the scalar records first would take an answer away from a program
+	// that compiles today — `xs = 1.5` / `xs = [1, 2]` / `print(xs[0:1])` answers `[1]` in the reference and
+	// must keep answering it (ADR 0273's rule that a gate may not cost a program that compiles). The
+	// residue — a name a container binding filled and a scalar binding later rebound — is **Gap R.561**.
+	if _, known := g.staticContainerKind(e); known {
+		return "", false
+	}
+	if g.isTupleExpr(e) {
+		return "", false
+	}
+	if _, isText := g.stringVal(e); isText {
+		return "", false
+	}
+	if g.exprIsString(e) {
+		return "", false
+	}
+	if nm, isName := e.(*Name); isName {
+		switch {
+		case g.boolVars[nm.Value]:
+			return "bool", true
+		case g.noneVars[nm.Value]:
+			return "NoneType", true
+		case g.floatVars[nm.Value]:
+			// The double the last binding stored has no tag to read, and the copy road cannot copy it: the
+			// reference refuses the object, and so does this door (ADR 0274's double slot).
+			return "float", true
+		}
+	}
+	// The subscript road's own classifier, asked again rather than reinvented: it names the kinds the
+	// source WROTE, and answers nothing where a kind would be invented.
+	if kind, isConstant := g.constantSubscriptKind(e); isConstant {
+		return kind, true
+	}
+	return "", false
 }
 
 // unhashableSliceBound asks the three bounds in the order the reference hashes them — low, high, step

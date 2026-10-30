@@ -17810,3 +17810,59 @@ of `TestAPositionThatCannotSliceRefusesThroughTheCLI` fail on the fix — that i
 slot keeps a comment naming the file the rows moved to and the ADR that grew the door, and the CLI table now holds the
 three refusals the gate DECLINES (`set(...)` bounds-free, expression bounds, a slot-read binding), each at exit 1 with a
 sentence that names the missing record. A deletion that reads as dropped coverage is how a suite quietly gets smaller.
+
+## Cycle: a base with NO slots answers the slice road too (**roadmap Gap R.559** closed; **Gap R.560**, **Gap R.561**, **Gap R.562**, **Gap R.563** filed; **ADR 0468**)
+
+**A remembered claim about code is not a measurement, and it cost this cycle a plan.** The note I started from said
+`rt_slice` carried a constant `"not subscriptable"` in its fourth argument and that the fix was to thread a kind word
+into it. `rt_slice` has seven i32 arguments, no message, and no raise arm at all — it normalises bounds, copies slots
+with their tags, and hands back a handle; the copy road's gate (**ADR 0335**) refuses a scalar base long before the
+helper is reached. Ten minutes with `pkg/lang/codegen_ir_slice.go` replaced an hour of planned work on a runtime
+argument that does not exist, and moved the whole fix to the compile-time door where the sentence is a fact about the
+source. The rule this cycle leaves behind: open the file the claim is about before writing the plan that depends on
+it — a claim copied forward (mine, from the previous cycle's own notes) is exactly as untrustworthy as a count
+someone remembered, which is what **Gap R.204** built its guards for.
+
+**The elegant ordering was the wrong one, and only a control row could prove it.** **ADR 0172** says the last binding
+decides, so the new arm should ask `boolVars`/`noneVars`/`floatVars` before the container notebooks. Built that way,
+`xs = 1.5` / `xs = [1, 2]` / `print(xs[0:1])` — a program the reference answers `[1]` and this backend answers `[1]`
+— started raising `'float' object is not subscriptable`, because a container binding never clears `floatVars`. The
+records are not a last-binding pair across the container/scalar boundary; they are two pairs of notebooks that do not
+clear each other. So the gate asks the container notebooks first, **ADR 0273** deciding the argument in one word (a
+gate may not cost a program that compiles), and the residue of the safe order — `xs = [1, 2]` / `xs = 1.5`, which the
+reference traps and this backend refuses — is **Gap R.561**, whose definition of done is that the order stops
+mattering. The general lesson is that a control row on the *other* side of a boundary is what makes an ordering
+decision, not the elegance of the rule being followed.
+
+**A negative witness needs a positive counterpart in the same test, or it witnesses nothing.** The IR row asserts the
+module contains no `call i32 @rt_slice(` for a refused base — and that assertion is satisfied just as well by a
+compiler that stopped emitting the helper for lists. The counter-row (`print([1, 2][0:1])` MUST call `rt_slice`)
+costs one `mustCompileIR` and is the only reason the absence means anything. Same shape as the distinctness check in
+the order table: four bases over one bound must produce four *different* sentences, because a gate that raised one
+message for everything would pass a row-per-row comparison.
+
+**A door repaired four times is a missing guard, not four missing cases.** `exprSnippet`'s `return
+fmt.Sprintf("%T", e)` has produced `cannot slice *lang.Index`, `… *lang.Call`, `… *lang.IntLit` for this row's
+refusals, and the same default arm has already been patched for a membership needle (**Gap R.232**), an interpolation
+and a comprehension (**Gap R.249**), a container call (**Gap R.360**). The row I filed (**Gap R.563**) is not the
+three sentences — it is the missing walk over the AST node types that fails on any answer containing `*lang.` or
+`%!s(`. When the same defect keeps being discovered at whichever door a cycle happens to stand at, file the guard
+that would have made the last four unnecessary.
+
+**A concurrent session was editing this tree while I worked, and that changed how I committed.** By the time I
+measured my own first candidate row, `pkg/lang/codegen_arith.go` and `pkg/lang/capability.go` had been rewritten
+underneath me (the membership-needle row, **Gap R.232**), and a guard over the generated capability table was failing
+because that work was in flight. Two adaptations are worth writing down: (1) I picked a row whose files did not
+overlap the in-flight ones (`slice_base_kind.go`, `codegen_index.go`, two new test files, docs), and (2) I staged my
+paths explicitly rather than `git add -A`, so an uncommitted neighbour's half-finished edit cannot ride along in my
+commit — the failure mode is silent, because the extra hunks look like my own work in `git show`. The cost of the
+discipline is that `make testparallel` may fail on someone else's in-flight state, which is a reason to read *which*
+cases failed, not a reason to commit their files.
+
+**The counts move as one set or they are lies.** 37 sources went through `tools/recmerge` (record **10749 → 10786**),
+one corpus program joined the matrix (288 → 289 programs, 274 → 275 rows, 238 → 239 parity-asserted, oracle `match`
+224 → 225), five queue rows were added (462 → 467, owed 270 → 274), and **ADR 0468** is the 456th record. Four places
+quote the record's size (`roadmap.md`, `docs/operations.md`, `AGENTS.md`,
+`pkg/lang/leading_dot_float_test.go`) and `TestTheRoadmapSnapshotIsMeasuredNotRemembered` recomputes all of them from
+the artifacts — it named eight stale numbers in one run, which is the cheapest possible way to learn that a snapshot
+is a file's, not an author's.

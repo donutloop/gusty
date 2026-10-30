@@ -1,5 +1,206 @@
 {
  "entries": {
+"# A slice whose BASE has no slots at all (roadmap Gap R.559, ADR 0468).\n#\n# A number, a verdict and the void have nothing to slice INTO, so the reference refuses them by naming the\n# kind — `'int' object is not subscriptable` and its three siblings — and the program may take the raise with\n# its own `except`. The bases the slice road serves (a list, a text, a tuple, a name last bound to one of\n# them) keep the answers they always gave, and the bound is asked only after the object has been.\n\nxs = [1, 2, 3]\nt = (1, 2)\ns = \"abcdef\"\n\nprint(xs[0:2], xs[::-1])\nprint(t[0:1])\nprint(s[1:3])\nprint(xs[True:2])\n\nn = 2.5\nflag = 1 == 1\nvoid = None\n\ntry:\n    print(1[0:1])\nexcept TypeError as err:\n    print(\"int\", err)\n\ntry:\n    print(1.5[:])\nexcept TypeError as err:\n    print(\"float\", err)\n\ntry:\n    print(True[0:1])\nexcept TypeError as err:\n    print(\"bool\", err)\n\ntry:\n    print(None[::])\nexcept TypeError as err:\n    print(\"void\", err)\n\ntry:\n    print(n[0:1])\nexcept TypeError as err:\n    print(\"named number\", err)\n\ntry:\n    print(flag[0:1])\nexcept TypeError as err:\n    print(\"named verdict\", err)\n\ntry:\n    print(void[1.5:2])\nexcept TypeError as err:\n    print(\"named void\", err)\n\ntry:\n    print([1, 2][0][0:1])\nexcept TypeError as err:\n    print(\"element\", err)\n\ntry:\n    print(1[\"a\":\"b\"])\nexcept TypeError as err:\n    print(\"bounds never asked\", err)\n\nprint(xs[0:1], len(xs[0:2]), xs[0:2][1])\nprint(t[1:], s[1:2])\n": {
+    "stdout": "[1, 2] [3, 2, 1]\n(1,)\nbc\n[2]\nint 'int' object is not subscriptable\nfloat 'float' object is not subscriptable\nbool 'bool' object is not subscriptable\nvoid 'NoneType' object is not subscriptable\nnamed number 'float' object is not subscriptable\nnamed verdict 'bool' object is not subscriptable\nnamed void 'NoneType' object is not subscriptable\nelement 'int' object is not subscriptable\nbounds never asked 'int' object is not subscriptable\n[1] 2 2\n(2,) b\n",
+    "hasStdout": true
+   },
+"b = True\nprint(b == True)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"f = 1.5\nprint(f + 1)": {
+    "stdout": "2.5\n",
+    "hasStdout": true
+   },
+
+"o = None\nprint(o)": {
+    "stdout": "None\n",
+    "hasStdout": true
+   },
+
+"print(\"abcd\"[1:3])": {
+    "stdout": "bc\n",
+    "hasStdout": true
+   },
+
+"print((1, 2)[0:1])": {
+    "stdout": "(1,)\n",
+    "hasStdout": true
+   },
+
+"print([1, 2][0:1])": {
+    "stdout": "[1]\n",
+    "hasStdout": true
+   },
+
+"print([1, 2][True:2])": {
+    "stdout": "[2]\n",
+    "hasStdout": true
+   },
+
+"s = \"abc\"\nprint(s[0:1])": {
+    "stdout": "a\n",
+    "hasStdout": true
+   },
+
+"try:\n    print({1, 2}[0:1])\nexcept TypeError:\n    print(\"set\")": {
+    "stdout": "set\n",
+    "hasStdout": true
+   },
+
+"try:\n    print({1: 2}[0:1])\nexcept KeyError:\n    print(\"miss\")": {
+    "stdout": "miss\n",
+    "hasStdout": true
+   },
+
+"xs = 1.5\nxs = [1, 2]\nprint(xs[0:1])": {
+    "stdout": "[1]\n",
+    "hasStdout": true
+   },
+
+"xs = [1, 2]\nprint(xs[0:2])": {
+    "stdout": "[1, 2]\n",
+    "hasStdout": true
+   },
+"print({1: 2}[1.5:2])": {
+    "err": "KeyError: slice(1.5, 2, None)",
+    "exnType": "KeyError",
+    "exnMsg": "slice(1.5, 2, None)"
+   },
+
+"xs = [1, 2]\nprint(xs[\"a\":\"b\"])": {
+    "err": "TypeError: slice indices must be integers or None or have an __index__ method",
+    "exnType": "TypeError",
+    "exnMsg": "slice indices must be integers or None or have an __index__ method"
+   },
+
+"xs = [1, 2]\nprint(xs[0:1:0])": {
+    "err": "ValueError: slice step cannot be zero",
+    "exnType": "ValueError",
+    "exnMsg": "slice step cannot be zero"
+   },
+
+"xs = [1, 2]\nprint(xs[1.5:2])": {
+    "err": "TypeError: slice indices must be integers or None or have an __index__ method",
+    "exnType": "TypeError",
+    "exnMsg": "slice indices must be integers or None or have an __index__ method"
+   },
+"b = True\nf = 2.5\ntry:\n    print(b[0:1])\nexcept TypeError:\n    print(\"verdict\")\n\ntry:\n    print(f[0:1])\nexcept TypeError:\n    print(\"number\")\n\nprint(\"after\")": {
+    "stdout": "verdict\nnumber\nafter\n",
+    "hasStdout": true
+   },
+
+"b = True\nprint(b[0:1])": {
+    "err": "TypeError: 'bool' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'bool' object is not subscriptable"
+   },
+
+"f = 1.5\nprint(f[:])": {
+    "err": "TypeError: 'float' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'float' object is not subscriptable"
+   },
+
+"o = None\nprint(o[0:1])": {
+    "err": "TypeError: 'NoneType' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'NoneType' object is not subscriptable"
+   },
+
+"print((1)[0:1])": {
+    "err": "TypeError: 'int' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'int' object is not subscriptable"
+   },
+
+"print(1.5[0:1])": {
+    "err": "TypeError: 'float' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'float' object is not subscriptable"
+   },
+
+"print(1.5[:])": {
+    "err": "TypeError: 'float' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'float' object is not subscriptable"
+   },
+
+"print(1[\"a\":\"b\"])": {
+    "err": "TypeError: 'int' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'int' object is not subscriptable"
+   },
+
+"print(1[0:1:0])": {
+    "err": "TypeError: 'int' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'int' object is not subscriptable"
+   },
+
+"print(1[0:1])": {
+    "err": "TypeError: 'int' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'int' object is not subscriptable"
+   },
+
+"print(1[True:1])": {
+    "err": "TypeError: 'int' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'int' object is not subscriptable"
+   },
+
+"print(False[::2])": {
+    "err": "TypeError: 'bool' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'bool' object is not subscriptable"
+   },
+
+"print(None[0:1])": {
+    "err": "TypeError: 'NoneType' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'NoneType' object is not subscriptable"
+   },
+
+"print(None[1.5:2])": {
+    "err": "TypeError: 'NoneType' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'NoneType' object is not subscriptable"
+   },
+
+"print(None[::])": {
+    "err": "TypeError: 'NoneType' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'NoneType' object is not subscriptable"
+   },
+
+"print(True[0:1])": {
+    "err": "TypeError: 'bool' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'bool' object is not subscriptable"
+   },
+
+"print([1, 2][0][0:1])": {
+    "err": "TypeError: 'int' object is not subscriptable",
+    "exnType": "TypeError",
+    "exnMsg": "'int' object is not subscriptable"
+   },
+
+"try:\n    print(1[0:1])\nexcept TypeError as e:\n    print(e)": {
+    "stdout": "'int' object is not subscriptable\n",
+    "hasStdout": true
+   },
+
+"try:\n    print(1[0:1])\nexcept TypeError:\n    print(\"no slots\")\n\ntry:\n    print(None[0:1])\nexcept TypeError:\n    print(\"still no slots\")\n\nprint(\"done\")": {
+    "stdout": "no slots\nstill no slots\ndone\n",
+    "hasStdout": true
+   },
+
+"try:\n    print(1[0:1])\nexcept TypeError:\n    print(\"the int refused the slice\")": {
+    "stdout": "the int refused the slice\n",
+    "hasStdout": true
+   },
 "# The slice road asks what its BASE is (roadmap Gap R.234, ADR 0466).\n#\n# A set has no position to slice from, and a dict hashes the slice and reports the miss by naming the key\n# it missed. Both raise, so the program takes the raise with its own `except` and runs to completion —\n# every line below is the reference's bytes, and the doors beside it (a list's bounds, a dict read by a\n# real key, a text's slice) keep the answers they always gave.\n\ns = {1, 2}\nd = {1: 2}\nxs = [1, 2, 3]\n\nprint(xs[0:2], xs[1:], xs[::-1])\nprint((1, 2)[0:1])\nprint(\"abcdef\"[1:3])\nprint(d[1], len(d), 1 in d)\nprint(len(s), 2 in s)\n\ntry:\n    print(s[0:1])\nexcept TypeError as err:\n    print(\"set\", err)\n\ntry:\n    print(d[0:1])\nexcept KeyError as err:\n    print(\"dict\", err)\n\ntry:\n    print({1, 2}[\"a\":\"b\"])\nexcept TypeError as err:\n    print(\"object\", err)\n\ntry:\n    print({1: 2}[[1]:2])\nexcept TypeError as err:\n    print(\"hash\", err)\n\ntry:\n    print({1: 2}[0:1:0])\nexcept KeyError as err:\n    print(\"step\", err)\n\ntry:\n    print({1: 2}[(1, \"a\"):2])\nexcept KeyError as err:\n    print(\"tuple\", err)\n\nprint(xs[0:1], len(xs[0:2]), xs[0:2][1])\nprint(d[1], 0 in d)\n": {
     "stdout": "[1, 2] [2, 3] [3, 2, 1]\n(1,)\nbc\n2 1 True\n2 True\nset 'set' object is not subscriptable\ndict slice(0, 1, None)\nobject 'set' object is not subscriptable\nhash unhashable type: 'list'\nstep slice(0, 1, 0)\ntuple slice((1, 'a'), 2, None)\n[1] 2 2\n2 False\n",
     "hasStdout": true

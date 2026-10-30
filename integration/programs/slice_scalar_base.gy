@@ -1,0 +1,67 @@
+# A slice whose BASE has no slots at all (roadmap Gap R.559, ADR 0468).
+#
+# A number, a verdict and the void have nothing to slice INTO, so the reference refuses them by naming the
+# kind — `'int' object is not subscriptable` and its three siblings — and the program may take the raise with
+# its own `except`. The bases the slice road serves (a list, a text, a tuple, a name last bound to one of
+# them) keep the answers they always gave, and the bound is asked only after the object has been.
+
+xs = [1, 2, 3]
+t = (1, 2)
+s = "abcdef"
+
+print(xs[0:2], xs[::-1])
+print(t[0:1])
+print(s[1:3])
+print(xs[True:2])
+
+n = 2.5
+flag = 1 == 1
+void = None
+
+try:
+    print(1[0:1])
+except TypeError as err:
+    print("int", err)
+
+try:
+    print(1.5[:])
+except TypeError as err:
+    print("float", err)
+
+try:
+    print(True[0:1])
+except TypeError as err:
+    print("bool", err)
+
+try:
+    print(None[::])
+except TypeError as err:
+    print("void", err)
+
+try:
+    print(n[0:1])
+except TypeError as err:
+    print("named number", err)
+
+try:
+    print(flag[0:1])
+except TypeError as err:
+    print("named verdict", err)
+
+try:
+    print(void[1.5:2])
+except TypeError as err:
+    print("named void", err)
+
+try:
+    print([1, 2][0][0:1])
+except TypeError as err:
+    print("element", err)
+
+try:
+    print(1["a":"b"])
+except TypeError as err:
+    print("bounds never asked", err)
+
+print(xs[0:1], len(xs[0:2]), xs[0:2][1])
+print(t[1:], s[1:2])

@@ -837,6 +837,13 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// slice, a dict read by a real key, `len` and `in` over a set — keep their answers (roadmap Gap R.234,
 		// ADR 0466).
 		"slice_base_kind",
+		// The same road's other family of bases: a number, a verdict and the void have no slots to slice into,
+		// so the reference names the KIND (`'int' object is not subscriptable` and its three siblings) where this
+		// backend used to refuse the program with a sentence about a list it never wrote. The raises are caught
+		// here by the program's own `except … as err`, the message is what the reference binds, and the bases the
+		// road serves — a list, a tuple, a text, a verdict used as a position — keep answering (roadmap
+		// Gap R.559, ADR 0468).
+		"slice_scalar_base",
 		// The minus between two expressions is the SUBTRACTION operator and the minus before a literal in
 		// an expression position is its SIGN — one question the lexer used to answer from the character after
 		// the minus alone, so `x = 5` / `y = x-1` / `print(y)` wrote `5` at exit 0 where the reference writes
