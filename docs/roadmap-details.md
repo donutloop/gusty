@@ -11440,7 +11440,7 @@ What the door leaves standing is written down rather than folded in, each with t
 needle whose kind is a run-time fact the source never settled is **Gap R.212**/**Gap R.83**; a pair asked of a
 container the SOURCE spells is **Gap R.146**'s one-word position (**ADR 0456**'s road); and the two answers that are
 wrong rather than refused — a dict literal's unclaimed slots, and a list literal built with a pair element — are
-**Gap R.564** and **Gap R.565** below. The measurement of the whole change was a build of the parent commit run over
+**Gap R.582** and **Gap R.583** below. The measurement of the whole change was a build of the parent commit run over
 the same sources beside this one: every difference is a refusal becoming the reference's answer, and no program that
 answered before answers differently.
 
@@ -11953,6 +11953,22 @@ error) was never asked because the stub could not be started.
 window closes. A budget test that fails for no reason is worse than no budget, because the reader learns to ignore the
 failure; this is **ADR 0317**'s argument — a gate must be runnable to be trusted — applied one step further, to the
 race inside a case rather than the cache around it.
+
+**Re-opened the same day.** The row came back on the gate that shipped **Gap R.232**, with the identical message —
+`want a *ToolTimeoutError, got *fs.PathError: fork/exec …/stub-never-answers: text file busy` — and again passed three
+times on the same tree when run alone. The atomic publish is the right idiom and it is not sufficient: on this
+container's **overlayfs** the rename and the first `execve` can still overlap, so the window narrows without closing.
+What closes it is `runStub`, a bounded retry that lives in the harness and not in `runTool`: it re-issues the call
+while the error unwraps to `syscall.ETXTBSY` and hands back the first answer that is anything else. Two properties make
+that a fix rather than a way to hide a flake. The retry cannot eat the budget the case is measuring — an `ETXTBSY` is
+answered *before* the child starts, so twenty attempts cost half a second while the 300 ms budget is still charged to a
+call that really ran — and it does not swallow the error: the last attempt's error is the one the assertion sees, so a
+stub that keeps refusing to start still fails the case with the reason it kept giving, and `t.Logf` records how many
+attempts a passing run needed, which is how a harness that starts to rot stays visible. Putting the same retry inside
+`runTool` was rejected on the record: a `text file busy` from `llc-20` is a fact about the machine worth reporting, and
+a toolchain that quietly retries its own tools is how a compiler grows mysteries. The three stub-backed budget cases now
+all go through the one helper, and the tolerated shape is named by an error constant (`syscall.ETXTBSY`) rather than by
+`strings.Contains(err, "busy")`, which would have tolerated any failure that happened to use the same word.
 
 <a id="gap-r-239"></a>
 

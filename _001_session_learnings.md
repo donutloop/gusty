@@ -18220,7 +18220,7 @@ because `git` had lifted a common `<a id=…>` line out of the conflict region, 
 headings I had not written. Rebuilding that file from `origin/main` and re-applying my own blocks was faster and
 safer than repairing it in place.
 
-## Cycle: a budget test that fails for a reason other than the budget (the `ETXTBSY` flake in `pkg/lang/tool_budget_test.go`)
+## Cycle: a budget test that fails for a reason other than the budget (**roadmap Gap R.553**, re-opened — the `ETXTBSY` flake in `pkg/lang/tool_budget_test.go`)
 
 `make testparallel` came back with exactly one red case out of the whole suite, and it was not a language case:
 `TestAToolThatNeverReturnsIsKilledAtItsBudget` failed with `fork/exec /tmp/…/stub-never-answers: text file busy`
@@ -18228,6 +18228,14 @@ and the assertion `want a *ToolTimeoutError, got *fs.PathError`. The test re-ran
 same tree, which is the signature of a harness race rather than a defect — and a flaky budget test is the worst
 kind of flake, because the case exists to catch a hang, and a case that fails for unrelated reasons teaches the
 reader to ignore it when it fails for the real one.
+
+The row already existed and was already ✅ `DONE`: **Gap R.553** had been closed the same day by making `stubTool`
+publish its stub through a rename, and the DoD cell recorded that the case had passed inside the gate that closed
+**Gap R.238**. It passed inside that gate and failed inside the next one, which is what a DoD written as "it passed
+once" is worth. The tracker keeps the ID — the defect is the same defect — and the Status cell now carries both
+fixes, the first one marked as necessary and not sufficient. A flake that comes back after being "closed" is not
+re-filed under a fresh number; renumbering a returned defect would have made the first fix look like a stranger's
+rather than an under-call of the mechanism, which is the lesson worth keeping.
 
 The harness already knew about `ETXTBSY`: `stubTool` writes the stub under a `.writing` name and renames it into
 place, with a comment explaining that a fresh 0755 file can answer `text file busy` on a machine running twenty
