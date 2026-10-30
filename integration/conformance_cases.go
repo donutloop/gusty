@@ -777,6 +777,17 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// set member ride the same door, and the two raises inside an element are the reference's own,
 		// caught here by their own class.
 		"pair_element_read",
+		// A membership test whose NEEDLE is a slot read arrives with the pair the equality door already
+		// computes. `def words(): return ["hi", "ho"]` / `print(words()[0] in words())` stopped the build at
+		// exit 1 with a sentence quoting the needle's Go representation and the compiler's own temp name
+		// where the program's text belongs, while the reference prints `True` and the same test over a
+		// static text list prints `True` too — the membership door asked the one door that settles a kind
+		// from the SOURCE and never asked the pair door the equality road had been using since ADR 0247
+		// (roadmap Gap R.232, ADR 0474). The row's own two spellings (the answer as the needle's base, and
+		// the answer bound first), every kind the tag carries, a slot read through a computed position, a
+		// container slot, a built container, the tag-discriminates pair (a text payload beside an integer
+		// haystack) and the verdict positions are all in this program, whose expectation is CPython's.
+		"membership_needle_pair",
 		// A dict entry handed to a CALL is the same self-describing read the printer, the condition and the
 		// fold already ask of the object; what it lacked was the argument's second word. `print(id(d["a"]))`
 		// for `{"a": "x"}` printed `1` — the entry's `@str_tab` index — and a float entry printed its

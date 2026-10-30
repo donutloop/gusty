@@ -141,16 +141,14 @@ func TestAPositionThatCannotReadACallResultSubscriptRefusesThroughTheCLI(t *test
 			src:     "def b():\n    return [1, 2]\n\nb()[0] = 9\nprint(b())",
 			mustSay: "container variable on the left",
 		},
-		// A slot of an answer used as a membership needle is refused by the membership door (Gap R.232) — the
-		// same answer for the container in a variable, so the row keeps parity while it waits for the road.
-		// The sentence names the door but prints the needle's Go representation for the construct (the same
-		// row owns making it honest, ADR 0249).
-		{
-			name:       "a slot of an answer as a membership needle",
-			src:        "def words():\n    return [\"hi\", \"ho\"]\n\nprint(words()[0] in words())",
-			mustSay:    "needle",
-			mustNotSay: "index requires an inline list/dict/set literal",
-		},
+		// The row this table carried for **Gap R.232** — `def words(): return ["hi", "ho"]` /
+		// `print(words()[0] in words())`, pinned at exit 1 with a sentence that named the door but printed the
+		// needle's Go representation for the construct — is DELETED, not edited. The needle arrives as the
+		// (payload, tag) pair the equality door computes, so the shape answers `True` at exit 0; its rows live
+		// in `TestAMembershipNeedleAnswersThroughTheCLI` and
+		// `TestAMembershipNeedleWithoutAKindRefusesThroughTheCLI` (`integration/membership_needle_pair_test.go`),
+		// where a refusal that leaks `%!s(`, `*lang.` or a compiler temp name fails the suite (**ADR 0249**,
+		// **ADR 0474**).
 		// "An answer that is an element of a literal" left this table with **ADR 0457** (roadmap
 		// **Gap R.530**): `print([[9], xs()][1][0])` builds the literal through the element road and answers
 		// `1`, the reference's byte, so it is pinned as an ANSWER in

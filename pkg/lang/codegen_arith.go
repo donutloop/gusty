@@ -812,10 +812,34 @@ func (g *irGen) mixedMembership(b *strings.Builder, n *BinOp) (string, bool, err
 	mixed := g.mixedSets[nm.Value] || g.mixedDicts[nm.Value] || g.mixedLists[nm.Value]
 	needle, tag, tok := g.taggedOperand(b, n.L)
 	if !tok {
+		// The needle may be a slot whose kind only the OBJECT describes — the pair the equality door
+		// already computes for `xs[i] == v`. Ask THAT door rather than refuse: `xs[i] in xs` is the same
+		// two words as `xs[i] == xs[j]`, and a door that answers one and declines the other reports a
+		// limitation the compiler does not have (roadmap **Gap R.232**, **ADR 0474**; **ADR 0232**'s one
+		// question asked once). The pair is built in a SCRATCH builder because the slot read emits its own
+		// bounds check, whose IndexError branch TERMINATES a block: a pair that failed halfway would leave
+		// instructions after a terminator and `llc` would report the compiler's mistake as the program's
+		// (**ADR 0166**) — the shapes that do this are `TestATrapInsideAMembershipNeedleIsRaisedNotRefused`.
+		var scratch strings.Builder
+		probe := n.L
+		// The needle's OWN base may be a call that hands back a container. That road already exists:
+		// `containerAnswerSubscript` materialises the answer under the rooted slot a container variable
+		// occupies and hands back the subscript over the name (ADR 0334), which is the shape the pair door
+		// reads. Ask it before declining, so `words()[0] in words()` is one program with `w = words()` /
+		// `w[0] in w` rather than an answer and a refusal.
+		if redo, okAns := g.containerAnswerSubscript(&scratch, n.L); okAns {
+			probe = redo
+		}
+		if p, t, okPair := g.comparePair(&scratch, probe); okPair {
+			b.WriteString(scratch.String())
+			needle, tag, tok = p, t, true
+		}
+	}
+	if !tok {
 		if !mixed {
 			return "", false, nil // the untagged scan keeps the answer it always gave
 		}
-		return "", false, fmt.Errorf("codegen: testing %s against the container %q whose slots describe themselves needs a needle whose kind the compiler can prove; a bool, float or container needle needs the tagged value word (roadmap L11.1, ADR 0232)", n.L, nm.Value)
+		return "", false, fmt.Errorf("codegen: testing %s against the container %s whose slots describe themselves needs a needle whose kind the compiler can prove; a bool, float or container needle needs the tagged value word (roadmap L11.1, ADR 0232)", exprSurface(n.L), exprSurface(n.R))
 	}
 	h := g.newTmp()
 	b.WriteString(fmt.Sprintf("  %s = load i32, i32* %%%s\n", h, "_"+nm.Value))

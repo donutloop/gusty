@@ -11361,7 +11361,7 @@ other trap the subscript door raises.
 
 <a id="gap-r-232"></a>
 
-### Gap R.232 — a membership test whose needle is a slot refuses, and the refusal names no construct (OPEN, found by ADR 0334)
+### Gap R.232 — a membership test whose needle is a slot refuses, and the refusal names no construct (CLOSED by ADR 0474; found by ADR 0334)
 
 ```python
 def words():
@@ -11394,6 +11394,55 @@ what is missing; a `%!s(*lang.Call=…)` names nothing, and it is the kind of te
 a human reads as a crash. Both halves ship together: the road, and a sentence that quotes the needle's source
 text instead of its type.
 
+
+Both halves shipped on 2026-11-01 in **ADR 0474**, and the shape of the fix is smaller than the row suggests:
+no new representation, one new edge. `mixedMembership` asked `taggedOperand` — the door that answers "what kind
+did the SOURCE settle?" — and, when that failed, refused. The equality road had been answering the same question
+with the object's own pair since **ADR 0247** (`comparePair` → `rt_payload_eq`), and `in` and `==` ask one thing of
+a slot: *is this value one of the values those slots hold*. So the door now asks `comparePair`, and it asks it in a
+scratch builder:
+
+```go
+needle, tag, tok := g.taggedOperand(b, n.L)
+if !tok {
+	var scratch strings.Builder
+	probe := n.L
+	if redo, okAns := g.containerAnswerSubscript(&scratch, n.L); okAns {
+		probe = redo                       // ADR 0334: the answer becomes the slot a variable occupies
+	}
+	if p, t, okPair := g.comparePair(&scratch, probe); okPair {
+		b.WriteString(scratch.String())    // only a COMPLETE pair reaches the statement
+		needle, tag, tok = p, t, true
+	}
+}
+```
+
+The scratch builder is not style. `comparePair` lowers the read, and the read carries a bounds check whose
+`IndexError` branch **terminates the block**; emitting it into the statement's builder and then falling back would
+leave instructions after a terminator, `llc` would refuse the module, and the program would be reported as our bug
+(**ADR 0166**, exit 2). The traps are the witness: `xs[9] in xs`, `xs[-3] in xs`, `words()[5] in words()`,
+`d["b"] in d`, `xs[0][0] in xs` all raise the reference's class and sentence at exit 3 and are catchable, and
+`while i < 3:` / `print(i, xs[i] in xs)` prints CPython's `0 True` / `1 True` and then raises — a program whose
+partial output, trap and exit code all match the reference.
+
+`containerAnswerSubscript` is asked first for the same reason one-door rules exist: the needle's own base may be a
+call that hands back a container, and **ADR 0334** already materialises that answer under a rooted slot and hands
+back a subscript over a NAME. Asking it turns `words()[0] in words()` into `w = words()` / `w[0] in w` — the same
+program written two ways, which had become one answer and one refusal.
+
+The sentence was repaired in the same commit, because the row was half about it: the `%s` of the AST node became
+`exprSurface`, so the reader is told `testing pick(0) against the container xs …`, and the refusal tables assert the
+absence of `%!s(`, `*lang.` and `__cans` over every refusal the door can print — not only over the sample it was
+filed with. The capability registry's `lower.unsupported.membership-needle-unprovable` sample moved onto a program
+that still refuses, so the machine surface cannot certify a door that no longer refuses what its sample says.
+
+What the door leaves standing is written down rather than folded in, each with the reference's answer beside it: a
+needle whose kind is a run-time fact the source never settled is **Gap R.212**/**Gap R.83**; a pair asked of a
+container the SOURCE spells is **Gap R.146**'s one-word position (**ADR 0456**'s road); and the two answers that are
+wrong rather than refused — a dict literal's unclaimed slots, and a list literal built with a pair element — are
+**Gap R.564** and **Gap R.565** below. The measurement of the whole change was a build of the parent commit run over
+the same sources beside this one: every difference is a refusal becoming the reference's answer, and no program that
+answered before answers differently.
 
 <a id="gap-r-233"></a>
 
@@ -24954,3 +25003,66 @@ as its third sub-action, and the two belong in the same commit because they are 
 door. Not closed by a refusal: six of the nine compile today, and **ADR 0273** forbids a gate that costs a
 program which answers. Measured 2026-10-30, the day after **ADR 0473**'s differential sweep, with every shape
 re-run against `python3` 3.12.3 on the same machine as the compiled column.
+
+<a id="gap-r-582"></a>
+
+### Gap R.582 — a needle read out of a DICT literal keeps one word, and the dict answers `False` where the reference answers `True`
+
+```python
+d = {"a": "a", "b": 2}
+print(d["a"] in d)      # CPython True   · this backend False  at exit 0
+
+d = {"a": 1, "b": [2]}
+print(d["b"] in d)      # CPython TypeError: unhashable type: 'list'  · this backend False at exit 0
+```
+
+**ADR 0474** opened the membership door for the containers whose slots describe themselves — the ones the notebooks
+call `mixed*`/`runtime*` — and the untagged scan kept the rest, which is the right split for a container the
+compiler proved uniform. A dict LITERAL is neither proved uniform nor claimed: its slots can hold a text whose
+payload is an `@str_tab` index, and the road that serves it (`rt_dict_has`) is handed one word and a kind the
+compiler asserted. That is **ADR 0232**'s collision wearing a membership test's clothes: the first program's answer
+depends on which position in the intern table the text `"a"` happens to occupy.
+
+The second face is worse than the first, and it is the one a reader would call a bug without reading the code: a
+container asked of a dict is not an absent key, it is a key the language refuses to hash, and **ADR 0328** already
+states the rule for a key the source spells (`d[[1]]` raises `unhashable`, it does not report a miss). The gate reads
+the key back from the SOURCE — a literal, a name the program last filled with a container — so a key that is only
+reachable as `d["b"]`, a slot the object describes, has no name for the gate to read and the raise never runs.
+
+Two decisions the row keeps rather than steals: the fix is to supply the tag the objects wrote (claim the literal's
+slots, or take the pair at the dict road), NOT to loosen the payload scan, because a looser scan is exactly what made
+`1 in ["1"]` true once already; and the unhashable question is asked of the needle, which is where **ADR 0324**
+already puts it for a needle read out of a container SLOT (`[1] in xs[0]` raises from the needle's tag).
+
+Pinned today in `pkg/lang/membership_needle_pair_test.go::TestWhatTheMembershipNeedleDoorStillCannotReachIsFiledNotFixed`,
+with the answer this backend gives written beside the reference's, so the row fails the day the answer drifts and the
+day it becomes right. Measured 2026-11-01 while closing **Gap R.232** / **ADR 0474**.
+
+<a id="gap-r-583"></a>
+
+### Gap R.583 — a list literal whose element is a slot read of a call's answer is not claimed as a container whose slots describe themselves
+
+```python
+def g():
+    return [7, "z"]
+
+xs = [g()[1], 3]        # xs IS ["z", 3]
+print(xs[0] in xs)      # CPython True   · this backend False  at exit 0
+print(xs[0] not in xs)  # CPython False  · this backend True   at exit 0
+```
+
+The element door is right: **ADR 0332** and **ADR 0457** made a literal's element that is a read store the payload
+AND the tag (`rt_set_elem` + `rt_tag_elem`), and `print(xs[0])` prints `z`. What the base never got is the claim
+that says so: `literalHasPairElement` is the builder's own fact, and the container's "my slots describe themselves"
+bit — the fourteen claims **ADR 0341**'s `settleContainerKind` writes for a binding — is not set from it, so
+`mixedMembership` sees a plain list and the payload-only scan compares a text's interned index against integers.
+
+The row is filed as a CLAIM bug rather than a scan bug because that is where the fix belongs: the builder already
+knows, the binding road already has a door for saying it, and the scan is correct for a container that genuinely
+holds one kind. Compare **ADR 0459**, which is the same argument made for an object the run time builds and no
+statement named: name what the run time built, import its claims from its builder, and let the position's own roads
+answer.
+
+The same program with the haystack built by `append` answers (`xs = []` / `xs.append(g()[1])` / `xs.append(3)` /
+`print(xs[0] in xs)` is `True` on both legs), which is the parity argument that makes this a defect rather than a
+missing feature. Pinned in the same filed table beside **Gap R.582**'s rows. Measured 2026-11-01 beside **ADR 0474**.

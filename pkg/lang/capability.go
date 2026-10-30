@@ -598,10 +598,10 @@ var capabilityRefusalRegistry = []CapabilityRefusalKind{
 	{
 		Code:       "lower.unsupported.membership-needle-unprovable",
 		Shape:      "a membership test whose needle's kind the compiler cannot prove",
-		Suggestion: "test a literal or a variable whose kind the compiler knows (`\"hi\" in xs`), or compare with == — the haystack's slots describe themselves, and the needle must arrive with the kind it has (the sentence also prints the needle's Go representation, which is Gap R.232's half of this row)",
-		Rows:       []string{"L11.1", "Gap R.232", "Gap R.82"},
+		Suggestion: "test a literal or a variable whose kind the compiler knows (`\"hi\" in xs`), or compare with == — the haystack's slots describe themselves, and the needle must arrive with the kind it has; a needle that IS a slot read brings the object's own (payload, tag) pair since ADR 0474, so what still refuses here is a needle whose kind is a run-time fact the source never settled (roadmap Gap R.212, Gap R.83's two-armed answer)",
+		Rows:       []string{"L11.1", "Gap R.82", "Gap R.212"},
 		Markers:    []string{"needs a needle whose kind the compiler can prove"},
-		Sample:     "def words():\n    return [\"hi\", \"ho\"]\n\nprint(words()[0] in words())",
+		Sample:     "def pick(v):\n    if v:\n        return v\n    return \"a\"\n\nxs = [1, \"a\"]\nprint(1 if pick(0) in xs else 0)",
 	},
 	{
 		Code: "lower.unsupported.sort-loop-argument",

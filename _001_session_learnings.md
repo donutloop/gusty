@@ -18151,3 +18151,71 @@ sentence.
 **285** owed, and the capability table regenerated from the registry (`go run ./tools/captable -check`). Four of those
 cells are recomputed by tests, three more by the snapshot guard, and the ones with no guard at all — the rows-owed
 pair — are exactly the ones that went wrong this cycle.
+## Cycle: a membership needle that IS a slot read asks the pair the equality door already computes (**roadmap Gap R.232** closed; **Gap R.582**, **Gap R.583** filed; **ADR 0474**)
+
+**The tree arrived broken, and the break was a backtick.** Round 7 opened on an uncommitted working tree that did
+not compile: `pkg/lang/codegen_ir_utf8.go` holds the arena's runtime IR inside a Go RAW string, and the in-flight
+helper's comment had been written with markdown backticks — `` ; rt_str_strided answers s[a:b:c] … `k = 2` `` — so
+the first backtick closed the literal and `go build` reported `syntax error: unexpected k after top level
+declaration` 200 lines away from the culprit. Two rules came out of it: prose inside an emitted IR block is
+comment text, and the house style that avoids backticks and `**bold**` there is not cosmetic — it is the difference
+between a comment and a compiler error. (The half-written strided-text-slice road that carried the bug is **Gap
+R.243**; it goes to the next cycle with its door, its caller and its witnesses intact.)
+
+**Finishing someone else's in-flight work is a measurement job before it is a coding job.** The membership-needle
+hunk (`mixedMembership` asking `comparePair` in a scratch builder) was already in the tree and looked correct. Before
+trusting it I built the parent commit to `/tmp/gc_base`, the working tree to `/tmp/gc`, and ran every candidate
+program through all three legs — base, new, `python3` — printing only rows where something disagreed. That run is
+the row's evidence ("every CHANGED is refusal → the reference's answer; nothing that answered before answers
+differently"), and it is also what surfaced two wrong answers that neither leg had ever been asked beside the other:
+`d = {"a": "a", "b": 2}` / `print(d["a"] in d)` answering `False` (**Gap R.582**) and
+`xs = [g()[1], 3]` / `print(xs[0] in xs)` answering `False` (**Gap R.583**). Neither was caused by my change; both
+are filed with today's answer beside the reference's rather than quietly fixed at the door I happened to be standing
+at.
+
+**A door that answers one spelling of a program and declines another is the cheapest defect to find and the most
+embarrassing to leave.** `w = words()` / `w[0] in w` and `words()[0] in words()` are one program; asking
+**ADR 0334**'s materialisation before declining turns the second into the first, and the pair of rows now sits in the
+test file as a claim about that equality rather than about a feature. Same argument, second application: the guard
+table that runs the EQUALITY spelling and the MEMBERSHIP spelling of one read and fails if the first answers while
+the second refuses. `ADR 0232` says one question gets one door; the tests have to ask both doors out loud, in the
+same case, or the rule is a comment.
+
+**The scratch builder is the part a reviewer would call style, and it is the part that decides exit 2.** A slot read
+emits a bounds check whose `IndexError` branch terminates a block. Ask `comparePair` into the statement's own builder
+and bail out halfway — the shape every "try this door, else refuse" edit produces — and the module has instructions
+after a terminator, which `llc` rejects: the program's own trap becomes our bug (**ADR 0166**). The defence is a
+`strings.Builder` the pair is built into and appended only on success, plus the loop row (`while i < 3:` /
+`print(i, xs[i] in xs)`), which prints CPython's two lines and then raises and cannot be produced by a malformed
+module.
+
+**Refusal honesty is testable across a whole door, not across its sample.** The row was filed because the sentence
+printed `%!s(*lang.Call=…)` and `__cans10`; the fix is `exprSurface` in the sentence AND a table that asserts the
+absence of `%!s(`, `*lang.`, `%!d(`, `%v` and `__cans` from every refusal the door can print. The capability
+registry's sample also had to move onto a program that still refuses — a sample that starts answering turns the
+machine surface into an advertisement. That is the fourth repair of the same leak (**Gap R.249**, **Gap R.360**,
+**Gap R.563**); the guard-walk over `exprSnippet`'s node types is still owed, and this row does not pretend to pay it.
+
+**The counts moved as one set, and the suite names them for you.** 52 sources through `tools/recmerge` (record
+**11031 → 11083**), one corpus program into `conformanceStandalone()` (293 → 294 programs, 279 → 280 matrix rows,
+243 → 244 parity-asserted, oracle `match` 229 → 230), two queue rows added, and **ADR 0474** — the next number after
+the highest in `docs/adr/`. Four places quote the record's size (`roadmap.md`, `docs/operations.md`, `AGENTS.md`,
+`pkg/lang/leading_dot_float_test.go`) and `TestTheRoadmapSnapshotIsMeasuredNotRemembered` recites all of them from
+the artifacts, so the order of operations is: record, regenerate the matrix, read the numbers the guards print, and
+write those. Composing them by hand from a diff is how a snapshot becomes folklore (**Gap R.204**).
+
+**Another session pushed six commits while I was testing mine, and the collision was in the identifiers, not the
+code.** `git push` was rejected; the remote had landed the prefix `+`, a text-slice length, two `sorted`/`reversed`
+doors and rows up to **Gap R.581**. My two new rows had been named **Gap R.564**/**Gap R.565** — numbers the remote
+had already given to the unary-plus gaps — and my ADR had taken the hole at `0467` while the remote's highest was
+`0473`. AGENTS.md's ID rule ("permanent: never renumber or reuse") is what makes that collision fatal, so the rebase
+was not a merge of text but a re-registration: my rows became **Gap R.582**/**Gap R.583**, the ADR became
+**ADR 0474**, and every citation moved with them — the roadmap row, the filed tables in both test files, the ADR's
+own `Files:` line, `docs/language.md`, the README bullet, the details narrative. Two lessons: (1) choose a fresh ID
+from the ARTIFACT (`grep -oP 'Gap R\.\d+' roadmap.md | sort -n | tail -1`) at the moment you file, and re-check it
+after any fetch — the number that was free an hour ago may not be free now; (2) when a rebase conflict spans an
+append-only document (`docs/roadmap-details.md`, `_001_session_learnings.md`), a keep-both merge is only safe if you
+then verify that the OTHER side's text is untouched — one of my renumbering passes ran over an upstream section
+because `git` had lifted a common `<a id=…>` line out of the conflict region, and I only caught it by re-grepping for
+headings I had not written. Rebuilding that file from `origin/main` and re-applying my own blocks was faster and
+safer than repairing it in place.

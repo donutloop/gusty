@@ -360,12 +360,14 @@ func TestWhatTheCallResultSubscriptStillCannotReachIsFiledNotFixed(t *testing.T)
 			"", "4.0",
 			"roadmap Gap R.82 (the pair road's own sentence, kept: this row did not widen arithmetic over slots)",
 		},
-		{
-			"a slot of an answer used as a membership needle",
-			"def words():\n    return [\"hi\", \"ho\"]\n\nprint(words()[0] in words())",
-			"", "True",
-			"roadmap Gap R.232 (a needle the compiler cannot prove the kind of, and the sentence prints the node's Go representation rather than naming the construct)",
-		},
+		// The row this table carried for **Gap R.232** — `def words(): return ["hi", "ho"]` /
+		// `print(words()[0] in words())`, recorded as refusing while the reference printed `True` — is
+		// DELETED, not edited: the needle now arrives as the (payload, tag) pair the equality door already
+		// computes, and the rows live in `pkg/lang/membership_needle_pair_test.go` and
+		// `integration/membership_needle_pair_test.go`, where a shape that stops answering fails rather than
+		// quietly disappearing. The needle's base being a call's container answer is the same door as the
+		// subscript beside it (**ADR 0334**), which is what makes the two spellings one program (**ADR 0474**).
+		//
 		// A neighbour measured while writing this row, wrong for EVERY base — a literal, a variable
 		// or a call's answer alike — so the subscript road inherits the wrongness rather than causing it.
 		// The `a text-keyed dict subscripted by a number` row that used to sit here is DELETED, not edited:

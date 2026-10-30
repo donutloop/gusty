@@ -1,0 +1,40 @@
+# A membership needle that IS a slot read arrives as the (payload, tag) pair the objects wrote.
+# roadmap Gap R.232, ADR 0474 — every line is CPython's answer, checked line for line by
+# integration/membership_needle_pair_test.go.
+def words():
+    return ["hi", "ho"]
+
+w = words()
+print(w[0] in w)
+print(w[1] not in w)
+print(words()[0] in words())
+print(words()[1] in words())
+xs = [1, "a"]
+print(xs[0] in xs)
+print(xs[1] in xs)
+print(xs[0] not in xs)
+print(xs[0] in xs, xs[1] in xs, 3 in xs)
+i = 1
+print(xs[i] in xs)
+print(xs[-1] in xs)
+ys = [1, "a", None, 2.5]
+print(ys[2] in ys)
+print(ys[3] in ys, ys[1] in ys)
+nested = [[7, 8], "a"]
+print(nested[0] in nested)
+print(nested[1] in nested)
+print(nested[0][0] in nested[0])
+built = []
+built.append("q")
+built.append(1)
+print(built[0] in built)
+print(built[1] in built)
+ints = [1, 2]
+texts = ["zz", 1]
+print(texts[0] in ints)
+print(texts[1] in ints)
+if xs[1] in xs:
+    print("branch")
+print(1 if xs[1] in xs else 0)
+for v in xs:
+    print(v in xs)

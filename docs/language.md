@@ -5270,6 +5270,33 @@ the membership raise, so the sentence names the side CPython names — the needl
 for iterability. Identity equality remains identity: two separate `C()` objects compare `False`, and a slot
 compares equal to itself.
 
+**…and the NEEDLE of a membership test is read the same way** (ADR 0474, `Gap R.232`). A slot read used as the
+value being looked for arrives as the same `(payload, tag)` pair `xs[i] == v` has used since ADR 0247, because
+`xs[i] in xs` and `xs[i] == xs[j]` ask one question — is this value one of the values those slots hold:
+
+```python
+def words():
+    return ["hi", "ho"]
+
+print(words()[0] in words())     # True   (the answer is materialised, then read by the slot door — ADR 0334)
+xs = [1, "a"]
+print(xs[1] in xs)               # True   (only the object knows the slot holds a text)
+i = 1
+print(xs[i] in xs)               # True   (the read's own bounds check travels with it)
+nested = [[7, 8], "a"]
+print(nested[0] in nested)       # True   (a payload alone would be a heap handle compared to a handle)
+ints = [1, 2]
+texts = ["zz", 1]
+print(texts[0] in ints)          # False  (the tag is what keeps a text out of a list of numbers)
+print(xs[9] in xs)               # IndexError: list index out of range  (the needle's own position)
+```
+
+What still refuses is a needle whose kind is a run-time fact the source never settled — a call whose two paths
+answer different kinds (`Gap R.83`, `Gap R.212`) — and a needle that is a pair asked of a container the SOURCE
+spells, where the position keeps one word (`Gap R.146`). A dict or a list literal whose slots were never claimed
+answers such a needle by payload alone today, which is wrong rather than refused and is recorded as
+`Gap R.582` and `Gap R.583`.
+
 **…and an ordering of such a slot asks the object the same question** (ADR 0252). `<`, `<=`, `>`, `>=`
 have three answers — two numbers compared as numbers, two texts compared by their characters, and the
 `TypeError` CPython raises for a pair that does not order at all — and for a container the program built

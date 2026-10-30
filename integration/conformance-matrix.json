@@ -3894,6 +3894,27 @@
     },
     {
       "case": {
+        "id": "programs/membership_needle_pair",
+        "name": "membership_needle_pair.gy",
+        "source": "# A membership needle that IS a slot read arrives as the (payload, tag) pair the objects wrote.\n# roadmap Gap R.232, ADR 0474 — every line is CPython's answer, checked line for line by\n# integration/membership_needle_pair_test.go.\ndef words():\n    return [\"hi\", \"ho\"]\n\nw = words()\nprint(w[0] in w)\nprint(w[1] not in w)\nprint(words()[0] in words())\nprint(words()[1] in words())\nxs = [1, \"a\"]\nprint(xs[0] in xs)\nprint(xs[1] in xs)\nprint(xs[0] not in xs)\nprint(xs[0] in xs, xs[1] in xs, 3 in xs)\ni = 1\nprint(xs[i] in xs)\nprint(xs[-1] in xs)\nys = [1, \"a\", None, 2.5]\nprint(ys[2] in ys)\nprint(ys[3] in ys, ys[1] in ys)\nnested = [[7, 8], \"a\"]\nprint(nested[0] in nested)\nprint(nested[1] in nested)\nprint(nested[0][0] in nested[0])\nbuilt = []\nbuilt.append(\"q\")\nbuilt.append(1)\nprint(built[0] in built)\nprint(built[1] in built)\nints = [1, 2]\ntexts = [\"zz\", 1]\nprint(texts[0] in ints)\nprint(texts[1] in ints)\nif xs[1] in xs:\n    print(\"branch\")\nprint(1 if xs[1] in xs else 0)\nfor v in xs:\n    print(v in xs)\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "True\nFalse\nTrue\nTrue\nTrue\nTrue\nFalse\nTrue True False\nTrue\nTrue\nTrue\nTrue True\nTrue\nTrue\nTrue\nTrue\nTrue\nFalse\nTrue\nbranch\n1\nTrue\nTrue\n",
+      "python_ok": true,
+      "python_stdout": "True\nFalse\nTrue\nTrue\nTrue\nTrue\nFalse\nTrue True False\nTrue\nTrue\nTrue\nTrue True\nTrue\nTrue\nTrue\nTrue\nTrue\nFalse\nTrue\nbranch\n1\nTrue\nTrue\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/dict_entry_call_argument",
         "name": "dict_entry_call_argument.gy",
         "source": "# A dict entry handed to a CALL is the same read the printer, the condition and the fold already ask of\n# the object: the entry carries its kind beside its payload, so the argument crosses as a (payload, tag)\n# pair and the callee answers the value rather than the slot word it was read out of. Before ADR 0389 this\n# program printed `1` for the text entry — its `@str_tab` index — `3` for a float box's handle, `0` for\n# `None`, and a heap handle for a container, every one of them at the exit code of success (roadmap\n# Gap R.220). The entry decides which words travel, never the key: `None`, `True`, `0` and `\"a\"` below all\n# read the entry the object says they do (ADR 0353's rule, applied at the call boundary). An entry the\n# literal already describes as an integer keeps the one word it always had (ADR 0387's boundary).\n#\n# What this program deliberately does NOT contain: a callee that tests its own parameter (`if v:`). The\n# pair crosses for that shape too, and the callee's condition still asks the payload — roadmap Gap R.361\n# owns it, and a conformance program is only on the matrix while every line it prints is the reference's.\ndef id(v):\n    return v\n\nd = {\"a\": \"x\", \"n\": None, \"z\": 0.0, \"l\": [1, 2], \"i\": 7, \"e\": []}\nprint(id(d[\"a\"]), id(d[\"i\"]))\nprint(id(d[\"n\"]), id(d[\"z\"]), id(d[\"l\"]), id(d[\"e\"]))\nprint(id({\"a\": \"x\"}[\"a\"]))\n\ndef twice(v):\n    return v * 2\n\nprint(twice(d[\"i\"]))\n\ndef forwarded(v):\n    return id(v)\n\nprint(forwarded(d[\"a\"]), forwarded(d[\"l\"]))\n\nn = {\"a\": 2.5, \"b\": 1.5}\n\ndef total(x, y):\n    return x + y\n\nprint(total(n[\"a\"], n[\"b\"]))\n\nw = {None: 3.5, True: \"t\", 0: [4]}\nprint(id(w[None]), id(w[True]), id(w[0]))\n\ndef measure(v):\n    return v + 1\n\nprint(measure(w[None]), id(w[0]))\n\nxs = [1, \"a\", None]\nprint(id(xs[1]), id(xs[0]))\n",
@@ -6595,11 +6616,11 @@
       ]
     }
   ],
-  "rows": 279,
+  "rows": 280,
   "skipped": 36,
-  "pass": 243,
+  "pass": 244,
   "fail": 0,
-  "oracle_match": 229,
+  "oracle_match": 230,
   "oracle_debt": 24,
   "oracle_not_applicable": 26,
   "oracle_drift": 0
