@@ -20,7 +20,14 @@ A capability the retired engine had and the compiler does not is a **gap with an
 fallback: `docs/operations.md` §"One backend, and what it does not lower" lists them (nested closures,
 a function *read* as a value rather than called, run-time iteration and `sorted` over a computed container,
 `dict(<container>)` copies) with the row that owes each. A function *called* as a value answers — a higher-order
-body is cloned per tuple of functions its call sites ask for (**ADR 0345**, roadmap L11.7).
+body is cloned per tuple of functions its call sites ask for (**ADR 0345**, roadmap L11.7). A function *read* as
+a value does not, and the four ways a program reads one are four rows: returned from a function
+(**Gap R.590**), held in a container (**Gap R.591**), held in a field — where the refusal the reader gets is the
+attribute road's, about the receiver rather than the callable (**Gap R.592**) — and forwarded from one
+higher-order parameter into another, which makes the defunctionalisation pass withdraw the whole program
+(**Gap R.593**). Every one of those is a **refusal at exit 1**, never a value printed at the exit code of
+success, and none of them is on the record: the record holds answers, and a shape with no answer has no entry
+until the door that owes it opens.
 
 Refusing is therefore part of the language's surface, and it is documented as such (**ADR 0346**, roadmap
 L11.8). Each shape the compiled backend declines has a stable **code** — `lower.unsupported.<shape>` — beside

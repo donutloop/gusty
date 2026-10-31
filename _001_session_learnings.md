@@ -18524,3 +18524,51 @@ alternative, one "shared" helper with a `wide bool` flag, is a door whose width 
 - Three of the new CLI rows failed because *my expectations* were wrong, not the compiler's: the reference's
   message for a dict key is `unhashable type: 'set'`, not `'dict'`, and it is the KEY's kind that is named however
   the question is spelled. Reading `python3` before writing the assertion caught all three.
+
+## 2026-11-03 — the top row of the queue was a paragraph (L11.7's four remaining refusals filed as Gap R.590–R.593)
+
+**What the round measured.** L11.7 ("functions are values that compile") is the queue's top row and has been
+`🟨 PARTIAL` through nine ADRs. Its remaining refusals were written as *prose inside its Status cell* — "a
+callable reached through a container or a field … and a callable returned from a function, which has no …". I
+ran each of those phrases as a program: fourteen sources, every one `exit 1`, every one answered by `python3`,
+zero crashes. Prose in a status cell is not a row: it has no ID, no evidence, no definition of done, and no test
+that fails when it is fixed. The round's deliverable is four rows (**Gap R.590** returned, **Gap R.591** in a
+container, **Gap R.592** in a field, **Gap R.593** forwarded) plus the two tables that pin them.
+
+**A refusal's sentence is a claim about the program, and one of them was wrong.** `self.f = lambda x: x + 1` /
+`c.f(1)` is refused with `string-method f on a receiver that is not a text the compiler can read: c` — the
+**Gap I.2** attribute road, which decides what the RECEIVER is not before anyone notices what the FIELD holds.
+The same program with a declared function gets the same sentence. So `Gap R.592` is filed as a *diagnosis* defect
+with a representation dependency behind it, and the first half (ask what the field holds before you say what the
+receiver is not) can land alone. A guard enforces the diagnosis: if those two shapes ever start being refused by
+the value door, `TestTheFourCallableValueRowsAreEachReachable` fails and says that is a different defect needing
+its own row.
+
+**Instrumentation turned a mystery into a one-line diagnosis.** `def use(f, x): return f(x)` inside
+`def outer(g, y): return use(g, y)` refuses with the emitter's generic "not a function this backend can build a
+call to" — and, beside it, **Gap R.337**'s account: `defunctionalization declines: "g" is not a declared
+function, so it has no name to substitute`. Without that second sentence I would have written a row about the
+call door. With it, the row is about `onlyCalledInBody`, which admits a callee and the recursion's hand-back and
+has no clause for a forward. A pass that explains its own withdrawal is worth more than a pass that is right.
+
+**Refused programs do not go on the record.** The temptation was to record all fourteen (CPython's answer is
+known). I did not, and the reason is the ledger: the golden runner compares the compiled leg against the record,
+so a recorded stdout the compiler cannot reproduce is a NEW divergence and a failing `TestMain`. The drift ledger
+is where a fix breaks a pin, not where a missing feature waits. The rows say so in their own cells, so the next
+round does not "helpfully" add them.
+
+**Process lessons.**
+- The queue's `Rows owed` cell is computed by `countQueueRows`, not by me. I got it wrong twice by arithmetic
+  (289 of 497) and the guard `TestTheRoadmapSnapshotIsMeasuredNotRemembered` said 293. Run the guard; do not
+  count.
+- A test table is an artifact: my fourteen-row literal initially sat in a function body with no `return`
+  (`func f() []struct{…}{ … }` — parsed as a block, `expected 1 expression`). Give the table a named type.
+- A green run that finishes in 0.00s is a question, not a result. `-v` and a count of `--- PASS` subtests (17
+  here, no `SKIP`) is how I checked the CLI leg really ran `python3` fourteen times rather than skipping for a
+  missing interpreter.
+- Duplicated helpers are a package-wide fact: `firstLine` already existed in `integration` (`gc_stress_test.go`)
+  and `go vet` caught my redeclaration before the suite did.
+- Writing prose through a shell heredoc with `\\u2014` puts the *characters* `\u2014` in the file. `git diff`
+  after the write, not before; three rows needed a second pass.
+- The `Compile`-only legs are cheap enough to run on every row (0.2s for the unit file), which is what makes a
+  filed-not-fixed table with fourteen entries an affordable thing to keep.

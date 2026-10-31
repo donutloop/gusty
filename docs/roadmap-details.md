@@ -25351,6 +25351,156 @@ print the wrong second verdict. Pinned in
 legs' bytes beside it, and kept OUT of `integration/programs/membership_set_needle.gy`, which lists only what the
 toolchain answers — the program therefore uses two one-call functions, and the witness says what it means.
 
+<a id="gap-r-590"></a>
+
+### Gap R.590 — a callable RETURNED from a function has no value to return (OPEN, found while reading L11.7's remaining refusals)
+
+Four programs, four reference answers, one door:
+
+```python
+def make():
+    return lambda x: x * 2      # Gap R.590
+f = make()
+print(f(3))                     # 6      (this backend: exit 1)
+
+def add1(x):
+    return x + 1
+def idf(f):
+    return f
+print(idf(add1)(2))             # 3      (exit 1, and the sentence names the callee as "")
+
+def make2(k):
+    return lambda x: x * k
+print(make2(3)(2))              # 6      (exit 1)
+
+def mul2(x):
+    return x * 2
+def pick(n):
+    return add1 if n else mul2
+print(pick(1)(3))               # 4      (exit 1)
+```
+
+The door is `g.value`'s `*Lambda` arm (`codegen_value.go`), and its sentence is **ADR 0283**'s, which was
+right when it was written: "a lambda has no value to read until a call site binds it, and only a call site can
+supply one". That premise had one hole and a `return` is it — a return IS a binding site, just not one any call
+can see. The three siblings are the same hole wearing different clothes: `idf` returns a name the program
+declared (so the door reached is the CALL door one step later, and its sentence reports the callee as the empty
+string, because the position that asked is a call's answer and has no name to print); `make2` adds the capture,
+which **ADR 0370** solved for an application and no one has asked of a return; and `pick` is a ternary whose two
+arms are callables, which is **ADR 0475**'s arm-pair question with a kind the tagged union does not have.
+
+Measured 2026-11-03 off **46522bb**, `python3` and `gustyc` on the same source, all four exit 1 — refusals, not
+crashes — and none of the four is on the record. The last is deliberate: the record holds an ANSWER, and these
+programs have none. A record entry whose stdout the compiled leg cannot reproduce is a divergence, and the drift
+ledger is where a fix breaks a pin, not where a missing feature waits.
+
+Rejected: widening the defunctionalisation pass to catch this. It answers a callable that reaches a parameter by
+cloning the callee per function passed at the call site, and its own header says a function that reaches a
+return keeps the refusal — the withdrawal is the design, because nothing half-rewritten can print an answer. The
+missing thing is not a pattern; it is a word a callable can be.
+
+Pinned: `pkg/lang/callable_value_shapes_test.go` (`TestACallableThatReachesAValuePositionIsRefusedByNamedSentence`
+for the sentences, `TestARefusedCallableShapeStillRefusesTheBuild` for the exit class, and
+`TestTheCallablePassStillRewritesWhatItRewrote` for the four answered higher-order controls that must not move)
+and `integration/callable_value_shapes_test.go` (the reference's numbers, re-derived from a live `python3` before
+the compiled leg is asked, with exit 2 and exit 3 both refused for a program the reference runs to the end).
+
+<a id="gap-r-591"></a>
+
+### Gap R.591 — a callable held in a container is refused where it is stored (OPEN)
+
+```python
+ops = [lambda x: x + 1]
+print(ops[0](1))                # 2      (exit 1 — the value door)
+
+def add1(x):
+    return x + 1
+xs = [add1]
+print(xs[0](1))                 # 2      (exit 1 — the NAME door)
+tbl = {"inc": add1}
+print(tbl["inc"](1))            # 2      (exit 1 — the NAME door again, dict side)
+ys = [add1, add1]
+print(ys[0](1) + ys[1](2))      # 5      (exit 1)
+```
+
+Two doors answer one program, depending on which end is written from: a `lambda` in the literal reaches
+`g.value`'s `*Lambda` arm (**Gap R.590**'s door) and a declared function's NAME in the literal reaches the name
+door ("`add1` names function, which the compiled backend has no value for"). The distinction matters because the
+fixes are not the same fix, and a row that merged them would be closed by half of one.
+
+The dependency is stated in **L11.7**'s own cell and it is not a pattern either: a container's slot is
+`inttoptr`-packed over int64, float and the tagged value — the three-kind union **ADR 0372** widened — so a
+callable has no kind to be stored AS. `rt_list_get_tagged`/`rt_dict_get_tagged` already hand a payload and a tag;
+what is missing is a tag worth handing. The fourth row of the table above is the one that closes the door on the
+cheap answer: `xs[0](1) + xs[1](2)` asks which `define` a read names, and that is a fact about the element the
+run time put there, not about the call site — no per-site substitution can answer it, which is why this row is
+filed on the slot and not on the pass.
+
+<a id="gap-r-592"></a>
+
+### Gap R.592 — a callable held in a FIELD is refused by the wrong door (OPEN)
+
+```python
+class C:
+    def __init__(self):
+        self.f = lambda x: x + 1
+c = C()
+print(c.f(1))                   # 2      (exit 1)
+```
+
+The sentence is `string-method f on a receiver that is not a text the compiler can read: c` — **Gap I.2**'s
+attribute road. It is a true sentence about the wrong half of the program: the road decides the receiver is not a
+text long before anyone notices that what the field holds is a function, so a reader asking "why can't I store a
+function in a field?" is told about the receiver. The same program with `self.f = add1` gets the same sentence,
+which is the measurement that shows this is a filing defect and not a value defect: the store (`self.f = …`) and
+the call (`c.f(1)`) are two doors, and the reader is told about neither.
+
+That is why it is its own row rather than a face of **Gap R.591**: the first half is diagnostics — the attribute
+road asks what the FIELD holds before it says what the RECEIVER is not, and that can land alone, with no new
+representation and no risk to a program that compiles — and the second half is R.591's slot dependency wearing a
+class's clothes.
+
+The guard keeps the diagnosis honest: `TestTheFourCallableValueRowsAreEachReachable` fails if `Gap R.592`'s two
+shapes start being refused by the value door instead. That would not be this row fixed; it would be a different
+defect, and it needs its own row and its own measurement rather than a satisfied table.
+
+<a id="gap-r-593"></a>
+
+### Gap R.593 — a callable parameter FORWARDED to another function's callable position makes the whole program withdraw (OPEN)
+
+```python
+def double(x):
+    return x * 2
+def use(f, x):
+    return f(x)
+def outer(g, y):
+    return use(g, y)            # the forward
+print(outer(double, 3))         # 6      (exit 1)
+```
+
+The emitter refuses the inner call, and — because **Gap R.337** made the pass tell its story beside the refusal —
+it says why: `defunctionalization declines: "g" is not a declared function, so it has no name to substitute`.
+That account is the whole diagnosis. Inside the clone this pass mints for `outer` with entry `double`, `g` IS
+`double`; the entry resolver is looking for a declared name where it should be asking the clone which entry it was
+made for.
+
+The proof that has to grow is `onlyCalledInBody`: it accepts a parameter occurrence that is the callee of a call,
+and one that the recursion hands back to itself (**ADR 0364**'s precedent — a position that NAMES the entry rather
+than reading it). A forward is exactly the third case: an occurrence that cannot be read as a value, because the
+only thing that can come of it is a call. The plan has to grow with it, because the inner call's entry tuple is
+derived from the enclosing clone's tuple — sites are collected from the source today, and this site exists only
+inside a clone, which is also why forwarding twice (`call_it` → `forward` → `use`) refuses with the same words:
+the collection needs a fixpoint over clones, not one pass over the source. The rewrite itself is the easy half:
+the recursion road already keys a body's calls by rank, and a clone is a copy whose k-th call is the k-th call of
+its body.
+
+Three programs are pinned, chosen to be the minimal triples of each axis: one level of forward, two levels (the
+nesting axis), and one parameter forwarded to two different calls (the rank axis). The three answered controls in
+the same file — a callable argument, a lambda argument, a callable parameter called twice, and
+`sorted(…, key=…)` — are the wall beside the door (**ADR 0273**: a gate may not cost a program that runs), and the
+pass's all-or-nothing posture is what makes the filing safe: every shape the widened proof cannot prove keeps
+today's refusal, word for word, at exit 1.
+
 <a id="gap-r-584"></a>
 
 ### Gap R.584 — a `return` whose arm is a container literal puts the compile-time global in the ternary's `phi`, and `llc` rejects the module
