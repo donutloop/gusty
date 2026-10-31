@@ -1498,16 +1498,12 @@ func (g *irGen) taggedSlotWords(b *strings.Builder, e Expr) (payload, tag string
 // is a constant this pass already looked at, and the literal path keeps its own gate (`dictWantsContainerKey`)
 // and its own open row (Gap R.81) — this guard covers exactly the door ADR 0310 opened, and nothing wider.
 func (g *irGen) guardHashableTag(b *strings.Builder, tag string, sp Span) {
-	for _, k := range []struct {
-		tg   int32
-		name string
-	}{
-		{int32(TagList), "list"},
-		{int32(TagDict), "dict"},
-		{int32(TagSet), "set"},
-	} {
+	// The store side of the one table (unhashable_key.go): a key and a set MEMBER are refused all three
+	// kinds — the frozenset conversion belongs to a lookup asked BY a set, never to a write into one
+	// (`s.add({1})` raises in the reference), so this door asks for the no-conversion reading.
+	for _, k := range unhashableNeedleKinds(false) {
 		c := g.newTmp()
-		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, tag, k.tg)
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, tag, k.tag)
 		g.markI1(c)
 		g.branchRaise(b, c, "TypeError", "unhashable type: '"+k.name+"'", sp, "hash")
 	}
@@ -4766,20 +4762,13 @@ func unhashableSentence(kind string) string {
 // reference converts a set needle to a frozenset and answers instead of raising (roadmap L11.1,
 // Gap R.95's needle half).
 func (g *irGen) guardHashableNeedle(b *strings.Builder, needleTag string, sp Span, everyContainer bool) {
-	kinds := []struct {
-		tg   int32
-		name string
-	}{{int32(TagList), "list"}, {int32(TagDict), "dict"}}
-	if everyContainer {
-		kinds = append(kinds, struct {
-			tg   int32
-			name string
-		}{int32(TagSet), "set"})
-	}
-	for _, t := range kinds {
+	// The one table the compile-time gate reads too (unhashable_key.go, ADR 0232): `everyContainer` is the
+	// dict's answer — a key is hashed by its own type — and its absence is the SET's frozenset conversion,
+	// which is what keeps `{1} in {1, 2}` an answer and `[1] in {1, 2}` a raise (roadmap Gap R.586).
+	for _, t := range unhashableNeedleKinds(!everyContainer) {
 		bad, chk := g.newLabel("in.unhash"), g.newLabel("in.hashok")
 		c := g.newTmp()
-		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, needleTag, t.tg)
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, needleTag, t.tag)
 		g.markI1(c)
 		fmt.Fprintf(b, "  br i1 %s, label %%%s, label %%%s\n", c, bad, chk)
 		fmt.Fprintf(b, "%s:\n", bad)

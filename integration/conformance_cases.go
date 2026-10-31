@@ -857,6 +857,15 @@ func conformanceStandalone() []lang.ConformanceCase {
 		// five of the raises taken by the program's own `except TypeError` are in this one program, whose expectation
 		// is what CPython printed for it (roadmap Gap R.233, ADR 0336).
 		"slice_bounds",
+		// A set asked of a set ANSWERS: `print({1} in {1, 2})` is the reference's `False`, because a SET converts
+		// a set needle to the frozenset it hashes as (`set_contains`) and looks THAT up, and this language has no
+		// `frozenset` for the lookup to find — so no member answers to it. The unhashable sentence stayed where the
+		// reference puts it: a dict asks the KEY's own hash (`{1} in {1: 2}` raises), a tuple is hashed element by
+		// element (`(1, {2}) in {1, 2}` names 'set'), and a list walks (`{1} in [{1}]` is True). The named and
+		// spelled spellings of both sides, a call's container answer at each position, the handle-beside-the-number
+		// collision the tag prevents, and four of the raises taken by the program's own `except TypeError as err`
+		// are in this one program, whose expectation is what CPython printed for it (roadmap Gap R.586, ADR 0478).
+		"membership_set_needle",
 		// The slice road asks its BASE before it asks its bounds: a set has no position to slice from, so
 		// `print(s[0:1])` over `s = {1, 2}` raises `TypeError: 'set' object is not subscriptable`, and a dict
 		// HASHES the slice and reports the miss by naming the key, so `print(d[0:1])` over `d = {1: 2}` raises

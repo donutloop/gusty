@@ -80,10 +80,32 @@ type spelledScalarFrame struct {
 	// literal. A name absent from it has no promise; a name present in `bound` without being present here
 	// was bound by some other road.
 	kindOf map[string]spelledScalar
+	// containerOf holds the names whose WHOLE story is one or more top-level assignments of a spelled
+	// CONTAINER literal that all spell the SAME family (roadmap Gap R.586 — `programPromisesASet`). The rule
+	// is kindOf's, widened by exactly one measure: kindOf may demand a single binder because its candidates
+	// are scalars of one kind, while a container name rebound to a second literal of the family it already
+	// had is still that family whatever the run does — so this table counts the binders it spelled and lets
+	// the prune below compare the two counts. Any binder this pass did not spell — one inside an `if` arm, a
+	// loop target, an augmented assignment, a `with … as` — leaves the counts unequal and retires the name.
+	containerOf map[string]spelledContainer
+	// containerBinders counts the container literals pass 2 spelled per name. It is the numerator of the
+	// promise; `bound` is the denominator.
+	containerBinders map[string]int
 	// bound counts every binder the frame's own statements run — every road, at every depth of control
 	// flow, including the ones that hide inside expressions (a comprehension's target, a walrus). A nested
 	// `def` or `class` is NOT descended: its binders belong to its own frame.
 	bound map[string]int
+}
+
+// spelledContainer is a name's promise about its own container family, and the last line a binding of it
+// stands on, for the same reason a spelledScalar carries one: a read written ABOVE its bindings reads names
+// that have no value yet, and a door that answered for it would be answering a program whose complaint is a
+// NameError. `dead` marks a name that spelled two different families — the promise is off, and the name may
+// not be re-granted by a later literal of either one.
+type spelledContainer struct {
+	family string
+	line   int
+	dead   bool
 }
 
 // beginSpelledScalars installs the table for the frame about to be emitted and returns the closure that puts
@@ -104,7 +126,7 @@ func (g *irGen) beginSpelledScalars(body []Stmt, cross map[string]bool) func() {
 // program-wide reading gives: the answer must not depend on which statement the emitter happens to be
 // standing in (**ADR 0343**'s rule about a run-scoped fact).
 func scanSpelledScalars(g *irGen, body []Stmt, parent *spelledScalarFrame, cross map[string]bool) *spelledScalarFrame {
-	f := &spelledScalarFrame{parent: parent, kindOf: map[string]spelledScalar{}, bound: map[string]int{}}
+	f := &spelledScalarFrame{parent: parent, kindOf: map[string]spelledScalar{}, containerOf: map[string]spelledContainer{}, containerBinders: map[string]int{}, bound: map[string]int{}}
 	// Pass 1: every binder road anywhere in this frame.
 	countStmtBinders(body, f.bound)
 	// Pass 2: the candidates — a top-level `x = <no-member literal>`. The candidate table is only trusted
@@ -117,6 +139,31 @@ func scanSpelledScalars(g *irGen, body []Stmt, parent *spelledScalarFrame, cross
 		nm, ok := as.Target.(*Name)
 		if !ok || nm == nil || nm.Value == "" {
 			continue
+		}
+		// The container promise, recorded beside the scalar one from the same statement and pruned by the same
+		// two rules below: a name whose whole story is `s = {1, 2}` is a set whatever the program does next
+		// (roadmap Gap R.586).
+		if fam := containerLiteralFamily(g, as.Value); fam != "" {
+			line := 0
+			if sp := as.Span(); !sp.IsZero() {
+				line = sp.Line
+			}
+			had, seen := f.containerOf[nm.Value]
+			if seen && had.dead {
+				f.containerBinders[nm.Value]++
+				continue
+			}
+			if seen && had.family != fam {
+				// Two spelled bindings, two families: no family is this name's promise.
+				f.containerOf[nm.Value] = spelledContainer{dead: true}
+				f.containerBinders[nm.Value]++
+				continue
+			}
+			if seen && line < had.line {
+				line = had.line
+			}
+			f.containerOf[nm.Value] = spelledContainer{family: fam, line: line}
+			f.containerBinders[nm.Value]++
 		}
 		tag, spelled := spelledNoMemberKindLiteral(as.Value)
 		if !spelled {
@@ -158,14 +205,112 @@ func scanSpelledScalars(g *irGen, body []Stmt, parent *spelledScalarFrame, cross
 	// than the candidate assignment is not one either.
 	for nm := range cross {
 		delete(f.kindOf, nm)
+		delete(f.containerOf, nm)
 		f.bound[nm]++
 	}
 	for nm, n := range f.bound {
 		if n != 1 {
 			delete(f.kindOf, nm)
 		}
+		// The container promise survives several binders only when this pass spelled every one of them, and
+		// spelled them all into one family (`dead` above). Anything else — a binder in an arm, a loop target,
+		// a `with … as`, a value that is not a literal — is a run-time fact, and this file does not trade an
+		// answer for a run-time fact (**ADR 0452**, **ADR 0453**).
+		if f.containerBinders[nm] != n {
+			delete(f.containerOf, nm)
+			continue
+		}
+		if c, seen := f.containerOf[nm]; seen && c.dead {
+			delete(f.containerOf, nm)
+		}
 	}
 	return f
+}
+
+// containerLiteralFamily names the family of a spelled container literal — the one question
+// `containerShapeOf` already answers, asked here so the promise table and the operator doors cannot
+// disagree about what `{1, 2}` is (**ADR 0232**). `set()` is the empty set spelled by its call, and it is
+// the same literal: `emptyContainerCall` is the door that already recognises it.
+func containerLiteralFamily(g *irGen, e Expr) string {
+	switch e.(type) {
+	case *ListLit, *DictLit, *SetLit, *Tuple:
+		return containerShapeOf(e)
+	}
+	if c, isCall := e.(*Call); isCall && g != nil {
+		if lit, isEmpty := g.emptyContainerCall(c); isEmpty {
+			return containerShapeOf(lit)
+		}
+	}
+	return ""
+}
+
+// programPromisesASet is the answer a door may build a TRAP-FREE decision on: does this expression denote a
+// SET, and is that a fact about the PROGRAM rather than a summary of what a pass happened to see?
+//
+// roadmap **Gap R.586** · **ADR 0453** (the discipline this copies) · **ADR 0232**
+//
+// The membership door needs the set's kind to decide whether the haystack converts the needle to the
+// frozenset it hashes as, and it cannot get that from the name-keyed claims. Those are a SUMMARY of the
+// assignments a pass has seen, and one statement breaks them:
+//
+//	s = {"a": 1}
+//	if no():
+//	    s = {1, 2}
+//	print({1} in s)      # the run-time haystack is the DICT; the reference raises TypeError
+//
+// A door that read the last-emitted claim would skip the raise and answer `False` — a wrong answer at the
+// exit code of success, which is the trade **ADR 0452** and **ADR 0453** both refuse to make. So a NAME is
+// trusted only on the promise this file's frame already gives a scalar: exactly one binder, in the frame
+// that owns the name, that binds a spelled set literal, standing BEHIND the read, and not a name another
+// frame writes through `global`.
+//
+// One reading is left, and it is the strongest of the three: a name the source never binds at all. Those
+// names are the compiler's own — a container answer materialised under the rooted slot a container variable
+// occupies (`__cansN`, container_return.go) — and the only road that can write one is the line that minted
+// it, so its recorded kind IS a promise. Every other shape declines, and the door keeps the answer it always
+// gave: a missing exemption is a filed gap, a wrong one is an exit 0.
+func (g *irGen) programPromisesASet(e Expr, readLine int) bool {
+	if e == nil || g == nil {
+		return false
+	}
+	if containerLiteralFamily(g, e) == "set" {
+		return true
+	}
+	nm, isName := e.(*Name)
+	if !isName || nm.Value == "" {
+		return false
+	}
+	if g.spelledScalars == nil {
+		// No frame: this read stands somewhere the binder walk never ran, and a claim read from here is a
+		// summary again. Decline, which is the safe direction — the gate keeps raising what it raises today.
+		return false
+	}
+	for f := g.spelledScalars; f != nil; f = f.parent {
+		if n := f.bound[nm.Value]; n > 0 {
+			// This frame owns the name; whatever an outer frame said about the same spelling is another variable.
+			if n != f.containerBinders[nm.Value] {
+				return false
+			}
+			c, ok := f.containerOf[nm.Value]
+			if !ok || c.dead || c.family != "set" {
+				return false
+			}
+			return c.line > 0 && readLine > c.line
+		}
+	}
+	// No frame binds it: a compiler-minted slot, whose kind the minting road wrote and nothing else can
+	// change. Ask the one door that knows what a minted name holds.
+	if _, declared := g.allocd[nm.Value]; !declared {
+		return false
+	}
+	if g.runtimeSets[nm.Value] {
+		return true
+	}
+	if lit, has := g.containerLits[nm.Value]; has {
+		_, isSet := lit.(*SetLit)
+		return isSet
+	}
+	return false
 }
 
 // spelledScalarKindName answers the membership door: does this NAME stand for a value whose kind the program

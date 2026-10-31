@@ -386,7 +386,7 @@ func (g *irGen) checkKeyReadTagged(b *strings.Builder, h, key, keyTag string, ke
 	// A key the language refuses to hash is not a missing entry, and the two questions must be
 	// asked in that order: the reference raises TypeError naming the type, and a scan that cannot
 	// match the key would otherwise report KeyError (roadmap Gap R.217, ADR 0328).
-	if res, bad := g.unhashableKeyGate(b, keyExpr, sp); bad {
+	if res, bad := g.unhashableKeyGate(b, keyExpr, nil, sp); bad {
 		_ = res
 		return
 	}
@@ -408,7 +408,7 @@ func (g *irGen) checkKeyRead(b *strings.Builder, h, key string, keyExpr Expr, sp
 	// Asked before the dict is consulted, for the same reason as the tagged door above: a list,
 	// dict or set key is unhashable, and a scan that can never match it answers "no such entry"
 	// where the reference raises TypeError naming the type (roadmap Gap R.217, ADR 0328).
-	if res, bad := g.unhashableKeyGate(b, keyExpr, sp); bad {
+	if res, bad := g.unhashableKeyGate(b, keyExpr, nil, sp); bad {
 		_ = res
 		return
 	}

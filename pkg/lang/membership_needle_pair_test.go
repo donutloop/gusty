@@ -680,17 +680,10 @@ func TestWhatTheObjectNeedleDoorStillCannotReachIsFiledNotFixed(t *testing.T) {
 		gap      string
 		raises   bool // the compiled answer is a raise, read off the traceback
 	}{
-		{
-			// **Gap R.586**, measured while closing Gap R.582: the reference converts a set needle to the
-			// frozenset it hashes as and answers; this backend refuses to hash it at all. The unhashable
-			// guard this cycle grew is keyed by kind for exactly this reason, and the raise predates it —
-			// the same program answers identically at the parent commit.
-			"a set asked of a set answers, it does not raise",
-			"print({1} in {1, 2})",
-			"TypeError: unhashable type: 'set'", "False",
-			"roadmap Gap R.586 (no frozenset to hash a set needle as, and the guard asks the tag before the haystack asks the kind)",
-			true,
-		},
+		// The row this table was written for closed as **Gap R.586**: `print({1} in {1, 2})` answers the
+		// reference's `False`, because a SET haystack converts a set needle to the frozenset it hashes as. The
+		// answered half, the raise half and the residue that door still declines all live in
+		// `membership_set_needle_test.go`, which is the door now (roadmap Gap R.588, Gap R.587).
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

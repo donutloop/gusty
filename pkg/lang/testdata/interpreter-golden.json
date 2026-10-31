@@ -1,5 +1,258 @@
 {
  "entries": {
+"# A set asked of a set answers; it does not refuse to hash itself (roadmap Gap R.586, ADR 0478).\n#\n# `print({1} in {1, 2})` died `TypeError: unhashable type: 'set'` at exit 3 where the reference prints\n# `False`. The sentence was CPython's own rule placed at the wrong door: a SET does not ask a set needle for\n# its hash — `set_contains` converts the needle to the frozenset it hashes as and looks THAT up — and this\n# language has no `frozenset` to find, so the conversion finds no member and the answer is absence. A dict\n# takes no such conversion (`dict.__contains__` asks the key's own hash), which is why `{1} in {1: 2}` keeps\n# raising, and a tuple is hashed element by element, which is why `(1, {2}) in {1, 2}` names 'set'.\n#\n# The program is the pair the row turns on: the same needle, asked of the two haystacks, answering and\n# raising as the reference does, and the raises below are taken by the program's own `except TypeError`\n# because a program's exception is the program's (ADR 0214).\n\n# The row's own shape, and the two spellings of each side.\nprint({1} in {1, 2})\ns = {1, 2}\nprint({1} in s)\nn = {1}\nprint(n in {1, 2})\nm = {1, 2}\nprint(n in m)\n\n# A payload is not a value: a set needle's word is a heap handle, the members' words are small numbers, and\n# the tag beside them is what keeps `{0} in {0}` from finding a member that was never stored (ADR 0232).\nz = {0}\nprint({0} in z)\nprint({1} in z)\nprint({1} in {0, 1, 2, 3, 4, 5})\nprint((1, 2) in {(1, 2)})\nprint({1} in {(1, 2)})\n\n# A verdict, in every position a verdict reaches: `not in`, a condition, `and`, a ternary, a parameter.\nprint({1} not in s)\nif {1} in s:\n    print(\"yes\")\nelse:\n    print(\"no\")\nprint({1} in {1, 2} and 1 or 2)\nprint(\"member\" if {1} in s else \"absent\")\ndef holdsSet(needle):\n    return needle in s\ndef holdsInt(needle):\n    return needle in s\nprint(holdsSet({1}))\nprint(holdsInt(1))\n\n# The haystack and the needle may both be a call's answer: the container the call hands back is materialised\n# under the rooted slot a container variable occupies, and the kind that slot carries was written by the road\n# that minted it.\ndef pair():\n    return {1, 2}\ndef single():\n    return {1}\nprint({1} in pair())\nprint(single() in pair())\nprint(single() in {1, 2})\n\n# A set asked of a LIST is the content question, and a list can hold a set — the exemption belongs to the\n# hashing haystacks alone, and reaching past it would answer `False` to these.\nprint({1} in [{1}])\nprint({1} in [2])\nbuckets = [{1}, {2}]\nprint({1} in buckets)\nprint(buckets[0] in buckets)\n\n# The kinds the reference really does refuse to hash, taken by the program's own handler: a list and a dict\n# are unhashable for every haystack, and a set is unhashable as a KEY.\ntry:\n    print([1] in s)\nexcept TypeError as err:\n    print(\"list:\", err)\ntry:\n    print({1: 2} in s)\nexcept TypeError as err:\n    print(\"dict:\", err)\nd = {1: \"a\"}\ntry:\n    print({1} in d)\nexcept TypeError as err:\n    print(\"key:\", err)\ntry:\n    print((1, {2}) in s)\nexcept TypeError as err:\n    print(\"carried:\", err)\n\n# The exemption is not a raise in disguise and not a fold: the handler does not run for the exempt pair, and\n# an operand's own effect still happens before the answer is decided.\ntry:\n    print({1} in s)\nexcept TypeError:\n    print(\"unreachable\")\ndef noisyNeedle():\n    print(\"needle\")\n    return {1}\ndef noisyHay():\n    print(\"hay\")\n    return {1, 2}\nprint(noisyNeedle() in {1, 2})\nprint(noisyHay() == {1, 2})\n": {
+    "stdout": "False\nFalse\nFalse\nFalse\nFalse\nFalse\nFalse\nTrue\nFalse\nTrue\nno\n2\nabsent\nFalse\nTrue\nFalse\nFalse\nFalse\nTrue\nFalse\nTrue\nTrue\nlist: unhashable type: 'list'\ndict: unhashable type: 'dict'\nkey: unhashable type: 'set'\ncarried: unhashable type: 'set'\nFalse\nneedle\nFalse\nhay\nTrue\n",
+    "hasStdout": true
+   },
+"a = {1, 2}\nb = {1, 2}\nprint(a in b)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"d = {1: 2}\nprint({1} in d)": {
+    "err": "TypeError: unhashable type: 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'set'"
+   },
+
+"def f():\n    return {1}\nprint(f() in {1, 2})": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def g():\n    return {1, 2}\nprint({1} in g())": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"def hs():\n    print(\"build\")\n    return {1, 2}\nprint({1} in hs())": {
+    "stdout": "build\nFalse\n",
+    "hasStdout": true
+   },
+
+"def nz():\n    print(\"needle\")\n    return {1}\nprint(nz() in {1, 2})": {
+    "stdout": "needle\nFalse\n",
+    "hasStdout": true
+   },
+
+"n = [1]\ns = {1, 2}\nprint(n in s)": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"n = {1, 2}\ns = {1, 2}\nprint(n in s)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"n = {1}\nd = {1: 2}\nprint(n in d)": {
+    "err": "TypeError: unhashable type: 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'set'"
+   },
+
+"n = {1}\nprint(n in {1, 2})": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"n = {1}\ns = {1, 2}\nprint(n in s)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(\"a\" in {\"a\"})": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"print((1, {2}) in {1, 2})": {
+    "err": "TypeError: unhashable type: 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'set'"
+   },
+
+"print((1,) in {1, 2})": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print(([1],) in {1, 2})": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"print(set() in {1, 2})": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print({1: 2} in {1, 2})": {
+    "err": "TypeError: unhashable type: 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'dict'"
+   },
+
+"print({1} in [2])": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print({1} in set())": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print({1} in {1, 2} and 1 or 2)": {
+    "stdout": "2\n",
+    "hasStdout": true
+   },
+
+"print({1} in {1, 2})": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print({1} in {1: 2})": {
+    "err": "TypeError: unhashable type: 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'set'"
+   },
+
+"print({1} in {1})": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"print({1} in {2, 3})": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"s = {(1, 2)}\nprint({1} in s)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"s = {0, 1, 2, 3, 4, 5}\nprint({1} in s)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"s = {0}\nn = {1}\nprint(n in s)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"s = {0}\nprint({0} in s)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ndef f(x):\n    return x in s\nprint(f({1}))": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nif {1} in s:\n    print(\"yes\")\nelse:\n    print(\"no\")": {
+    "stdout": "no\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nn = {1}\nprint([n in s, {1} in s, n in [1], n in [n]])": {
+    "stdout": "[False, False, False, True]\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nprint((\"yes\" if {1} in s else \"no\"))": {
+    "stdout": "no\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nprint([1] not in s)": {
+    "err": "TypeError: unhashable type: 'list'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'list'"
+   },
+
+"s = {1, 2}\nprint({1: \"a\"} in s)": {
+    "err": "TypeError: unhashable type: 'dict'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'dict'"
+   },
+
+"s = {1, 2}\nprint({1} in s)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nprint({1} in s, {1} not in s)": {
+    "stdout": "False True\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nprint({1} not in s)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = [1]\nprint({1} in s)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\ns = {\"a\": 1}\nprint({1} in s)": {
+    "err": "TypeError: unhashable type: 'set'",
+    "exnType": "TypeError",
+    "exnMsg": "unhashable type: 'set'"
+   },
+
+"s = {1, 2}\ns = {3}\nprint({1} in s)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"s = {1, 2}\nwhile {1} in s:\n    print(\"in\")\n    break\nprint(\"done\")": {
+    "stdout": "done\n",
+    "hasStdout": true
+   },
+
+"s = {1}\ns = {2}\ns = {3}\nprint({1} in s)": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"try:\n    print((1, {2}) in {1, 2})\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"try:\n    print([1] in {1, 2})\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"try:\n    print({1} in {1, 2})\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "False\n",
+    "hasStdout": true
+   },
+
+"try:\n    print({1} in {1: 2})\nexcept TypeError:\n    print(\"caught\")": {
+    "stdout": "caught\n",
+    "hasStdout": true
+   },
+
+"xs = [{1}, {2}]\nprint(xs[0] in xs)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
+
+"xs = [{1}, {2}]\nprint({1} in xs)": {
+    "stdout": "True\n",
+    "hasStdout": true
+   },
 "def b():\n    return [1, 2, 3]\n\ns = \"abcd\"\nxs = [1, 2, 3]\nys = [1.5, \"a\"]\nflt = 1.5\ntxt = \"a\"\nlst = [1]\ndct = {1: 2}\n\nprint(xs[0:2], xs[1:], xs[:2], xs[::2], xs[-3:], xs[0:3:2])\nprint(s[1:3], s[:2], s[::2], s[-2:], s[::-1])\nprint(xs[None:None], xs[::None], xs[None:2], s[None:None], s[None::None])\nprint(xs[True:True], ys[True:True], xs[0:True])\nprint(ys[0:2], len(ys[0:2]))\nzs = xs[0:2]\nprint([x * 2 for x in zs])\nprint(1 in xs[0:2], xs[0:2] == [1, 2], s[1:3] == \"bc\")\n\ntry:\n    print(xs[0:txt])\nexcept TypeError:\n    print(\"raised: text low\")\ntry:\n    print(xs[txt:3])\nexcept TypeError:\n    print(\"raised: text high\")\ntry:\n    print(xs[0:2:txt])\nexcept TypeError:\n    print(\"raised: text step\")\ntry:\n    print(xs[flt:3])\nexcept TypeError:\n    print(\"raised: float low\")\ntry:\n    print(s[0:flt])\nexcept TypeError:\n    print(\"raised: float high\")\ntry:\n    print(xs[0:lst])\nexcept TypeError:\n    print(\"raised: list low\")\ntry:\n    print(xs[0:dct])\nexcept TypeError:\n    print(\"raised: dict low\")\ntry:\n    print(xs[0:(1, 2)])\nexcept TypeError:\n    print(\"raised: tuple low\")\ntry:\n    print(len(xs[0:txt]))\nexcept TypeError:\n    print(\"raised: length of bad bound\")\ntry:\n    for v in xs[0:txt]:\n        print(v)\nexcept TypeError:\n    print(\"raised: for over bad bound\")\ntry:\n    if xs[0:txt]:\n        print(\"truthy\")\nexcept TypeError:\n    print(\"raised: truthiness of bad bound\")\ntry:\n    print(xs[0:txt] == [1])\nexcept TypeError:\n    print(\"raised: equality of bad bound\")\ntry:\n    print(1 in xs[0:txt])\nexcept TypeError:\n    print(\"raised: membership of bad bound\")\ntry:\n    z = xs[0:txt]\n    print(z)\nexcept TypeError:\n    print(\"raised: bound from bad bound\")\ntry:\n    print(xs[0:txt][0:1])\nexcept TypeError:\n    print(\"raised: slice of bad bound\")\ntry:\n    print(b()[0:txt])\nexcept TypeError:\n    print(\"raised: call-answer base\")\ntry:\n    print(s[0:txt])\nexcept TypeError:\n    print(\"raised: text base\")\n\ntry:\n    print(xs[::0])\nexcept ValueError:\n    print(\"raised: zero step\")\ntry:\n    print(xs[0:2:0])\nexcept ValueError:\n    print(\"raised: zero step with bounds\")\ntry:\n    print(s[::0])\nexcept ValueError:\n    print(\"raised: zero step on a text\")\ntry:\n    k = 0\n    print(xs[::k])\nexcept ValueError:\n    print(\"raised: zero step in a name\")\nprint(xs[::2], xs[::-1], xs[0:4:2])\nk2 = 2\nprint(xs[::k2], s[::2])\n\n# The bounds whose kind the source does not spell: a slot's tag, a call's answer word, a dict's value, a\n# class's field, and the argument a CALLER chose. The tag beside the payload answers what the source would\n# have spelled, and a tag that says `None` is the side of the slice the program never wrote\n# (roadmap Gap R.237, ADR 0477).\nslots = [\"a\"]\nnums = [1, 2]\nnones = [None]\noks = [True]\nbag = {\"k\": \"v\"}\nnumbag = {\"k\": 2}\n\ndef give_text():\n    return \"a\"\n\ndef give_float():\n    return 1.5\n\ndef give_int():\n    return 1\n\ndef give_none():\n    return None\n\ndef at(k):\n    local = [1, 2, 3]\n    return local[0:k]\n\ndef at_by_number(k):\n    local = [1, 2, 3]\n    return local[0:k]\n\ndef at_by_word(k):\n    local = [1, 2, 3]\n    return local[0:k]\n\ndef speak():\n    print(\"side\")\n    return \"a\"\n\nclass Case:\n    def __init__(self):\n        self.k = \"x\"\n\nc = Case()\nprint(xs[nums[0]:3], xs[nones[0]:3], xs[oks[0]:2])\nprint(xs[0:give_int()], xs[0:give_none()], at(2))\nprint(xs[0:numbag[\"k\"]], xs[nums[0] + nums[1]:3], s[nums[1]:4])\ntry:\n    print(xs[slots[0]:3])\nexcept TypeError:\n    print(\"raised: text in a slot\")\ntry:\n    print(xs[1:slots[0]])\nexcept TypeError:\n    print(\"raised: text in a slot, high\")\ntry:\n    print(xs[::slots[0]])\nexcept TypeError:\n    print(\"raised: text in a slot, step\")\ntry:\n    print(xs[give_text():3])\nexcept TypeError:\n    print(\"raised: text handed back by a call\")\ntry:\n    print(xs[0:give_float()])\nexcept TypeError:\n    print(\"raised: float handed back by a call\")\ntry:\n    print(at_by_number(1.5))\nexcept TypeError:\n    print(\"raised: float handed to a parameter\")\ntry:\n    print(at_by_word(\"1\"))\nexcept TypeError:\n    print(\"raised: text handed to a parameter\")\ntry:\n    print(xs[0:bag[\"k\"]])\nexcept TypeError:\n    print(\"raised: text in a dict's slot\")\ntry:\n    print(xs[0:c.k])\nexcept TypeError:\n    print(\"raised: text in a class's field\")\ntry:\n    print(xs[speak():3])\nexcept TypeError:\n    print(\"raised: a bound that spoke first\")\nprint(\"after the spoke\")\n": {
     "stdout": "[1, 2] [2, 3] [1, 2] [1, 3] [1, 2, 3] [1, 3]\nbc ab ac cd dcba\n[1, 2, 3] [1, 2, 3] [1, 2] abcd abcd\n[] [] [1]\n[1.5, 'a'] 2\n[2, 4]\nTrue True True\nraised: text low\nraised: text high\nraised: text step\nraised: float low\nraised: float high\nraised: list low\nraised: dict low\nraised: tuple low\nraised: length of bad bound\nraised: for over bad bound\nraised: truthiness of bad bound\nraised: equality of bad bound\nraised: membership of bad bound\nraised: bound from bad bound\nraised: slice of bad bound\nraised: call-answer base\nraised: text base\nraised: zero step\nraised: zero step with bounds\nraised: zero step on a text\nraised: zero step in a name\n[1, 3] [3, 2, 1] [1, 3]\n[1, 3] ac\n[2, 3] [1, 2, 3] [2]\n[1] [1, 2, 3] [1, 2]\n[1, 2] [] cd\nraised: text in a slot\nraised: text in a slot, high\nraised: text in a slot, step\nraised: text handed back by a call\nraised: float handed back by a call\nraised: float handed to a parameter\nraised: text handed to a parameter\nraised: text in a dict's slot\nraised: text in a class's field\nside\nraised: a bound that spoke first\nafter the spoke\n",
     "hasStdout": true

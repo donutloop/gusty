@@ -1,0 +1,99 @@
+# A set asked of a set answers; it does not refuse to hash itself (roadmap Gap R.586, ADR 0478).
+#
+# `print({1} in {1, 2})` died `TypeError: unhashable type: 'set'` at exit 3 where the reference prints
+# `False`. The sentence was CPython's own rule placed at the wrong door: a SET does not ask a set needle for
+# its hash — `set_contains` converts the needle to the frozenset it hashes as and looks THAT up — and this
+# language has no `frozenset` to find, so the conversion finds no member and the answer is absence. A dict
+# takes no such conversion (`dict.__contains__` asks the key's own hash), which is why `{1} in {1: 2}` keeps
+# raising, and a tuple is hashed element by element, which is why `(1, {2}) in {1, 2}` names 'set'.
+#
+# The program is the pair the row turns on: the same needle, asked of the two haystacks, answering and
+# raising as the reference does, and the raises below are taken by the program's own `except TypeError`
+# because a program's exception is the program's (ADR 0214).
+
+# The row's own shape, and the two spellings of each side.
+print({1} in {1, 2})
+s = {1, 2}
+print({1} in s)
+n = {1}
+print(n in {1, 2})
+m = {1, 2}
+print(n in m)
+
+# A payload is not a value: a set needle's word is a heap handle, the members' words are small numbers, and
+# the tag beside them is what keeps `{0} in {0}` from finding a member that was never stored (ADR 0232).
+z = {0}
+print({0} in z)
+print({1} in z)
+print({1} in {0, 1, 2, 3, 4, 5})
+print((1, 2) in {(1, 2)})
+print({1} in {(1, 2)})
+
+# A verdict, in every position a verdict reaches: `not in`, a condition, `and`, a ternary, a parameter.
+print({1} not in s)
+if {1} in s:
+    print("yes")
+else:
+    print("no")
+print({1} in {1, 2} and 1 or 2)
+print("member" if {1} in s else "absent")
+def holdsSet(needle):
+    return needle in s
+def holdsInt(needle):
+    return needle in s
+print(holdsSet({1}))
+print(holdsInt(1))
+
+# The haystack and the needle may both be a call's answer: the container the call hands back is materialised
+# under the rooted slot a container variable occupies, and the kind that slot carries was written by the road
+# that minted it.
+def pair():
+    return {1, 2}
+def single():
+    return {1}
+print({1} in pair())
+print(single() in pair())
+print(single() in {1, 2})
+
+# A set asked of a LIST is the content question, and a list can hold a set — the exemption belongs to the
+# hashing haystacks alone, and reaching past it would answer `False` to these.
+print({1} in [{1}])
+print({1} in [2])
+buckets = [{1}, {2}]
+print({1} in buckets)
+print(buckets[0] in buckets)
+
+# The kinds the reference really does refuse to hash, taken by the program's own handler: a list and a dict
+# are unhashable for every haystack, and a set is unhashable as a KEY.
+try:
+    print([1] in s)
+except TypeError as err:
+    print("list:", err)
+try:
+    print({1: 2} in s)
+except TypeError as err:
+    print("dict:", err)
+d = {1: "a"}
+try:
+    print({1} in d)
+except TypeError as err:
+    print("key:", err)
+try:
+    print((1, {2}) in s)
+except TypeError as err:
+    print("carried:", err)
+
+# The exemption is not a raise in disguise and not a fold: the handler does not run for the exempt pair, and
+# an operand's own effect still happens before the answer is decided.
+try:
+    print({1} in s)
+except TypeError:
+    print("unreachable")
+def noisyNeedle():
+    print("needle")
+    return {1}
+def noisyHay():
+    print("hay")
+    return {1, 2}
+print(noisyNeedle() in {1, 2})
+print(noisyHay() == {1, 2})

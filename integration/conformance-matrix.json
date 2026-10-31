@@ -4062,6 +4062,27 @@
     },
     {
       "case": {
+        "id": "programs/membership_set_needle",
+        "name": "membership_set_needle.gy",
+        "source": "# A set asked of a set answers; it does not refuse to hash itself (roadmap Gap R.586, ADR 0478).\n#\n# `print({1} in {1, 2})` died `TypeError: unhashable type: 'set'` at exit 3 where the reference prints\n# `False`. The sentence was CPython's own rule placed at the wrong door: a SET does not ask a set needle for\n# its hash — `set_contains` converts the needle to the frozenset it hashes as and looks THAT up — and this\n# language has no `frozenset` to find, so the conversion finds no member and the answer is absence. A dict\n# takes no such conversion (`dict.__contains__` asks the key's own hash), which is why `{1} in {1: 2}` keeps\n# raising, and a tuple is hashed element by element, which is why `(1, {2}) in {1, 2}` names 'set'.\n#\n# The program is the pair the row turns on: the same needle, asked of the two haystacks, answering and\n# raising as the reference does, and the raises below are taken by the program's own `except TypeError`\n# because a program's exception is the program's (ADR 0214).\n\n# The row's own shape, and the two spellings of each side.\nprint({1} in {1, 2})\ns = {1, 2}\nprint({1} in s)\nn = {1}\nprint(n in {1, 2})\nm = {1, 2}\nprint(n in m)\n\n# A payload is not a value: a set needle's word is a heap handle, the members' words are small numbers, and\n# the tag beside them is what keeps `{0} in {0}` from finding a member that was never stored (ADR 0232).\nz = {0}\nprint({0} in z)\nprint({1} in z)\nprint({1} in {0, 1, 2, 3, 4, 5})\nprint((1, 2) in {(1, 2)})\nprint({1} in {(1, 2)})\n\n# A verdict, in every position a verdict reaches: `not in`, a condition, `and`, a ternary, a parameter.\nprint({1} not in s)\nif {1} in s:\n    print(\"yes\")\nelse:\n    print(\"no\")\nprint({1} in {1, 2} and 1 or 2)\nprint(\"member\" if {1} in s else \"absent\")\ndef holdsSet(needle):\n    return needle in s\ndef holdsInt(needle):\n    return needle in s\nprint(holdsSet({1}))\nprint(holdsInt(1))\n\n# The haystack and the needle may both be a call's answer: the container the call hands back is materialised\n# under the rooted slot a container variable occupies, and the kind that slot carries was written by the road\n# that minted it.\ndef pair():\n    return {1, 2}\ndef single():\n    return {1}\nprint({1} in pair())\nprint(single() in pair())\nprint(single() in {1, 2})\n\n# A set asked of a LIST is the content question, and a list can hold a set — the exemption belongs to the\n# hashing haystacks alone, and reaching past it would answer `False` to these.\nprint({1} in [{1}])\nprint({1} in [2])\nbuckets = [{1}, {2}]\nprint({1} in buckets)\nprint(buckets[0] in buckets)\n\n# The kinds the reference really does refuse to hash, taken by the program's own handler: a list and a dict\n# are unhashable for every haystack, and a set is unhashable as a KEY.\ntry:\n    print([1] in s)\nexcept TypeError as err:\n    print(\"list:\", err)\ntry:\n    print({1: 2} in s)\nexcept TypeError as err:\n    print(\"dict:\", err)\nd = {1: \"a\"}\ntry:\n    print({1} in d)\nexcept TypeError as err:\n    print(\"key:\", err)\ntry:\n    print((1, {2}) in s)\nexcept TypeError as err:\n    print(\"carried:\", err)\n\n# The exemption is not a raise in disguise and not a fold: the handler does not run for the exempt pair, and\n# an operand's own effect still happens before the answer is decided.\ntry:\n    print({1} in s)\nexcept TypeError:\n    print(\"unreachable\")\ndef noisyNeedle():\n    print(\"needle\")\n    return {1}\ndef noisyHay():\n    print(\"hay\")\n    return {1, 2}\nprint(noisyNeedle() in {1, 2})\nprint(noisyHay() == {1, 2})\n",
+        "asserted": true,
+        "oracle": "match"
+      },
+      "aot_ok": true,
+      "aot_stdout": "False\nFalse\nFalse\nFalse\nFalse\nFalse\nFalse\nTrue\nFalse\nTrue\nno\n2\nabsent\nFalse\nTrue\nFalse\nFalse\nFalse\nTrue\nFalse\nTrue\nTrue\nlist: unhashable type: 'list'\ndict: unhashable type: 'dict'\nkey: unhashable type: 'set'\ncarried: unhashable type: 'set'\nFalse\nneedle\nFalse\nhay\nTrue\n",
+      "python_ok": true,
+      "python_stdout": "False\nFalse\nFalse\nFalse\nFalse\nFalse\nFalse\nTrue\nFalse\nTrue\nno\n2\nabsent\nFalse\nTrue\nFalse\nFalse\nFalse\nTrue\nFalse\nTrue\nTrue\nlist: unhashable type: 'list'\ndict: unhashable type: 'dict'\nkey: unhashable type: 'set'\ncarried: unhashable type: 'set'\nFalse\nneedle\nFalse\nhay\nTrue\n",
+      "aot_matches_python": true,
+      "conformant": true,
+      "oracle": "match",
+      "oracle_declared": "match",
+      "oracle_rules": [
+        "set-order",
+        "instance-identity"
+      ]
+    },
+    {
+      "case": {
         "id": "programs/slice_base_kind",
         "name": "slice_base_kind.gy",
         "source": "# The slice road asks what its BASE is (roadmap Gap R.234, ADR 0466).\n#\n# A set has no position to slice from, and a dict hashes the slice and reports the miss by naming the key\n# it missed. Both raise, so the program takes the raise with its own `except` and runs to completion —\n# every line below is the reference's bytes, and the doors beside it (a list's bounds, a dict read by a\n# real key, a text's slice) keep the answers they always gave.\n\ns = {1, 2}\nd = {1: 2}\nxs = [1, 2, 3]\n\nprint(xs[0:2], xs[1:], xs[::-1])\nprint((1, 2)[0:1])\nprint(\"abcdef\"[1:3])\nprint(d[1], len(d), 1 in d)\nprint(len(s), 2 in s)\n\ntry:\n    print(s[0:1])\nexcept TypeError as err:\n    print(\"set\", err)\n\ntry:\n    print(d[0:1])\nexcept KeyError as err:\n    print(\"dict\", err)\n\ntry:\n    print({1, 2}[\"a\":\"b\"])\nexcept TypeError as err:\n    print(\"object\", err)\n\ntry:\n    print({1: 2}[[1]:2])\nexcept TypeError as err:\n    print(\"hash\", err)\n\ntry:\n    print({1: 2}[0:1:0])\nexcept KeyError as err:\n    print(\"step\", err)\n\ntry:\n    print({1: 2}[(1, \"a\"):2])\nexcept KeyError as err:\n    print(\"tuple\", err)\n\nprint(xs[0:1], len(xs[0:2]), xs[0:2][1])\nprint(d[1], 0 in d)\n",
@@ -6658,11 +6679,11 @@
       ]
     }
   ],
-  "rows": 282,
+  "rows": 283,
   "skipped": 36,
-  "pass": 246,
+  "pass": 247,
   "fail": 0,
-  "oracle_match": 232,
+  "oracle_match": 233,
   "oracle_debt": 24,
   "oracle_not_applicable": 26,
   "oracle_drift": 0

@@ -1861,6 +1861,29 @@ follow the needle into a list haystack, where it would turn a working program in
 refuses, rather than answering, is a key whose kind is only a run-time fact: a name the compiler cannot
 pin to one container keeps its lookup honest by declining (L11.1's tagged word, `Gap R.212`).
 
+**A SET haystack converts a set needle to the frozenset it hashes as, and so answers absence** (ADR 0478,
+paying `Gap R.586`). Which kinds are refused is a property of the haystack, not of the needle, and the three
+haystacks disagree:
+
+```python
+print({1} in {1, 2})      # False   — NOT unhashable: a set converts the needle and looks up the frozenset
+print({1} in {1: 2})      # TypeError: unhashable type: 'set'   — a dict asks the KEY'S OWN hash
+print([1] in {1, 2})      # TypeError: unhashable type: 'list'  — every haystack that hashes refuses a list
+print({1: 2} in {1, 2})   # TypeError: unhashable type: 'dict'
+print((1, {2}) in {1, 2}) # TypeError: unhashable type: 'set'   — a tuple hashes by hashing its elements
+print({1} in [{1}])       # True    — a list walks; nothing is hashed, nothing is refused
+```
+
+The reference's `set_contains`/`set_discard`/`set_remove` convert a set or frozenset needle before hashing, so
+the needle is never asked for its own hash and no `TypeError` can come of it; this language has no `frozenset`
+value to find — a set cannot hold one, and `{…}`/`set()` are the only spellings of the empty one — so the
+conversion finds no member and the answer is the door's own absence. The refusal is therefore a table read from
+the haystack: `list`/`dict`/`set` as a dict KEY, `list`/`dict` as a set's MEMBER, nothing in a list or a tuple.
+A name is exempt from the compile-time refusal only where the PROGRAM settles its kind — a spelled literal, a
+name whose every binder in the frame that owns it spelled a set behind the read, or a compiler-minted container
+answer — and a name the run time could still rebind into a dict keeps the raise, because a `False` at the exit
+code of success is not an answer the compiler is allowed to hand out (`Gap R.588`).
+
 **Membership asked of a value that has no members raises** (ADR 0452, paying `Gap R.521`; extended to a name and
 a call by **ADR 0453**, paying **Gap R.522**). The haystack's kind decides whether the question is legal at all,
 and where the PROGRAM settles that kind to one that has no members, keys, elements or characters, the answer is not

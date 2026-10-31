@@ -18458,3 +18458,69 @@ the clothes of a fix.
 - The `.gy` conformance program is CPython-run first: if `python3` stops early on it, my program is wrong, not the
   oracle. Three of my five new answered lines were wrong expectations on my side (`s[1:4]` is `"bcd"`, not `"bcde"`;
   `xs[None:2]` is `[1, 2]`, not the whole list) and CPython caught them before the compiler did.
+
+## 2026-11-03 — the haystack decides what it hashes; a notebook is a summary (Gap R.586 closed; ADR 0478)
+
+**The shape of the bug.** `print({1} in {1, 2})` raised `TypeError: unhashable type: 'set'` where CPython prints
+`False`. The sentence was CPython's own rule — `set.add({1})` really does raise it — installed at a door that does
+not hash the way a set hashes. A **set** does not ask a set needle for its hash: `set_contains` converts it to the
+frozenset it hashes as and looks *that* up. A **dict** does ask the key's own hash, so `{1} in {1: 2}` raises. A
+**list** hashes nothing, so `print({1} in [{1}])` is `True`. One predicate, `unhashableKeyGate`, was answering all
+three from the needle's kind alone. The unit is therefore not "is this kind unhashable" but "does THIS haystack hash
+THIS needle" — a question with a second argument, and the fact that nobody had passed one is why the wrong answer
+looked systematic rather than local.
+
+**One rule, two doors, two exit classes.** `guardHashableNeedle` in `heapargs.go` had carried the haystack
+asymmetry since **ADR 0425** measured it for `discard`/`remove`; only the compile-time gate in front of it refused
+to know. Same program, two exit codes: spelled haystack refused statically (exit 1 — the code that says the
+*compiler* has no answer), named haystack raised at run time. **ADR 0232** names the static/run-time pair as one
+road for exactly this reason, and `unhashableNeedleKinds(setHaystack bool)` is now the single table the gate, the
+store-side guard and the run-time guard all read. The lesson generalises past this row: when a run-time guard is
+*looser* than the compile-time gate in front of it, the gate is not being careful, it is stealing an answer.
+
+**A notebook is a summary, and I nearly read the wrong page twice.** The first cut of the exemption read
+`containerKindOf` for a named haystack; that answers `str` for `[1]`, `"a"`, `{1, 2}`, `{"a": 1}` — it is the
+`str`-biased *text* question — so every named haystack was "not a set" and nothing was exempt. The second cut read
+`staticContainerKind` and answered `list` for `x = {1, 2}` (a name whose literal is a set falls through to the
+default). Both are **ADR 0452**/**ADR 0453**'s failure: a compiler ledger records what was last *spelled*, from one
+road's point of view, and it is allowed to be a summary because the road that reads it normally asks only the
+question that road can answer. The shipped exemption is asked of the **program** instead — the literal at the
+question, every binder the name has behind the read in the frame that owns it (`spelledScalarFrame`, widened with a
+family per binder), or a compiler-minted `__cans` slot whose kind only the minting road wrote.
+
+**A skipped raise at exit 0 is the trade I refused, and the row that forced it is worth naming.**
+`s = {"a": 1}` / `if no(): s = {1, 2}` / `print({1} in s)` — read the last-emitted claim and the answer is `False`
+at the exit code of success where the reference raises; keep the raise and the program that only ever spelled sets
+keeps a `TypeError` it should not get. Those are not symmetric: the first is invisible, the second is a loud
+refusal a user can see and file. Every binder must spell a set, an arm-rebound name is not trusted at all, and the
+consequence — `s = {1, 2}` / `if True:` / `    s = {1, 2}` still raises — is pinned in the residue table with both
+legs' answers beside it, not written as a fixed case.
+
+**Two mistakes, two gate widths, both documented on purpose.** `memberIsABareSet` (removal) admits a tuple and a
+call answer; the membership exemption admits only something the program promises is a set. I unified them under one
+helper for about ten minutes, and the argument that separated them was arithmetic: getting the removal door wrong
+costs a verb call and produces a `KeyError` at exit 3; getting the membership door wrong prints `False` at exit 0.
+A door is allowed to be as wide as its worst mistake, and two files now say which width they chose and why — the
+alternative, one "shared" helper with a `wide bool` flag, is a door whose width is decided by its caller.
+
+**Process lessons.**
+- The row claimed `s = {1, 2}` / `print({1} in s)` "already answers" and it does — which is what made the bug
+  intelligible: the same question, refused when the haystack is spelled and answered when it is named. A bug that
+  has a working sibling is a bug with an address. **ADR 0476**'s residue row pointed straight at it.
+- **`recmerge` refusing a duplicate source was the most informative failure of the round**: "the entry the row
+  names is ALREADY on record 19 times" was half right — my probe counted substring hits in the serialised artifact,
+  not distinct sources, and the standalone `print({1} in {1, 2})` genuinely was absent. A probe that reads a JSON
+  file with `in` is a probe that counts punctuation. Read the artifact through its own keys.
+- Before adding records I checked the *stale-record* risk: 77 entries mention `unhashable`, and each is a shape
+  that still raises (a dict key, a set inside a set literal, `d[{1}] = 2`, `s.discard((1, {2}))`). A fix that
+  silently turned a recorded `error:` into a value would have surfaced as a NEW divergence in
+  `interpreter-golden-drift.json` and a failing `TestMain` — the drift ledger is what makes "did this fix break a
+  record?" a checked question rather than a worry.
+- A scripted rewrite of `roadmap.md` deleted a prose line sitting inside a table (the "Last refreshed … 464 ADR
+  records, highest 0477" summary). I did not retype it: its aggregate counts are computed elsewhere and a number
+  someone remembered is **Gap R.204**'s exact defect. Editing a tracker with a line-index script is a way to lose
+  lines the script never intended to touch — edit trackers with anchored replacements, and re-read the diff of the
+  whole file afterwards, not only the rows you meant to change.
+- Three of the new CLI rows failed because *my expectations* were wrong, not the compiler's: the reference's
+  message for a dict key is `unhashable type: 'set'`, not `'dict'`, and it is the KEY's kind that is named however
+  the question is spelled. Reading `python3` before writing the assertion caught all three.

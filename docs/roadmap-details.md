@@ -25182,26 +25182,174 @@ to write.
 
 <a id="gap-r-586"></a>
 
-### Gap R.586 — a set asked of a set raises instead of answering (OPEN, found while closing Gap R.582)
+### Gap R.586 — a set asked of a set raises instead of answering (CLOSED by ADR 0478 on 2026-11-03)
 
 ```python
 print({1} in {1, 2})    # CPython False · this backend TypeError: unhashable type: 'set' at exit 3
+print({1} in {1: 2})    # CPython TypeError: unhashable type: 'set' · the same sentence, the right door
+print([1] in {1, 2})    # CPython TypeError: unhashable type: 'list' · never moved
+print((1, {2}) in {1, 2})  # CPython TypeError: unhashable type: 'set' · a CARRYING set still names itself
+print({1} in [{1}])     # CPython True · a list walks; nothing is hashed
 ```
 
 Found while measuring **Gap R.582**'s unhashable half, and it is not that row's doing: the same program behaves
 identically at the parent commit, which is the only reason it is a row and not a regression report.
 
-The reference does not hash a set as a set. `{1} in {1, 2}` converts the needle to the frozenset it hashes as,
-finds no member equal to it, and answers `False`. This language has no frozenset to find, so the door that
-**ADR 0324** built — and that this cycle extended to the dict and set haystacks of an object-read needle — has
-to answer one of two ways: compare the needle by CONTENT against each member, or keep the raise and stop calling
-it the reference's behaviour. The guard the cycle grew is keyed by KIND (`list`, `dict`, and `set` only for a dict
-haystack) rather than by “any container”, which is what keeps a set member from being refused at a *set* haystack
-and is also the reason this row cannot be closed by widening the guard.
+**The measurement, before the code.** CPython does not hash a set as a set. `set_contains` — and its two siblings
+`set_discard` and `set_remove` — take a set or frozenset needle, build the **frozenset it hashes as**, and look
+THAT up: the needle is never asked for its own hash, so the sentence this backend printed for it cannot come from
+the path the reference takes. `dict.__contains__` asks the key's own hash, so the identical needle raises;
+a tuple is hashed by hashing its elements, so a tuple carrying a set raises too; and a list haystack hashes
+nothing at all, so `{1} in [{1}]` is True. Four doors, one distinction, and the distinction belongs to the
+HAYSTACK — the needle's kind alone cannot state it, which is why the row could not be closed by widening a guard.
 
-Pinned in `pkg/lang/membership_needle_pair_test.go::TestWhatTheObjectNeedleDoorStillCannotReachIsFiledNotFixed`
-with today's raise beside the reference's `False`, so the row fails the day it drifts and the day someone gives
-sets a frozenset to be.
+**What was already here, and what was not.** The distinction was already in this backend: **ADR 0425** measured
+it for `discard`/`remove` and wrote it into the run-time needle guard (`guardHashableNeedle`'s `everyContainer`
+parameter, read as `{list, dict}` for a set haystack and `{list, dict, set}` for a dict key), and
+`membership_literal.go` still carries the comment that says a set haystack answers because the needle converts.
+Both of those serve a needle whose kind arrives as a tag REGISTER. A needle whose kind the SOURCE spells never
+reaches them: the compile-time gate in front of the whole door had already raised, and its own comment recorded
+the omission — *a tag the compiler spelled as a literal needs no guard: the static door has refused that program
+since Gap R.217*. One rule, two doors, two answers. That is **ADR 0232**'s defect class (a rule restated per road
+drifts, and this one drifted into a wrong exit class), and the sweep that found it found it by asking the 22
+positions a verdict reaches — print, `not in`, a condition, a `while`, `and`, a ternary, a parameter, a call's
+container answer on either side, and `{0} in {0}`, whose payload is a heap handle and whose only member is the
+number 0, which is the collision the tag beside the payload exists to prevent (**ADR 0232** again, asked of `in`).
+
+**The fix, and the half that was nearly wrong.** The gate is now asked of the pair — `unhashableKeyGate(needle,
+haystack)` — and the three doors that refuse kinds read ONE table (`unhashableNeedleKinds`). The lookup is
+untouched: the answered module still calls `rt_contains_tagged` with the needle's payload and its tag, and the
+members answer. What nearly cost a working program was the exemption's evidence. Reading the name-keyed claim
+tables (`runtimeSets`, `containerLits`) is reading a SUMMARY of the bindings a pass emitted, and this program
+makes the summary a lie:
+
+```python
+def no():
+    return False
+s = {"a": 1}
+if no():
+    s = {1, 2}
+print({1} in s)   # the run is in the other arm: the haystack IS the dict, and the reference raises
+```
+
+The claim at that read is whatever was emitted LAST, not what the run holds; the exemption taken from it printed
+`False` at exit 0 for a program the reference stops — the exact trade **ADR 0452** and **ADR 0453** refuse, in
+that file's own words. So the exemption runs on `programPromisesASet`, which reuses the binder walk **ADR 0453**
+built: every binder the frame has for the name must spell a spelled set literal behind the read (several are
+allowed when they all spell the same family, because `s = {1}` / `s = {3}` is a set whatever the run does), a name
+written inside an arm or by a loop target is retired, a name another frame writes through `global` is retired,
+and the one reading left is a name the source never binds at all — a compiler-minted slot such as the rooted
+`__cansN` a container answer is materialised under, whose kind only the minting road ever wrote. Measured against
+the parent commit before shipping: **22 shapes change answer to the reference's, and none of the 296 conformance
+programs changes answer** (`--verify-llvm-file` old-vs-new, 270 compile before and 270 after).
+
+**Deliberately not unified.** The removal door's exemption (`memberIsABareSet`, **ADR 0425**) is the looser,
+claim-based reading, and it stays that way on purpose: getting that door wrong loses a verb call at exit 3,
+getting this one wrong prints `False` at exit 0. The two comments name each other so neither is quietly widened
+into the other, and the guard's `list`/`dict` arms — which the reference does have for both verbs — are untouched.
+
+**What the row leaves owed, named by the same sweep:** **Gap R.587** (a non-text needle asked of a TEXT haystack:
+exit-2 `llc` rejections, wrong `True`s and a SIGSEGV family), **Gap R.588** (a haystack whose set-hood is a
+run-time fact, where the promise reader declines and today's raise stands), **Gap R.589** (a parameter used as a
+membership needle is kinded by one call site, so a second call with another kind answers wrong at exit 0). Each
+was measured against `python3` and pinned with both legs' bytes; none of them is this row's door.
+
+<a id="gap-r-587"></a>
+
+### Gap R.587 — a needle that is not a text, asked of a text, has no answer at all (OPEN, found while closing Gap R.586)
+
+```python
+{1} in "abc"        # CPython TypeError: 'in <string>' requires string as left operand, not set
+                    #   this backend: llc rejects the module — EXIT 2
+[1] in "abc"        # …not list                                   · EXIT 2
+{1: 2} in "abc"     # …not dict                                     · EXIT 2
+(1,) in "abc"       # …not tuple                                    · True at exit 0
+n = {1}; n in "abc" # …not set                                      · True at exit 0
+None in "abc"       # …not NoneType                                 · True at exit 0
+1 in "abc"          # …not int                                      · SIGSEGV in the compiled program
+1.5 in "abc"        # …not float                                    · SIGSEGV
+True in "abc"       # …not bool                                     · SIGSEGV
+```
+
+Nine faces, one door, and none of them is **Gap R.586**'s: a text haystack does not hash, it SEARCHES, and the
+reference refuses every needle that is not a text with `'in <string>' requires string as left operand, not <kind>`
+— a sentence this backend already knows how to write (`inStrNeedleSentence`, and **ADR 0325** paid the instance
+member of the family through it). The three faces that reach `llc` do it the same way the slice bounds did before
+**ADR 0336**: the container literal lowers to its compile-time GLOBAL and is handed to
+`call i32 @rt_str_contains(i32 %t, i32 @.set1)`, which is a global in an `i32` argument — **ADR 0166**'s exit 2,
+spent on a program the reference stops with a sentence. The three that print `True` answer a substring question
+for a value that has no bytes to search, and the three that die of SIGSEGV are the artifact's fault, not the
+program's (Gap R.203's sentence).
+
+Measured 2026-11-03 while closing **Gap R.586**/**ADR 0478**, and identical at the parent commit on every face —
+which is what makes them a row rather than a regression report. Pinned in
+`pkg/lang/membership_set_needle_test.go::TestANonTextNeedleAskedOfATextHasNoAnswerYetIsFiled`, where the exit-2
+spellings are asserted as the BAD call still standing in the module: a door that starts emitting the reference's
+raise makes the row fail in the right direction. The fix is one arm and one table — the text haystack asks the
+needle what it is before it asks anything else, on both roads, and the fold may not answer a substring question
+for a value it has not seen (**ADR 0452**).
+
+<a id="gap-r-588"></a>
+
+### Gap R.588 — a haystack whose set-hood is a run-time fact keeps a raise the reference does not raise (OPEN, found while closing Gap R.586)
+
+```python
+def no():
+    return False
+s = {1, 2}
+if no():
+    s = {"a": 1}
+print({1} in s)      # CPython False (the arm never ran) · this backend TypeError: unhashable type: 'set', exit 3
+
+s = {1}
+for s in [{2}]:
+    print({1} in s)  # CPython False · the same raise, for a name whose every value IS a set
+```
+
+**ADR 0478** takes the frozenset exemption from the PROGRAM, not from a notebook: the name-keyed claim tables are
+a summary of the bindings a pass emitted, and **ADR 0452**/**ADR 0453** settled what this toolchain does when a
+summary is not a promise — it declines. The consequence is these two programs: the binder walk cannot rule out an
+arm, and it cannot see that a loop hands the name a set every time, so the exemption is off and the raise stands
+where the reference answers.
+
+That is the deliberate direction. The mirror-image programs — the same shape with the bindings swapped, where the
+run really does hold a dict and the reference raises — answer correctly, and pinning them in the same table is
+what keeps a "fix" that simply reads the last-emitted claim from passing: it turns the first program green only by
+turning the second into a `False` at exit 0. The word the door is missing is the haystack's own kind, which
+**ADR 0361** already put in the object's `@estr[h]`; asking it on the arm that is about to skip the raise is the
+same shape `guardHashableNeedle` takes for a needle whose kind is a register, and it is roadmap **L11.1**'s
+tagged value word seen from this door.
+
+Pinned in `pkg/lang/membership_set_needle_test.go::TestTheSetPromiseIsAskedOfEveryBinderTheNameHas` (each residue
+row asserts the reference does NOT raise, so the case fails the day either answer drifts without this row owning
+it) and in the residue and CLI tables beside it.
+
+<a id="gap-r-589"></a>
+
+### Gap R.589 — a parameter used as a membership needle is kinded by one call site, so a second call with another kind answers wrong (OPEN, found while closing Gap R.586)
+
+```python
+s = {1, 2}
+def holds(needle):
+    return needle in s
+print(holds(1))    # alone: True  · CPython True
+print(holds({1}))  # alone: False · CPython False
+# together, in either source order: False · False   — CPython: False · True, at EXIT 0
+```
+
+Two one-call functions are right in both orders, so the object, the door and the tag are all fine: what is settled
+too early is the PARAMETER'S kind, per body rather than per call, and the word the second call reads is the first
+call's. That is **Gap R.164**/**ADR 0280**'s family (a parameter whose call sites disagree) arriving at the
+membership door, and the rule that keeps the str and float censuses honest is the rule this door has not asked —
+**every call site or nothing, and a body that can take the claim back** (`strArgKinds`, `floatArgKinds` state it).
+The answer is the pair road: a parameter whose call sites disagree gets the tagged read, and declines rather than
+answering with one caller's word (**L11.1**).
+
+Discovered, not caused: before **Gap R.586** the set-needle call raised, so the program never lived long enough to
+print the wrong second verdict. Pinned in
+`pkg/lang/membership_set_needle_test.go::TestWhatTheHashSetNeedleDoorStillCannotReachIsFiledNotFixed` with both
+legs' bytes beside it, and kept OUT of `integration/programs/membership_set_needle.gy`, which lists only what the
+toolchain answers — the program therefore uses two one-call functions, and the witness says what it means.
 
 <a id="gap-r-584"></a>
 

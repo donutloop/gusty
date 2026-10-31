@@ -95,9 +95,10 @@ func (g *irGen) setMemberRemoval(b *strings.Builder, setName, verb string, arg E
 	// 1. HASHABILITY, before the set is asked anything, and worded as the reference words it for THIS
 	//    verb. `memberIsABareSet` carries the one exemption the reference grants this door and the dict
 	//    door does not have; everything else goes to the shared static gate, which names the type the
-	//    source wrote (`s.discard([1])` → 'list').
+	//    source wrote (`s.discard([1])` → 'list'). The gate is asked with NO haystack: this is a lookup
+	//    asked BY a set, and the exemption is the reason the bare-set arm never reaches it.
 	if bareSet := g.memberIsABareSet(arg); !bareSet {
-		if _, bad := g.unhashableKeyGate(b, arg, sp); bad {
+		if _, bad := g.unhashableKeyGate(b, arg, nil, sp); bad {
 			return "", nil // the gate raised; the removal it stands in front of never happens
 		}
 	}
@@ -165,6 +166,10 @@ func (g *irGen) setMemberRemoval(b *strings.Builder, setName, verb string, arg E
 // It is NOT a hashability claim. Nothing on this road can put a set INTO a set — the member door beside
 // it refuses an unhashable member — so the scan below cannot find one, which is why `discard` lands on
 // its no-op and `remove` on its `KeyError` without either of them having to know the exception.
+//
+// The membership door asks a STRICTER question of the same-looking pair (`programPromisesASet`, in
+// membership_kind.go), because a wrong answer there costs a program its TypeError at exit 0 rather than
+// costing it a verb call at exit 3; see that door for why the two are not one door.
 func (g *irGen) memberIsABareSet(arg Expr) bool {
 	if _, isSet := arg.(*SetLit); isSet {
 		return true
@@ -201,15 +206,12 @@ func (g *irGen) memberIsABareSet(arg Expr) bool {
 //
 // (roadmap Gap R.422, ADR 0425; the guard this one is derived from is Gap R.81's)
 func (g *irGen) guardRemovableMemberTag(b *strings.Builder, tag string, sp Span) {
-	for _, k := range []struct {
-		tg   int32
-		name string
-	}{
-		{int32(TagList), "list"},
-		{int32(TagDict), "dict"},
-	} {
+	// The no-set arm of the ONE table (unhashable_key.go's unhashableNeedleKinds asked of a set haystack),
+	// which is the same measurement this door's `memberIsABareSet` exemption records: the two verbs
+	// convert a set argument and answer, and refuse a list and a dict.
+	for _, k := range unhashableNeedleKinds(true) {
 		c := g.newTmp()
-		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, tag, k.tg)
+		fmt.Fprintf(b, "  %s = icmp eq i32 %s, %d\n", c, tag, k.tag)
 		g.markI1(c)
 		g.branchRaise(b, c, "TypeError", unhashableKeyMessage(k.name), sp, "rmemhash")
 	}

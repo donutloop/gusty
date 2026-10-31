@@ -102,15 +102,90 @@ func (g *irGen) unhashableKeyName(e Expr) (string, bool) {
 	}
 }
 
+// The kinds a hashing haystack refuses to hash, and the one pair that escapes the refusal.
+//
+// roadmap **Gap R.586** · **ADR 0425** (the removal door's measurement of the same pair) · **ADR 0328**
+// (the rule this table serves) · **ADR 0232** (one question, one table)
+//
+// Three doors ask "may this value be hashed?": the subscript/store doors, which ask it of a KEY, the
+// membership gate in this file, which asks it of a needle, and `guardHashableNeedle`, which asks it of a tag
+// register once the needle arrived as a (payload, tag) pair. They are one rule about one set of values, so
+// they read one table — and the table has one parameter, because the haystack, not the needle, decides it.
+//
+//	print({1} in {1, 2})      # False   in the reference;  this toolchain: TypeError, exit 3
+//	print({1} in {1: 2})      # TypeError: unhashable type: 'set'
+//	print([1] in {1, 2})      # TypeError: unhashable type: 'list'
+//	print((1, {2}) in {1, 2}) # TypeError: unhashable type: 'set'
+//
+// The first line is not an absence the backend invented: CPython's `set_contains` (and `set_discard`,
+// `set_remove`) converts a set or frozenset needle to the **frozenset it hashes as** and looks THAT up, so
+// the needle is never asked for its own hash and no TypeError can follow. This language has no `frozenset`
+// to find — a set cannot hold one, and `set()`/a set literal are the only spellings of the empty one — so
+// the conversion answers "no member matches", which is the reference's own `False`. A dict takes no such
+// conversion: `dict.__contains__` asks the key's own hash, so the same needle raises; and a needle that
+// merely CARRIES a set (a tuple with a set in it) is hashed element-wise, so it raises too. The exemption
+// is therefore exactly the pair — the needle's OWN kind is a set, and the haystack's kind is a set.
+//
+// What the exemption is NOT: a hashability claim about run-time kinds. It fires only where the PROGRAM
+// settles both sides (`programPromisesASet`), which is where `unhashableKeyName` already had the kinds to
+// begin with; a needle or a haystack whose kind arrives as a tag register is asked by `guardHashableNeedle`
+// off this same table.
+type unhashableNeedleKind struct {
+	tag  int32
+	name string
+}
+
+// unhashableNeedleKinds is the table those three doors read. `setHaystack` is the answer to the frozenset
+// question — true for a set, which converts a set needle and answers; false for a dict key, which asks the
+// key's own hash and so refuses the set as well as the list and the dict.
+func unhashableNeedleKinds(setHaystack bool) []unhashableNeedleKind {
+	kinds := []unhashableNeedleKind{{int32(TagList), "list"}, {int32(TagDict), "dict"}}
+	if !setHaystack {
+		kinds = append(kinds, unhashableNeedleKind{int32(TagSet), "set"})
+	}
+	return kinds
+}
+
+// setHaystackConvertsTheNeedle is the exemption itself, asked of the PAIR the door is about to hash.
+//
+// The haystack is `nil` at the doors that have no haystack — a dict subscript read and a dict store, where
+// the expression is a KEY and the dict is the thing being hashed into — and only a set converts. Both sides
+// are asked of the PROGRAM, not of a notebook: `programPromisesASet` (membership_kind.go) is the door for
+// "this expression denotes a set, and no run-time path can make that false", and it is what keeps
+//
+//	s = {"a": 1}
+//	if no():
+//	    s = {1, 2}
+//	print({1} in s)   # the run-time haystack is the dict; the reference raises
+//
+// answering with a `False` it had no right to. A skipped raise at exit 0 is the trade **ADR 0452** and
+// **ADR 0453** refuse; a name the binder walk cannot settle therefore keeps today's raise, which is filed
+// as owed rather than guessed at.
+func (g *irGen) setHaystackConvertsTheNeedle(needle, haystack Expr, readLine int) bool {
+	if haystack == nil || g == nil {
+		return false
+	}
+	return g.programPromisesASet(needle, readLine) && g.programPromisesASet(haystack, readLine)
+}
+
 // unhashableKeyGate emits the refusal at a dict door. It runs BEFORE the door's own membership
 // test, so the key's kind is settled before anyone is told a key is missing, and it is emitted on
 // the same non-local road every other exception in this backend takes — `try:`/`except TypeError:`
 // catches it, an uncaught one exits 3 with the reference's own two lines. It ends the block the
 // raise branched out of and opens the continuation, so the caller returns the (unreachable) value
 // the door would have answered and keeps emitting where it left off.
-func (g *irGen) unhashableKeyGate(b *strings.Builder, keyExpr Expr, sp Span) (string, bool) {
+//
+// `haystack` is what the key is being hashed INTO: `nil` at the two subscript/store doors, and the right
+// operand at the membership door, because the haystack decides which needle kinds it refuses (roadmap
+// Gap R.586 — `print({1} in {1, 2})` answers, `print({1} in {1: 2})` raises, and one gate answers both).
+func (g *irGen) unhashableKeyGate(b *strings.Builder, keyExpr Expr, haystack Expr, sp Span) (string, bool) {
 	typeName, bad := g.unhashableKeyName(keyExpr)
 	if !bad {
+		return "", false
+	}
+	if g.setHaystackConvertsTheNeedle(keyExpr, haystack, sp.Line) {
+		// The haystack converts this needle to the frozenset it hashes as and answers; the door below it
+		// asks the members, finds no match, and the program continues (roadmap Gap R.586).
 		return "", false
 	}
 	g.heapUsed = true

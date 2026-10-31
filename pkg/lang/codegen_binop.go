@@ -51,9 +51,13 @@ func (g *irGen) valueBinOp(b *strings.Builder, e Expr, n *BinOp) (string, error)
 		// `[1] in {"a": 1}` is not a question the reference allows: an unhashable needle is
 		// a TypeError naming its type, and the payload-only scan answered it False at exit 0
 		// (roadmap Gap R.217, ADR 0328). Asked first, before any fold and before the tagged
-		// membership door, so no arm of the test gets to answer it.
+		// membership door, so no arm of the test gets to answer it — and asked of the PAIR, because
+		// it is the HAYSTACK that decides which needle kinds it refuses to hash: a dict asks the key's
+		// own hash and so refuses a set key, a SET converts a set needle to the frozenset it hashes as
+		// and answers `False` (roadmap **Gap R.586**; `print({1} in {1, 2})` prints False, `print({1} in
+		// {1: 2})` raises, and one gate is the door for both).
 		if g.haystackHashesKeys(n.R) {
-			if res, bad := g.unhashableKeyGate(b, n.L, n.Span()); bad {
+			if res, bad := g.unhashableKeyGate(b, n.L, n.R, n.Span()); bad {
 				return res, nil
 			}
 		}
